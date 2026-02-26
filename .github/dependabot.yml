@@ -1,18 +1,17 @@
 version: 2
 updates:
-  # Gradle dependencies (Kotlin/Java)
   - package-ecosystem: "gradle"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
     labels:
-      - "dependencies"- "gradle"
+      - "dependencies"
+      - "gradle"
     open-pull-requests-limit: 10
     reviewers:
       - "s24407-pj"
 
-  # Docker base images (Dockerfile, docker-compose)
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -23,7 +22,6 @@ updates:
       - "docker"
     open-pull-requests-limit: 5
 
-  # GitHub Actions workflows
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
