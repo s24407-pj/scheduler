@@ -9,9 +9,9 @@ import java.time.Duration
 @Component
 class OtpStore(
     private val redisTemplate: StringRedisTemplate,
-    @Value("\${otp.ttl-minutes}") private val otpTtlMinutes: Long,
-    @Value("\${otp.max-attempts}") private val maxAttempts: Long,
-    @Value("\${otp.rate-window-minutes}") private val rateWindowMinutes: Long
+    @Value($$"${otp.ttl-minutes}") private val otpTtlMinutes: Long,
+    @Value($$"${otp.max-attempts}") private val maxAttempts: Long,
+    @Value($$"${otp.rate-window-minutes}") private val rateWindowMinutes: Long
 ) {
 
     companion object {

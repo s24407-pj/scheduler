@@ -23,7 +23,7 @@ class RedisConfig {
             .disableCachingNullValues()
             .entryTtl(Duration.ofMinutes(10))
 
-        val cacheConfigs = mapOf<String, RedisCacheConfiguration>(
+        val cacheConfigs = mapOf(
             "companyServices" to defaultConfig.entryTtl(Duration.ofMinutes(15))
         )
 

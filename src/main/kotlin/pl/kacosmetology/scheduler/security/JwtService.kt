@@ -12,8 +12,8 @@ import javax.crypto.SecretKey
 /** Handles JWT token generation, parsing and validation. */
 @Service
 class JwtService(
-    @Value("\${jwt.secret}") private val secret: String,
-    @Value("\${jwt.expiration-ms}") private val expirationMs: Long
+    @Value($$"${jwt.secret}") private val secret: String,
+    @Value($$"${jwt.expiration-ms}") private val expirationMs: Long
 ) {
 
     private val signingKey: SecretKey by lazy { Keys.hmacShaKeyFor(secret.toByteArray()) }
