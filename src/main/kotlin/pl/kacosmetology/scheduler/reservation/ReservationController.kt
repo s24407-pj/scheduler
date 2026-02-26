@@ -7,11 +7,7 @@ import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.server.ResponseStatusException
-import pl.kacosmetology.scheduler.reservation.dto.CreateReservationRequest
-import pl.kacosmetology.scheduler.reservation.dto.EmployeeReservationResponse
-import pl.kacosmetology.scheduler.reservation.dto.ReservationResponse
-import pl.kacosmetology.scheduler.reservation.dto.toEmployeeResponse
-import pl.kacosmetology.scheduler.reservation.dto.toResponse
+import pl.kacosmetology.scheduler.reservation.dto.*
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import java.time.LocalDateTime
 

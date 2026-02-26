@@ -120,7 +120,8 @@ class TreatmentServiceTest {
     @Test
     fun `deleteService should delete service belonging to company`() {
         // GIVEN
-        val existing = ProvidedService(id = 1, companyId = companyId, name = "Do usunięcia", durationMinutes = 30, price = 50)
+        val existing =
+            ProvidedService(id = 1, companyId = companyId, name = "Do usunięcia", durationMinutes = 30, price = 50)
         every { treatmentRepository.findById(1L) } returns Optional.of(existing)
         every { treatmentRepository.deleteById(1L) } returns Unit
 

@@ -6,8 +6,8 @@ import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.server.ResponseStatusException
-import pl.kacosmetology.scheduler.treatment.dto.TreatmentRequest
 import pl.kacosmetology.scheduler.security.CustomUserDetails
+import pl.kacosmetology.scheduler.treatment.dto.TreatmentRequest
 
 /** REST API for managing salon services (treatments). */
 @RestController

@@ -5,9 +5,9 @@ CREATE TABLE companies
     name                  VARCHAR(255) NOT NULL,
     tax_id                VARCHAR(50),
     address               VARCHAR(255),
-    opening_time          TIME         NOT NULL DEFAULT '09:00',
-    closing_time          TIME         NOT NULL DEFAULT '17:00',
-    slot_interval_minutes INT          NOT NULL DEFAULT 30,
+    opening_time          TIME         NOT NULL    DEFAULT '09:00',
+    closing_time          TIME         NOT NULL    DEFAULT '17:00',
+    slot_interval_minutes INT          NOT NULL    DEFAULT 30,
     created_at            TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

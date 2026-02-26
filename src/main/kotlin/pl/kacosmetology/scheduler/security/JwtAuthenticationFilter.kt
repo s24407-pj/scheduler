@@ -36,7 +36,7 @@ class JwtAuthenticationFilter(
 
         val userIdentifier = try {
             jwtService.extractUsername(jwt)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
 
@@ -46,7 +46,9 @@ class JwtAuthenticationFilter(
             if (jwtService.isTokenValid(jwt, userDetails)) {
                 val companyIdFromToken = try {
                     jwtService.extractCompanyId(jwt)
-                } catch (e: Exception) { null }
+                } catch (_: Exception) {
+                    null
+                }
 
                 val originalUser = (userDetails as CustomUserDetails).user
                 val enrichedUserDetails = CustomUserDetails(originalUser, companyIdFromToken, userDetails.authorities)

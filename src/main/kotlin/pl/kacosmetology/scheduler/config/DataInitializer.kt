@@ -51,7 +51,12 @@ class DataInitializer(
         serviceRepository.saveAll(
             listOf(
                 ProvidedService(companyId = company.id!!, name = "Strzyżenie Męskie", durationMinutes = 30, price = 60),
-                ProvidedService(companyId = company.id!!, name = "Strzyżenie + Broda", durationMinutes = 60, price = 100),
+                ProvidedService(
+                    companyId = company.id!!,
+                    name = "Strzyżenie + Broda",
+                    durationMinutes = 60,
+                    price = 100
+                ),
                 ProvidedService(companyId = company.id!!, name = "Tuszowanie siwizny", durationMinutes = 45, price = 80)
             )
         )

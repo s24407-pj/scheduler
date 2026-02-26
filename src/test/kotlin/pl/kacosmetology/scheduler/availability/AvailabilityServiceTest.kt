@@ -44,10 +44,22 @@ class AvailabilityServiceTest {
     fun `should return all possible slots when day is completely free`() {
         // GIVEN - Usługa trwa 60 minut (od 9:00 do 17:00 zmieści się dużo takich slotów co 30 minut)
         val service =
-            ProvidedService(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
+            ProvidedService(
+                id = serviceId,
+                companyId = companyId,
+                name = "Strzyżenie",
+                durationMinutes = 60,
+                price = 100
+            )
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
-        every { reservationRepository.findByEmployeeIdAndDate(employeeId, any(), any()) } returns emptyList() // Brak rezerwacji
+        every {
+            reservationRepository.findByEmployeeIdAndDate(
+                employeeId,
+                any(),
+                any()
+            )
+        } returns emptyList() // Brak rezerwacji
 
         // WHEN
         val availableSlots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
@@ -69,7 +81,13 @@ class AvailabilityServiceTest {
     fun `should exclude slots that overlap with existing reservation`() {
         // GIVEN - Usługa trwa 60 minut
         val service =
-            ProvidedService(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
+            ProvidedService(
+                id = serviceId,
+                companyId = companyId,
+                name = "Strzyżenie",
+                durationMinutes = 60,
+                price = 100
+            )
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
 

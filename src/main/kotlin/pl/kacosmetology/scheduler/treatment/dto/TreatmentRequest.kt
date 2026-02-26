@@ -1,10 +1,6 @@
 package pl.kacosmetology.scheduler.treatment.dto
 
-import jakarta.validation.constraints.Max
-import jakarta.validation.constraints.Min
-import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.PositiveOrZero
-import jakarta.validation.constraints.Size
+import jakarta.validation.constraints.*
 
 data class TreatmentRequest(
     @field:NotBlank(message = "Nazwa usługi nie może być pusta")
