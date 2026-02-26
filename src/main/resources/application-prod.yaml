@@ -1,0 +1,9 @@
+spring:
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    pl.kacosmetology.scheduler: INFO
+    org.springframework.security: WARN
+
