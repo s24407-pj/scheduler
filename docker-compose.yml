@@ -29,6 +29,8 @@ services:
   db:
     image: postgres:18-alpine
     container_name: scheduler-db
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_DB: scheduler_db
       POSTGRES_USER: ${DB_USERNAME:-postgres}
@@ -40,10 +42,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
 
   redis:
     image: redis:8-alpine
     container_name: scheduler-redis
+    ports:
+      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -51,6 +56,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
 
 volumes:
   postgres_data:

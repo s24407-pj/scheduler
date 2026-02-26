@@ -30,7 +30,7 @@ class TreatmentServiceTest {
             ProvidedService(id = 1, companyId = companyId, name = "Masaż", durationMinutes = 60, price = 200),
             ProvidedService(id = 2, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80)
         )
-        every { treatmentRepository.findAllByCompanyId(companyId) } returns services
+        every { treatmentRepository.findAllByCompanyIdAndActiveTrue(companyId) } returns services
 
         // WHEN
         val result = treatmentService.getCompanyServices(companyId)
@@ -118,18 +118,21 @@ class TreatmentServiceTest {
     }
 
     @Test
-    fun `deleteService should delete service belonging to company`() {
+    fun `deleteService should soft-delete service belonging to company`() {
         // GIVEN
         val existing =
             ProvidedService(id = 1, companyId = companyId, name = "Do usunięcia", durationMinutes = 30, price = 50)
         every { treatmentRepository.findById(1L) } returns Optional.of(existing)
-        every { treatmentRepository.deleteById(1L) } returns Unit
+        every { treatmentRepository.save(any()) } answers { firstArg() }
 
         // WHEN
         treatmentService.deleteService(1L, companyId)
 
         // THEN
-        verify(exactly = 1) { treatmentRepository.deleteById(1L) }
+        verify(exactly = 1) {
+            treatmentRepository.save(match { it.id == 1L && !it.active })
+        }
+        verify(exactly = 0) { treatmentRepository.deleteById(any()) }
     }
 
     @Test
@@ -142,7 +145,7 @@ class TreatmentServiceTest {
         assertThrows<IllegalStateException> {
             treatmentService.deleteService(1L, companyId)
         }
-        verify(exactly = 0) { treatmentRepository.deleteById(any()) }
+        verify(exactly = 0) { treatmentRepository.save(any()) }
     }
 
     @Test

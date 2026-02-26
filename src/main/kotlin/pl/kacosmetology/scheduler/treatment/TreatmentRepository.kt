@@ -7,4 +7,6 @@ import org.springframework.stereotype.Repository
 interface TreatmentRepository : JpaRepository<ProvidedService, Long> {
 
     fun findAllByCompanyId(companyId: Long): List<ProvidedService>
+
+    fun findAllByCompanyIdAndActiveTrue(companyId: Long): List<ProvidedService>
 }
