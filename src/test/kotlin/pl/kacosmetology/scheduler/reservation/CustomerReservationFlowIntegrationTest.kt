@@ -143,7 +143,7 @@ class CustomerReservationFlowIntegrationTest {
 
         // Parsujemy odpowiedź, aby zdobyć czysty string z tokenem
         val responseBody = verifyResponse.response.contentAsString
-        val jwtToken = objectMapper.readTree(responseBody).get("token").asText()
+        val jwtToken = objectMapper.readTree(responseBody).get("token").stringValue()
 
         // ==========================================
         // KROK 3: Klient tworzy rezerwację z użyciem JWT
