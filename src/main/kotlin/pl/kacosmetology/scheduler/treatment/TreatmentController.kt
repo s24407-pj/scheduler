@@ -16,7 +16,13 @@ class TreatmentController(
     private val treatmentService: TreatmentService
 ) {
 
-    /** Returns all services for a given company. */
+    /** Returns all services for a given company. Public — no authentication required. */
+    @GetMapping("/public/company/{companyId}")
+    fun getPublicCompanyServices(@PathVariable companyId: Long): List<ProvidedService> {
+        return treatmentService.getCompanyServices(companyId)
+    }
+
+    /** Returns all services for a given company (including inactive). Requires staff membership. */
     @GetMapping("/company/{companyId}")
     fun getCompanyServices(
         @PathVariable companyId: Long,
@@ -25,7 +31,7 @@ class TreatmentController(
         if (userDetails.companyId != companyId) {
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak dostępu do tej firmy")
         }
-        return treatmentService.getCompanyServices(companyId)
+        return treatmentService.getAllCompanyServices(companyId)
     }
 
     /** Returns a single service by ID. */

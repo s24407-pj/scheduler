@@ -26,6 +26,10 @@ class ReservationService(
         val service = serviceRepository.findById(serviceId)
             .orElseThrow { IllegalArgumentException("Usługa nie istnieje") }
 
+        if (!service.active) {
+            throw IllegalArgumentException("Ta usługa nie jest już dostępna")
+        }
+
         val endTime = startTime.plusMinutes(service.durationMinutes.toLong())
 
         if (reservationRepository.existsOverlapping(employeeId, startTime, endTime)) {

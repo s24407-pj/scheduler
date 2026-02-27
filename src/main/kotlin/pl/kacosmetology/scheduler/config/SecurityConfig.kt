@@ -49,6 +49,7 @@ class SecurityConfig(
                     .requestMatchers("/actuator/health").permitAll()
                     .requestMatchers("/api/auth/**").permitAll()
                     .requestMatchers("/api/availability").permitAll()
+                    .requestMatchers("/api/services/public/**").permitAll()
                     .anyRequest().authenticated()
             }
             .sessionManagement { session ->

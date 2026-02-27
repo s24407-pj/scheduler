@@ -53,6 +53,7 @@ CREATE TABLE services
     name             VARCHAR(255) NOT NULL,
     duration_minutes INT          NOT NULL,
     price            INTEGER      NOT NULL,
+    active           BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at       TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

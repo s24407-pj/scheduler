@@ -12,10 +12,16 @@ class TreatmentService(
     private val treatmentRepository: TreatmentRepository
 ) {
 
-    /** Returns all services for a company. Cached in Redis. */
+    /** Returns only active services for a company. Used by public endpoints and booking. Cached in Redis. */
     @Transactional(readOnly = true)
     @Cacheable("companyServices", key = "#companyId")
     fun getCompanyServices(companyId: Long): List<ProvidedService> {
+        return treatmentRepository.findAllByCompanyIdAndActiveTrue(companyId)
+    }
+
+    /** Returns all services (including inactive) for a company. Used by owner/staff management panel. */
+    @Transactional(readOnly = true)
+    fun getAllCompanyServices(companyId: Long): List<ProvidedService> {
         return treatmentRepository.findAllByCompanyId(companyId)
     }
 
@@ -56,12 +62,13 @@ class TreatmentService(
                 companyId = existing.companyId,
                 name = request.name,
                 durationMinutes = request.durationMinutes,
-                price = request.price
+                price = request.price,
+                active = existing.active
             )
         )
     }
 
-    /** Deletes a service. Throws if the service belongs to a different company. */
+    /** Soft-deletes a service by marking it as inactive. Existing reservations are preserved. */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun deleteService(id: Long, companyId: Long) {
@@ -71,6 +78,15 @@ class TreatmentService(
             throw IllegalStateException("Brak dostępu do tej usługi")
         }
 
-        treatmentRepository.deleteById(id)
+        treatmentRepository.save(
+            ProvidedService(
+                id = existing.id,
+                companyId = existing.companyId,
+                name = existing.name,
+                durationMinutes = existing.durationMinutes,
+                price = existing.price,
+                active = false
+            )
+        )
     }
 }

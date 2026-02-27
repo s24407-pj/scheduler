@@ -28,6 +28,9 @@ class ProvidedService(
     @Column(nullable = false)
     val price: Int,
 
+    @Column(nullable = false)
+    val active: Boolean = true,
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     val createdAt: LocalDateTime? = null
 )
