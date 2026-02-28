@@ -17,6 +17,10 @@ import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 import pl.kacosmetology.scheduler.security.JwtAuthenticationFilter
 
+/**
+ * Spring Security configuration.
+ * Stateless JWT-based authentication; public routes for health, auth, availability and public service endpoints.
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -25,6 +29,7 @@ class SecurityConfig(
     private val userDetailsService: UserDetailsService
 ) {
 
+    /** Configures DAO-based authentication using [userDetailsService] and BCrypt password encoding. */
     @Bean
     fun authenticationProvider(): AuthenticationProvider {
         val authProvider = DaoAuthenticationProvider(userDetailsService)
@@ -32,14 +37,17 @@ class SecurityConfig(
         return authProvider
     }
 
+    /** BCrypt password encoder used for staff password hashing and verification. */
     @Bean
     fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
 
+    /** Exposes Spring's [AuthenticationManager] as a bean for use in [pl.kacosmetology.scheduler.auth.AuthService]. */
     @Bean
     fun authenticationManager(config: AuthenticationConfiguration): AuthenticationManager {
         return config.authenticationManager
     }
 
+    /** Defines the security filter chain: disables CSRF, configures public/protected routes, and registers the JWT filter. */
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
