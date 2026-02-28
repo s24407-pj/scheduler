@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.user.dto.UpdateUserProfileRequest
 
+/** Business logic for user profile management. */
 @Service
 class UserService(
     private val userRepository: UserRepository

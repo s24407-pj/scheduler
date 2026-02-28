@@ -11,7 +11,10 @@ import pl.kacosmetology.scheduler.reservation.dto.*
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import java.time.LocalDateTime
 
-/** REST API for managing reservations from both customer and staff perspectives. */
+/**
+ * REST API for managing reservations from both customer and staff perspectives.
+ * Customers can create and cancel their own reservations; staff can view schedules and complete bookings.
+ */
 @RestController
 @RequestMapping("/api/reservations")
 class ReservationController(

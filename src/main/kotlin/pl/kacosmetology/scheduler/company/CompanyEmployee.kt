@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.company
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
+/** Associates a [pl.kacosmetology.scheduler.user.User] with a [Company] and assigns them a role (`OWNER` or `EMPLOYEE`). */
 @Entity
 @Table(name = "company_employees")
 class CompanyEmployee(
