@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.time.LocalDate
 import java.time.LocalTime
 
+/** REST API for querying available booking slots. Public — no authentication required. */
 @RestController
 @RequestMapping("/api/availability")
 class AvailabilityController(

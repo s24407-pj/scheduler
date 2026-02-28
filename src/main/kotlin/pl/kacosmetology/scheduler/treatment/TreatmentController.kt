@@ -9,7 +9,10 @@ import org.springframework.web.server.ResponseStatusException
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.treatment.dto.TreatmentRequest
 
-/** REST API for managing salon services (treatments). */
+/**
+ * REST API for managing salon services (treatments).
+ * Public read endpoints are available without authentication; write operations require the OWNER role.
+ */
 @RestController
 @RequestMapping("/api/services")
 class TreatmentController(
@@ -22,7 +25,7 @@ class TreatmentController(
         return treatmentService.getCompanyServices(companyId)
     }
 
-    /** Returns all services for a given company (including inactive). Requires staff membership. */
+    /** Returns all services for a given company including inactive ones. Requires staff membership in the same company. */
     @GetMapping("/company/{companyId}")
     fun getCompanyServices(
         @PathVariable companyId: Long,
@@ -34,7 +37,7 @@ class TreatmentController(
         return treatmentService.getAllCompanyServices(companyId)
     }
 
-    /** Returns a single service by ID. */
+    /** Returns a single service by ID. Requires staff membership in the same company as the service. */
     @GetMapping("/{id}")
     fun getServiceById(
         @PathVariable id: Long,
@@ -68,6 +71,23 @@ class TreatmentController(
     ): ProvidedService {
         return try {
             treatmentService.updateService(id, requireCompanyId(userDetails), request)
+        } catch (e: IllegalArgumentException) {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, e.message)
+        } catch (e: IllegalStateException) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, e.message)
+        }
+    }
+
+    /** Reactivates a previously deactivated service. Requires OWNER role. */
+    @PatchMapping("/{id}/activate")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('OWNER')")
+    fun activateService(
+        @PathVariable id: Long,
+        @AuthenticationPrincipal userDetails: CustomUserDetails
+    ) {
+        try {
+            treatmentService.activateService(id, requireCompanyId(userDetails))
         } catch (e: IllegalArgumentException) {
             throw ResponseStatusException(HttpStatus.NOT_FOUND, e.message)
         } catch (e: IllegalStateException) {

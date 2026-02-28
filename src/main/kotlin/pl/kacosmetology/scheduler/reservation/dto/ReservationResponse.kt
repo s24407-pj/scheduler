@@ -28,6 +28,7 @@ data class EmployeeReservationResponse(
     val createdAt: LocalDateTime?
 )
 
+/** Maps a [Reservation] to the customer-facing [ReservationResponse]. */
 fun Reservation.toResponse() = ReservationResponse(
     id = id!!,
     employeeId = employeeId,
@@ -39,6 +40,7 @@ fun Reservation.toResponse() = ReservationResponse(
     createdAt = createdAt
 )
 
+/** Maps a [Reservation] to the staff-facing [EmployeeReservationResponse]. */
 fun Reservation.toEmployeeResponse() = EmployeeReservationResponse(
     id = id!!,
     customerId = customerId,

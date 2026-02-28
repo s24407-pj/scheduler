@@ -12,6 +12,8 @@ import org.springframework.http.MediaType
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
+import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
@@ -144,6 +146,72 @@ class TreatmentManagementIntegrationTest {
         // Upewniamy się, że haker nie zdołał usunąć usługi z bazy
         val isStillInDb = serviceRepository.existsById(serviceOfCompanyA.id!!)
         assertTrue(isStillInDb, "Usługa powinna zostać nietknięta w bazie danych!")
+    }
+
+    @Test
+    fun `should return only active services on public endpoint (200)`() {
+        serviceRepository.save(ProvidedService(companyId = companyA_Id, name = "Aktywna", durationMinutes = 30, price = 100))
+        serviceRepository.save(ProvidedService(companyId = companyA_Id, name = "Nieaktywna", durationMinutes = 30, price = 100, active = false))
+
+        mockMvc.get("/api/services/public/company/$companyA_Id")
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].name") { value("Aktywna") }
+            }
+    }
+
+    @Test
+    fun `should return service by id for authenticated user of the same company (200)`() {
+        val service = serviceRepository.save(
+            ProvidedService(companyId = companyA_Id, name = "Masaż", durationMinutes = 60, price = 200)
+        )
+        val tokenA = jwtService.generateToken(
+            CustomUserDetails(userA, companyA_Id, listOf(SimpleGrantedAuthority("ROLE_OWNER"))), companyA_Id
+        )
+
+        mockMvc.get("/api/services/${service.id}") {
+            header("Authorization", "Bearer $tokenA")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(service.id) }
+            jsonPath("$.name") { value("Masaż") }
+        }
+    }
+
+    @Test
+    fun `should activate inactive service (204)`() {
+        val inactive = serviceRepository.save(
+            ProvidedService(companyId = companyA_Id, name = "Stara", durationMinutes = 30, price = 50, active = false)
+        )
+        val tokenA = jwtService.generateToken(
+            CustomUserDetails(userA, companyA_Id, listOf(SimpleGrantedAuthority("ROLE_OWNER"))), companyA_Id
+        )
+
+        mockMvc.patch("/api/services/${inactive.id}/activate") {
+            header("Authorization", "Bearer $tokenA")
+        }.andExpect {
+            status { isNoContent() }
+        }
+
+        val reactivated = serviceRepository.findById(inactive.id!!).get()
+        assertTrue(reactivated.active, "Usługa powinna być aktywna po aktywacji")
+    }
+
+    @Test
+    fun `employee of Company B cannot activate service belonging to Company A (403)`() {
+        val inactive = serviceRepository.save(
+            ProvidedService(companyId = companyA_Id, name = "Stara", durationMinutes = 30, price = 50, active = false)
+        )
+        val tokenB = jwtService.generateToken(
+            CustomUserDetails(userB, companyB_Id, listOf(SimpleGrantedAuthority("ROLE_OWNER"))), companyB_Id
+        )
+
+        mockMvc.patch("/api/services/${inactive.id}/activate") {
+            header("Authorization", "Bearer $tokenB")
+        }.andExpect {
+            status { isForbidden() }
+        }
     }
 
     @Test

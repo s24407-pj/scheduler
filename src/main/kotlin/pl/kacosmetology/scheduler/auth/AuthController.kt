@@ -11,6 +11,7 @@ import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
 
+/** REST API for customer (SMS OTP) and staff (email/password) authentication. */
 @RestController
 @RequestMapping("/api/auth")
 class AuthController(

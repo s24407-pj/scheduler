@@ -4,6 +4,7 @@ import jakarta.persistence.*
 import java.time.LocalDateTime
 import java.time.LocalTime
 
+/** Represents a salon/company. Defines business hours and the slot interval used for availability calculation. */
 @Entity
 @Table(name = "companies")
 class Company(

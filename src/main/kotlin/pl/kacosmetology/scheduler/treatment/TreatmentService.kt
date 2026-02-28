@@ -68,6 +68,28 @@ class TreatmentService(
         )
     }
 
+    /** Reactivates a previously deactivated service. */
+    @Transactional
+    @CacheEvict("companyServices", key = "#companyId")
+    fun activateService(id: Long, companyId: Long) {
+        val existing = getServiceById(id)
+
+        if (existing.companyId != companyId) {
+            throw IllegalStateException("Brak dostępu do tej usługi")
+        }
+
+        treatmentRepository.save(
+            ProvidedService(
+                id = existing.id,
+                companyId = existing.companyId,
+                name = existing.name,
+                durationMinutes = existing.durationMinutes,
+                price = existing.price,
+                active = true
+            )
+        )
+    }
+
     /** Soft-deletes a service by marking it as inactive. Existing reservations are preserved. */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")

@@ -9,6 +9,7 @@ import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.user.dto.UpdateUserProfileRequest
 import pl.kacosmetology.scheduler.user.dto.UserProfileResponse
 
+/** REST API for reading and updating the authenticated user's own profile. */
 @RestController
 @RequestMapping("/api/users")
 class UserController(

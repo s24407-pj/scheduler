@@ -96,6 +96,16 @@ export default function ServicesManagement() {
     }
   };
 
+  const handleActivate = async (id: number) => {
+    try {
+      await api.patch(`/services/${id}/activate`);
+      setSuccess('Usługa aktywowana');
+      fetchServices();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Błąd aktywacji');
+    }
+  };
+
   if (loading) {
     return <div className="text-center text-gray-400 py-12">Ładowanie...</div>;
   }
@@ -198,7 +208,7 @@ export default function ServicesManagement() {
                 </div>
               </div>
               <div className="flex gap-2">
-                {s.active && (
+                {s.active ? (
                   <>
                     <button
                       onClick={() => startEdit(s)}
@@ -213,6 +223,13 @@ export default function ServicesManagement() {
                       Usuń
                     </button>
                   </>
+                ) : (
+                  <button
+                    onClick={() => handleActivate(s.id)}
+                    className="text-green-600 hover:text-green-800 text-sm font-medium transition"
+                  >
+                    Aktywuj
+                  </button>
                 )}
               </div>
             </div>

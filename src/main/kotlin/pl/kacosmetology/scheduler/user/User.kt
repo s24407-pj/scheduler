@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.user
 import com.fasterxml.jackson.annotation.JsonIgnore
 import jakarta.persistence.*
 
+/** Unified user entity for both customers and staff members. Role is determined by [pl.kacosmetology.scheduler.company.CompanyEmployee]. */
 @Entity
 @Table(name = "users")
 class User(

@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service
 
 /** Abstraction for sending OTP codes via SMS. */
 interface SmsSender {
+    /** Sends a one-time password [code] to the given [phoneNumber]. */
     fun sendOtp(phoneNumber: String, code: String)
 }
 
@@ -13,6 +14,7 @@ interface SmsSender {
 class ConsoleSmsSender : SmsSender {
     private val logger = LoggerFactory.getLogger(ConsoleSmsSender::class.java)
 
+    /** Logs the OTP to the console instead of sending a real SMS. */
     override fun sendOtp(phoneNumber: String, code: String) {
         logger.info("MOCK SMS to: $phoneNumber | OTP code: $code | Valid for 5 minutes")
     }
