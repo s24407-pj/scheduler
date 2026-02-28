@@ -42,3 +42,4 @@ out/
 ### Docker ###
 .env
 
+/.claude/settings.local.json

@@ -40,7 +40,7 @@ dependencies {
 
     // Database
     implementation("org.flywaydb:flyway-database-postgresql")
-    runtimeOnly("org.postgresql:postgresql:$postgresqlVersion")
+    runtimeOnly("org.postgresql:postgresql")
 
     // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-reflect")
