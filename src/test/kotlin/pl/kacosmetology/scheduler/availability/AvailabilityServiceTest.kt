@@ -12,6 +12,8 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
 import pl.kacosmetology.scheduler.treatment.ProvidedService
 import pl.kacosmetology.scheduler.treatment.TreatmentRepository
 import java.time.LocalDate
@@ -29,6 +31,9 @@ class AvailabilityServiceTest {
 
     @MockK
     private lateinit var companyRepository: CompanyRepository
+
+    @MockK
+    private lateinit var scheduleBlockRepository: ScheduleBlockRepository
 
     @InjectMockKs
     private lateinit var availabilityService: AvailabilityService
@@ -60,6 +65,7 @@ class AvailabilityServiceTest {
                 any()
             )
         } returns emptyList() // Brak rezerwacji
+        every { scheduleBlockRepository.findByEmployeeIdAndStartTimeBetween(employeeId, any(), any()) } returns emptyList()
 
         // WHEN
         val availableSlots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
@@ -101,6 +107,7 @@ class AvailabilityServiceTest {
         every { reservationRepository.findByEmployeeIdAndDate(employeeId, any(), any()) } returns listOf(
             existingReservation
         )
+        every { scheduleBlockRepository.findByEmployeeIdAndStartTimeBetween(employeeId, any(), any()) } returns emptyList()
 
         // WHEN
         val availableSlots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
@@ -120,5 +127,40 @@ class AvailabilityServiceTest {
 
         // Slot 13:00 (do 14:00) jest już po starej rezerwacji -> OK!
         assertTrue(availableSlots.contains(LocalTime.of(13, 0)))
+    }
+
+    @Test
+    fun `should exclude slots that overlap with a schedule block`() {
+        // GIVEN - Usługa trwa 60 minut
+        val service = ProvidedService(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
+        every { serviceRepository.findById(serviceId) } returns Optional.of(service)
+        every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
+        every { reservationRepository.findByEmployeeIdAndDate(employeeId, any(), any()) } returns emptyList()
+
+        // Blokada od 14:00 do 15:00
+        val block = ScheduleBlock(
+            id = 1L,
+            companyId = companyId,
+            employeeId = employeeId,
+            startTime = testDate.atTime(14, 0),
+            endTime = testDate.atTime(15, 0)
+        )
+        every { scheduleBlockRepository.findByEmployeeIdAndStartTimeBetween(employeeId, any(), any()) } returns listOf(block)
+
+        // WHEN
+        val availableSlots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+
+        // THEN
+        // Slot 13:00 do 14:00 jest OK (kończy się dokładnie kiedy zaczyna blokada)
+        assertTrue(availableSlots.contains(LocalTime.of(13, 0)))
+
+        // Slot 13:30 do 14:30 nachodzi na blokadę 14:00-15:00 -> Odrzucony!
+        assertFalse(availableSlots.contains(LocalTime.of(13, 30)))
+
+        // Slot 14:00 do 15:00 pokrywa się z blokadą -> Odrzucony!
+        assertFalse(availableSlots.contains(LocalTime.of(14, 0)))
+
+        // Slot 15:00 do 16:00 jest po blokadzie -> OK!
+        assertTrue(availableSlots.contains(LocalTime.of(15, 0)))
     }
 }

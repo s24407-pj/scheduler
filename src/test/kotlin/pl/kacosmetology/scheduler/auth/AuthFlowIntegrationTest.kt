@@ -20,6 +20,7 @@ import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
+import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import tools.jackson.databind.ObjectMapper

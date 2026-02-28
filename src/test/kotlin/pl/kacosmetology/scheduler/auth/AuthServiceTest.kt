@@ -15,6 +15,7 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
+import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User

@@ -12,5 +12,6 @@ data class TreatmentRequest(
     val durationMinutes: Int,
 
     @field:PositiveOrZero(message = "Cena nie może być ujemna")
+    @field:Max(value = 1_000_000, message = "Cena nie może przekraczać 1 000 000")
     val price: Int
 )

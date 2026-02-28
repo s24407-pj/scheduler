@@ -61,14 +61,15 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 ```
 src/main/kotlin/pl/kacosmetology/scheduler/
-├── auth/          # SMS OTP + staff login → JWT issuance
-├── availability/  # Available time slot calculation (public endpoint)
-├── company/       # Company and employee-role entities
-├── config/        # Security, CORS, Redis, DataInitializer (dev seed)
-├── reservation/   # Booking lifecycle (PENDING → CONFIRMED → COMPLETED/CANCELLED)
-├── security/      # JWT filter, CustomUserDetails, CustomUserDetailsService
-├── treatment/     # Service catalog (ProvidedService entity mapped to `services` table)
-└── user/          # User profile management
+├── auth/           # SMS OTP + staff login → JWT issuance
+├── availability/   # Available time slot calculation (public endpoint)
+├── company/        # Company and employee-role entities
+├── config/         # Security, CORS, Redis, DataInitializer (dev seed)
+├── reservation/    # Booking lifecycle (PENDING → CONFIRMED → COMPLETED/CANCELLED)
+├── scheduleblock/  # Employee time blocks (breaks, unavailability)
+├── security/       # JWT filter, CustomUserDetails, CustomUserDetailsService
+├── treatment/      # Service catalog (ProvidedService entity mapped to `services` table)
+└── user/           # User profile management
 ```
 
 **Layering:** Controller → Service → Repository. No cross-module service calls; modules communicate through IDs only.
@@ -85,7 +86,11 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **Optimistic locking:** `Reservation` has a `@Version` field to prevent double-booking race conditions.
 
-**Availability calculation:** `AvailabilityService` computes free slots by comparing company opening/closing hours and slot intervals against existing reservations for that employee.
+**Availability calculation:** `AvailabilityService` computes free slots by comparing company opening/closing hours and slot intervals against existing reservations **and schedule blocks** for that employee.
+
+**Schedule blocks:** Employees can block time ranges (breaks, personal unavailability) via `POST /api/schedule-blocks`. Blocks are validated with `@Future` on `startTime` (DTO layer) and checked for overlap with existing reservations and other blocks (service layer). Blocked slots are excluded from availability.
+
+**Staff booking:** Staff can create a reservation on behalf of a client via `POST /api/reservations/staff`. If the client's phone number is not found in the database, a new `User` is auto-created — `firstName` and `lastName` are required in that case.
 
 ### Database Schema
 
@@ -94,6 +99,7 @@ PostgreSQL with Flyway migrations (`src/main/resources/db/migration/`). Key tabl
 - `company_employees` — join table assigning users to a company with a role (`OWNER`/`EMPLOYEE`)
 - `services` — treatment catalog (named `ProvidedService` in Kotlin, mapped to `services` table)
 - `reservations` — stores price snapshot at booking time, has `@Version` for optimistic locking
+- `schedule_blocks` — employee time blocks; checked by `AvailabilityService` alongside reservations (V2 migration)
 
 ### Frontend Structure
 
@@ -117,7 +123,7 @@ When adding or modifying backend functionality, always:
 
 1. **Tests** — add unit tests (`*ServiceTest`) and integration tests (`*IntegrationTest`) covering the happy path and relevant error cases.
 2. **Flyway migration** — any schema change requires a new versioned migration file in `src/main/resources/db/migration/` (e.g. `V2__description.sql`). Never modify existing migration files.
-3. **Validation** — DTOs must have Jakarta Validation annotations (`@NotBlank`, `@Min`, `@Max`, `@PositiveOrZero`, etc.) on all fields that have constraints.
+3. **Validation** — DTOs must have Jakarta Validation annotations (`@NotBlank`, `@Min`, `@Max`, `@PositiveOrZero`, `@Future`, etc.) on all fields that have constraints. Prefer annotation-based validation on DTOs over manual checks in service methods — services should only validate cross-field or cross-entity business rules (e.g. overlap checks).
 4. **KDocs** — all public classes, functions, and non-trivial properties must have a KDoc comment (`/** ... */`).
 
 ### Configuration

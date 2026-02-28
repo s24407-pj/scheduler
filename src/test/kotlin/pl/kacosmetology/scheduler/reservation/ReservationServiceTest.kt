@@ -12,6 +12,8 @@ import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.treatment.ProvidedService
 import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.user.User
+import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalDateTime
 import java.util.*
 
@@ -23,6 +25,9 @@ class ReservationServiceTest {
 
     @MockK
     private lateinit var serviceRepository: TreatmentRepository
+
+    @MockK
+    private lateinit var userRepository: UserRepository
 
     @InjectMockKs
     private lateinit var reservationService: ReservationService
@@ -212,6 +217,87 @@ class ReservationServiceTest {
             reservationService.completeReservation(reservationId)
         }
         assertEquals("Nie można zakończyć odwołanej wizyty", exception.message)
+        verify(exactly = 0) { reservationRepository.save(any()) }
+    }
+
+    // ============================================================
+    // Staff booking tests
+    // ============================================================
+
+    @Test
+    fun `createReservationByStaff should create reservation for existing customer`() {
+        // GIVEN
+        val existingCustomer = User(id = customerId, phoneNumber = "+48111111111", firstName = "Ala", lastName = "Nowak")
+        val duration = 30
+        val mockService = ProvidedService(id = serviceId, companyId = companyId, name = "Paznokcie", durationMinutes = duration, price = 80)
+
+        every { userRepository.findByPhoneNumber(existingCustomer.phoneNumber) } returns existingCustomer
+        every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
+        every { reservationRepository.existsOverlapping(employeeId, startTime, startTime.plusMinutes(duration.toLong())) } returns false
+        every { reservationRepository.save(any()) } answers { firstArg() }
+
+        // WHEN
+        val result = reservationService.createReservationByStaff(
+            employeeId = employeeId,
+            serviceId = serviceId,
+            startTime = startTime,
+            customerPhone = existingCustomer.phoneNumber,
+            customerFirstName = null,
+            customerLastName = null
+        )
+
+        // THEN
+        assertEquals(customerId, result.customerId)
+        verify(exactly = 0) { userRepository.save(any()) }
+    }
+
+    @Test
+    fun `createReservationByStaff should create new customer when phone is unknown`() {
+        // GIVEN
+        val newPhone = "+48999000111"
+        val newCustomer = User(id = 500L, phoneNumber = newPhone, firstName = "Nowy", lastName = "Klient")
+        val duration = 45
+        val mockService = ProvidedService(id = serviceId, companyId = companyId, name = "Masaż", durationMinutes = duration, price = 120)
+
+        every { userRepository.findByPhoneNumber(newPhone) } returns null
+        every { userRepository.save(any()) } returns newCustomer
+        every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
+        every { reservationRepository.existsOverlapping(employeeId, startTime, startTime.plusMinutes(duration.toLong())) } returns false
+        every { reservationRepository.save(any()) } answers { firstArg() }
+
+        // WHEN
+        val result = reservationService.createReservationByStaff(
+            employeeId = employeeId,
+            serviceId = serviceId,
+            startTime = startTime,
+            customerPhone = newPhone,
+            customerFirstName = "Nowy",
+            customerLastName = "Klient"
+        )
+
+        // THEN
+        assertEquals(newCustomer.id, result.customerId)
+        verify(exactly = 1) { userRepository.save(any()) }
+    }
+
+    @Test
+    fun `createReservationByStaff should throw when new customer has no name provided`() {
+        // GIVEN
+        val unknownPhone = "+48000111222"
+        every { userRepository.findByPhoneNumber(unknownPhone) } returns null
+
+        // WHEN & THEN
+        val exception = assertThrows<IllegalArgumentException> {
+            reservationService.createReservationByStaff(
+                employeeId = employeeId,
+                serviceId = serviceId,
+                startTime = startTime,
+                customerPhone = unknownPhone,
+                customerFirstName = null,
+                customerLastName = null
+            )
+        }
+        assertEquals("Imię i nazwisko klienta są wymagane przy tworzeniu nowego konta", exception.message)
         verify(exactly = 0) { reservationRepository.save(any()) }
     }
 }

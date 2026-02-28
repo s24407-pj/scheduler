@@ -77,4 +77,24 @@ class ReservationController(
         val employeeId = userDetails?.id ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
         return reservationService.getEmployeeSchedule(employeeId, start, end).map { it.toEmployeeResponse() }
     }
+
+    /** Creates a reservation for a client by phone number. Requires OWNER or EMPLOYEE role. */
+    @PostMapping("/staff")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun createReservationByStaff(
+        @Valid @RequestBody request: StaffCreateReservationRequest,
+        @AuthenticationPrincipal userDetails: CustomUserDetails?
+    ): ReservationResponse {
+        if (userDetails == null) throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
+
+        return reservationService.createReservationByStaff(
+            employeeId = request.employeeId!!,
+            serviceId = request.serviceId!!,
+            startTime = request.startTime!!,
+            customerPhone = request.customerPhone!!,
+            customerFirstName = request.customerFirstName,
+            customerLastName = request.customerLastName
+        ).toResponse()
+    }
 }

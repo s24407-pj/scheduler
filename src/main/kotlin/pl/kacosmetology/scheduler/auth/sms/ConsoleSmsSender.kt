@@ -1,13 +1,7 @@
-package pl.kacosmetology.scheduler.auth
+package pl.kacosmetology.scheduler.auth.sms
 
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-
-/** Abstraction for sending OTP codes via SMS. */
-interface SmsSender {
-    /** Sends a one-time password [code] to the given [phoneNumber]. */
-    fun sendOtp(phoneNumber: String, code: String)
-}
 
 /** Development implementation that logs OTP codes to the console instead of sending real SMS. */
 @Service

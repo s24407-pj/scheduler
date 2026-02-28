@@ -3,13 +3,16 @@ package pl.kacosmetology.scheduler.reservation
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.user.User
+import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalDateTime
 
 /** Core business logic for reservation lifecycle: create, cancel, complete. */
 @Service
 class ReservationService(
     private val reservationRepository: ReservationRepository,
-    private val serviceRepository: TreatmentRepository
+    private val serviceRepository: TreatmentRepository,
+    private val userRepository: UserRepository
 ) {
 
     /**
@@ -92,5 +95,43 @@ class ReservationService(
     @Transactional(readOnly = true)
     fun getEmployeeSchedule(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<Reservation> {
         return reservationRepository.findEmployeeSchedule(employeeId, start, end)
+    }
+
+    /**
+     * Creates a reservation on behalf of a client, identified by phone number.
+     * If no user with [customerPhone] exists, a new account is created using [customerFirstName] and [customerLastName].
+     * Both name fields are required when the client does not exist yet.
+     */
+    @Transactional
+    fun createReservationByStaff(
+        employeeId: Long,
+        serviceId: Long,
+        startTime: LocalDateTime,
+        customerPhone: String,
+        customerFirstName: String?,
+        customerLastName: String?
+    ): Reservation {
+        val customer = userRepository.findByPhoneNumber(customerPhone)
+            ?: run {
+                if (customerFirstName.isNullOrBlank() || customerLastName.isNullOrBlank()) {
+                    throw IllegalArgumentException(
+                        "Imię i nazwisko klienta są wymagane przy tworzeniu nowego konta"
+                    )
+                }
+                userRepository.save(
+                    User(
+                        phoneNumber = customerPhone,
+                        firstName = customerFirstName,
+                        lastName = customerLastName
+                    )
+                )
+            }
+
+        return createReservation(
+            customerId = customer.id,
+            employeeId = employeeId,
+            serviceId = serviceId,
+            startTime = startTime
+        )
     }
 }

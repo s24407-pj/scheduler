@@ -16,6 +16,8 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
 import pl.kacosmetology.scheduler.treatment.ProvidedService
 import pl.kacosmetology.scheduler.treatment.TreatmentRepository
 import pl.kacosmetology.scheduler.user.User
@@ -45,19 +47,25 @@ class AvailabilityIntegrationTest {
     @Autowired
     private lateinit var reservationRepository: ReservationRepository
 
+    @Autowired
+    private lateinit var scheduleBlockRepository: ScheduleBlockRepository
+
     private var employeeId: Long = 0
     private var serviceId: Long = 0
+    private var companyId: Long = 0
     private val testDate = LocalDate.now().plusDays(2) // Za dwa dni, by uniknąć filtrów przeszłości
 
     @BeforeEach
     fun setup() {
         reservationRepository.deleteAll()
+        scheduleBlockRepository.deleteAll()
         serviceRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
         companyRepository.deleteAll()
 
         val company = companyRepository.save(Company(name = "Salon Włosów"))
+        companyId = company.id!!
         val employee =
             userRepository.save(User(phoneNumber = "+48111222333", firstName = "Fryzjer", lastName = "Testowy"))
         val customer =
@@ -122,6 +130,36 @@ class AvailabilityIntegrationTest {
 
             // Usługa wzięta o 15:30 skończyłaby się o 17:30 (poza godzinami pracy), więc nie ma jej na liście
             jsonPath("$[?(@ == '15:30:00')]") { doesNotExist() }
+        }
+    }
+
+    @Test
+    fun `schedule block should exclude overlapping slots from availability`() {
+        // Blokujemy pracownika od 13:00 do 14:00 (usługa trwa 2h, więc 12:00-14:00 i 13:00-15:00 są zablokowane)
+        scheduleBlockRepository.save(
+            ScheduleBlock(
+                companyId = companyId,
+                employeeId = employeeId,
+                startTime = testDate.atTime(13, 0),
+                endTime = testDate.atTime(14, 0)
+            )
+        )
+
+        mockMvc.get("/api/availability") {
+            param("employeeId", employeeId.toString())
+            param("serviceId", serviceId.toString())
+            param("date", testDate.toString())
+        }.andExpect {
+            status { isOk() }
+
+            // Slot 12:00-14:00 nachodzi na blokadę 13:00-14:00 -> niedostępny
+            jsonPath("$[?(@ == '12:00:00')]") { doesNotExist() }
+
+            // Slot 13:00-15:00 nachodzi na blokadę 13:00-14:00 -> niedostępny
+            jsonPath("$[?(@ == '13:00:00')]") { doesNotExist() }
+
+            // Slot 14:00-16:00 zaczyna się po blokadzie -> dostępny
+            jsonPath("$[?(@ == '14:00:00')]") { exists() }
         }
     }
 }
