@@ -26,9 +26,12 @@ import pl.kacosmetology.scheduler.treatment.ProvidedService
 import pl.kacosmetology.scheduler.treatment.TreatmentRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
+import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import tools.jackson.databind.ObjectMapper
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -44,6 +47,7 @@ class ScheduleBlockIntegrationTest {
     @Autowired private lateinit var scheduleBlockRepository: ScheduleBlockRepository
     @Autowired private lateinit var reservationRepository: ReservationRepository
     @Autowired private lateinit var serviceRepository: TreatmentRepository
+    @Autowired private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
 
     private lateinit var employee: User
     private var companyId: Long = 0
@@ -54,6 +58,7 @@ class ScheduleBlockIntegrationTest {
     fun setup() {
         reservationRepository.deleteAll()
         scheduleBlockRepository.deleteAll()
+        workScheduleRepository.deleteAll()
         serviceRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
@@ -63,6 +68,19 @@ class ScheduleBlockIntegrationTest {
         companyId = company.id!!
         employee = userRepository.save(User(phoneNumber = "+48700800900", firstName = "Pracownik", lastName = "Testowy"))
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
+
+        // Grafik pracownika: pracuje cały tydzień 9:00-17:00
+        for (day in java.time.DayOfWeek.values()) {
+            workScheduleRepository.save(
+                EmployeeWorkSchedule(
+                    companyId = companyId,
+                    employeeId = employee.id,
+                    dayOfWeek = day,
+                    startTime = LocalTime.of(9, 0),
+                    endTime = LocalTime.of(17, 0)
+                )
+            )
+        }
 
         employeeToken = jwtService.generateToken(
             CustomUserDetails(employee, companyId, listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE"))),

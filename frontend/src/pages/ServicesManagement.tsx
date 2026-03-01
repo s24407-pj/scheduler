@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
 
+interface Category {
+  id: number;
+  name: string;
+}
+
 interface Service {
   id: number;
   companyId: number;
@@ -8,16 +13,18 @@ interface Service {
   durationMinutes: number;
   price: number;
   active: boolean;
+  categoryId: number | null;
   createdAt: string;
 }
 
 export default function ServicesManagement() {
   const [services, setServices] = useState<Service[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Form state
+  // Service form state
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState('');
@@ -25,20 +32,28 @@ export default function ServicesManagement() {
   const [price, setPrice] = useState('50');
   const [saving, setSaving] = useState(false);
 
-  const fetchServices = async () => {
+  // Category form state
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [savingCategory, setSavingCategory] = useState(false);
+
+  const fetchAll = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/services/company/1');
-      setServices(res.data);
+      const [servicesRes, categoriesRes] = await Promise.all([
+        api.get('/services/company/1'),
+        api.get('/categories'),
+      ]);
+      setServices(servicesRes.data);
+      setCategories(categoriesRes.data);
     } catch {
-      setError('Nie udało się pobrać usług');
+      setError('Nie udało się pobrać danych');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchServices();
+    fetchAll();
   }, []);
 
   const resetForm = () => {
@@ -68,7 +83,6 @@ export default function ServicesManagement() {
         durationMinutes: Number(durationMinutes),
         price: Number(price),
       };
-
       if (editingId) {
         await api.put(`/services/${editingId}`, payload);
         setSuccess('Usługa zaktualizowana!');
@@ -77,7 +91,7 @@ export default function ServicesManagement() {
         setSuccess('Usługa dodana!');
       }
       resetForm();
-      fetchServices();
+      fetchAll();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Błąd zapisywania usługi');
     } finally {
@@ -90,7 +104,7 @@ export default function ServicesManagement() {
     try {
       await api.delete(`/services/${id}`);
       setSuccess('Usługa dezaktywowana');
-      fetchServices();
+      fetchAll();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Błąd usuwania');
     }
@@ -100,10 +114,60 @@ export default function ServicesManagement() {
     try {
       await api.patch(`/services/${id}/activate`);
       setSuccess('Usługa aktywowana');
-      fetchServices();
+      fetchAll();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Błąd aktywacji');
     }
+  };
+
+  const handleAssignCategory = async (serviceId: number, categoryId: number | null) => {
+    try {
+      await api.patch(`/services/${serviceId}/category`, { categoryId });
+      setSuccess('Kategoria przypisana');
+      fetchAll();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Błąd przypisywania kategorii');
+    }
+  };
+
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    setSavingCategory(true);
+    setError('');
+    setSuccess('');
+    try {
+      await api.post('/categories', { name: newCategoryName.trim() });
+      setNewCategoryName('');
+      setSuccess('Kategoria dodana!');
+      fetchAll();
+    } catch (err: any) {
+      if (err.response?.status === 409) {
+        setError('Kategoria o tej nazwie już istnieje');
+      } else if (err.response?.status === 403) {
+        setError('Brak uprawnień — tylko właściciel może zarządzać kategoriami.');
+      } else {
+        setError(err.response?.data?.message || 'Błąd dodawania kategorii');
+      }
+    } finally {
+      setSavingCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async (id: number) => {
+    if (!confirm('Usunąć kategorię? Usługi przypisane do tej kategorii zostaną bez kategorii.')) return;
+    try {
+      await api.delete(`/categories/${id}`);
+      setSuccess('Kategoria usunięta');
+      fetchAll();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Błąd usuwania kategorii');
+    }
+  };
+
+  const categoryName = (id: number | null) => {
+    if (!id) return null;
+    return categories.find((c) => c.id === id)?.name ?? null;
   };
 
   if (loading) {
@@ -111,27 +175,77 @@ export default function ServicesManagement() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">💇 Zarządzanie usługami</h2>
+    <div className="max-w-3xl mx-auto space-y-6">
+      <h2 className="text-2xl font-bold text-gray-800">💇 Zarządzanie usługami</h2>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">{error}</div>
+      )}
+      {success && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">{success}</div>
+      )}
+
+      {/* Categories section */}
+      <div className="bg-white rounded-2xl shadow-xl p-6">
+        <h3 className="text-lg font-semibold text-gray-800 mb-3">🏷️ Kategorie</h3>
+
+        {/* Add category form */}
+        <form onSubmit={handleAddCategory} className="flex gap-2 mb-4">
+          <input
+            type="text"
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+            placeholder="Nazwa kategorii..."
+            minLength={2}
+            maxLength={100}
+            className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+          />
+          <button
+            type="submit"
+            disabled={savingCategory || !newCategoryName.trim()}
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition text-sm font-medium"
+          >
+            + Dodaj
+          </button>
+        </form>
+
+        {categories.length === 0 ? (
+          <p className="text-sm text-gray-400">Brak kategorii — dodaj pierwszą powyżej.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {categories.map((c) => (
+              <span
+                key={c.id}
+                className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-sm font-medium"
+              >
+                {c.name}
+                <button
+                  onClick={() => handleDeleteCategory(c.id)}
+                  className="ml-1 text-indigo-400 hover:text-red-500 transition font-bold leading-none"
+                  title="Usuń kategorię"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Services header + add button */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-gray-800">Usługi</h3>
         <button
           onClick={() => { resetForm(); setShowForm(!showForm); }}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition font-medium"
+          className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition font-medium text-sm"
         >
           {showForm ? 'Anuluj' : '+ Dodaj usługę'}
         </button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">{error}</div>
-      )}
-      {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4">{success}</div>
-      )}
-
-      {/* Form */}
+      {/* Service form */}
       {showForm && (
-        <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+        <div className="bg-white rounded-2xl shadow-xl p-6">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">
             {editingId ? 'Edytuj usługę' : 'Nowa usługa'}
           </h3>
@@ -192,45 +306,68 @@ export default function ServicesManagement() {
           {services.map((s) => (
             <div
               key={s.id}
-              className={`bg-white rounded-xl shadow-md p-5 flex items-center justify-between ${
-                !s.active ? 'opacity-50' : ''
-              }`}
+              className={`bg-white rounded-xl shadow-md p-5 ${!s.active ? 'opacity-50' : ''}`}
             >
-              <div>
-                <div className="font-semibold text-gray-800 flex items-center gap-2">
-                  {s.name}
-                  {!s.active && (
-                    <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">Nieaktywna</span>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-gray-800 flex items-center gap-2 flex-wrap">
+                    {s.name}
+                    {!s.active && (
+                      <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">Nieaktywna</span>
+                    )}
+                    {categoryName(s.categoryId) && (
+                      <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">
+                        {categoryName(s.categoryId)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-500 mt-0.5">
+                    {s.durationMinutes} min · {s.price} zł
+                  </div>
+                  {/* Category selector */}
+                  {s.active && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <label className="text-xs text-gray-500">Kategoria:</label>
+                      <select
+                        value={s.categoryId ?? ''}
+                        onChange={(e) =>
+                          handleAssignCategory(s.id, e.target.value ? Number(e.target.value) : null)
+                        }
+                        className="text-xs border border-gray-200 rounded px-2 py-1 focus:ring-1 focus:ring-indigo-400 outline-none bg-white"
+                      >
+                        <option value="">— brak —</option>
+                        {categories.map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   )}
                 </div>
-                <div className="text-sm text-gray-500">
-                  {s.durationMinutes} min · {s.price} zł
+                <div className="flex gap-2 shrink-0">
+                  {s.active ? (
+                    <>
+                      <button
+                        onClick={() => startEdit(s)}
+                        className="text-indigo-600 hover:text-indigo-800 text-sm font-medium transition"
+                      >
+                        Edytuj
+                      </button>
+                      <button
+                        onClick={() => handleDelete(s.id)}
+                        className="text-red-500 hover:text-red-700 text-sm font-medium transition"
+                      >
+                        Usuń
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handleActivate(s.id)}
+                      className="text-green-600 hover:text-green-800 text-sm font-medium transition"
+                    >
+                      Aktywuj
+                    </button>
+                  )}
                 </div>
-              </div>
-              <div className="flex gap-2">
-                {s.active ? (
-                  <>
-                    <button
-                      onClick={() => startEdit(s)}
-                      className="text-indigo-600 hover:text-indigo-800 text-sm font-medium transition"
-                    >
-                      Edytuj
-                    </button>
-                    <button
-                      onClick={() => handleDelete(s.id)}
-                      className="text-red-500 hover:text-red-700 text-sm font-medium transition"
-                    >
-                      Usuń
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => handleActivate(s.id)}
-                    className="text-green-600 hover:text-green-800 text-sm font-medium transition"
-                  >
-                    Aktywuj
-                  </button>
-                )}
               </div>
             </div>
           ))}
@@ -239,4 +376,3 @@ export default function ServicesManagement() {
     </div>
   );
 }
-

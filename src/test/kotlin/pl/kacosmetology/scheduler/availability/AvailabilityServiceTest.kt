@@ -6,9 +6,11 @@ import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignmentRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
@@ -16,6 +18,8 @@ import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
 import pl.kacosmetology.scheduler.treatment.ProvidedService
 import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
+import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import java.time.LocalDate
 import java.time.LocalTime
 import java.util.*
@@ -35,6 +39,12 @@ class AvailabilityServiceTest {
     @MockK
     private lateinit var scheduleBlockRepository: ScheduleBlockRepository
 
+    @MockK
+    private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
+
+    @MockK
+    private lateinit var assignmentRepository: EmployeeServiceAssignmentRepository
+
     @InjectMockKs
     private lateinit var availabilityService: AvailabilityService
 
@@ -44,6 +54,14 @@ class AvailabilityServiceTest {
     private val testDate = LocalDate.now().plusDays(1)
 
     private val defaultCompany = Company(id = companyId, name = "Test Salon")
+
+    private val defaultScheduleEntry = EmployeeWorkSchedule(
+        companyId = companyId,
+        employeeId = employeeId,
+        dayOfWeek = testDate.dayOfWeek,
+        startTime = LocalTime.of(9, 0),
+        endTime = LocalTime.of(17, 0)
+    )
 
     @Test
     fun `should return all possible slots when day is completely free`() {
@@ -58,13 +76,15 @@ class AvailabilityServiceTest {
             )
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { workScheduleRepository.findByEmployeeIdAndDayOfWeek(employeeId, testDate.dayOfWeek) } returns defaultScheduleEntry
         every {
             reservationRepository.findByEmployeeIdAndDate(
                 employeeId,
                 any(),
                 any()
             )
-        } returns emptyList() // Brak rezerwacji
+        } returns emptyList()
         every { scheduleBlockRepository.findByEmployeeIdAndStartTimeBetween(employeeId, any(), any()) } returns emptyList()
 
         // WHEN
@@ -96,6 +116,8 @@ class AvailabilityServiceTest {
             )
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { workScheduleRepository.findByEmployeeIdAndDayOfWeek(employeeId, testDate.dayOfWeek) } returns defaultScheduleEntry
 
         // Symulujemy, że pracownik ma już jedną wizytę od 12:00 do 13:00
         val existingReservation = Reservation(
@@ -135,6 +157,8 @@ class AvailabilityServiceTest {
         val service = ProvidedService(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { workScheduleRepository.findByEmployeeIdAndDayOfWeek(employeeId, testDate.dayOfWeek) } returns defaultScheduleEntry
         every { reservationRepository.findByEmployeeIdAndDate(employeeId, any(), any()) } returns emptyList()
 
         // Blokada od 14:00 do 15:00
@@ -162,5 +186,69 @@ class AvailabilityServiceTest {
 
         // Slot 15:00 do 16:00 jest po blokadzie -> OK!
         assertTrue(availableSlots.contains(LocalTime.of(15, 0)))
+    }
+
+    @Test
+    fun `should return empty list when employee has no schedule entry for that day`() {
+        // GIVEN
+        val service = ProvidedService(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
+        every { serviceRepository.findById(serviceId) } returns Optional.of(service)
+        every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { workScheduleRepository.findByEmployeeIdAndDayOfWeek(employeeId, testDate.dayOfWeek) } returns null
+
+        // WHEN
+        val result = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+
+        // THEN
+        assertTrue(result.isEmpty(), "Brak grafiku na ten dzień = brak slotów")
+    }
+
+    @Test
+    fun `should use employee work schedule hours instead of company hours`() {
+        // GIVEN - Pracownik pracuje tylko od 13:00 do 15:00
+        val service = ProvidedService(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
+        val shortSchedule = EmployeeWorkSchedule(
+            companyId = companyId,
+            employeeId = employeeId,
+            dayOfWeek = testDate.dayOfWeek,
+            startTime = LocalTime.of(13, 0),
+            endTime = LocalTime.of(15, 0)
+        )
+        every { serviceRepository.findById(serviceId) } returns Optional.of(service)
+        every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { workScheduleRepository.findByEmployeeIdAndDayOfWeek(employeeId, testDate.dayOfWeek) } returns shortSchedule
+        every { reservationRepository.findByEmployeeIdAndDate(employeeId, any(), any()) } returns emptyList()
+        every { scheduleBlockRepository.findByEmployeeIdAndStartTimeBetween(employeeId, any(), any()) } returns emptyList()
+
+        // WHEN
+        val slots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+
+        // THEN - tylko 13:00 i 13:30 mieszczą się (usługa 60min, koniec do 15:00)
+        assertFalse(slots.contains(LocalTime.of(9, 0)), "Firma otwarta od 9:00, ale pracownik od 13:00")
+        assertTrue(slots.contains(LocalTime.of(13, 0)))
+        assertTrue(slots.contains(LocalTime.of(13, 30)))
+        // Slot 14:00 + 60min = 15:00 (ostatni możliwy, kończy się = end_time) - należy sprawdzić
+        // Pętla: !currentSlotStart.plusMinutes(60).isAfter(15:00) -> 14:00 + 60 = 15:00 !isAfter(15:00) → true
+        assertTrue(slots.contains(LocalTime.of(14, 0)))
+        // 14:30 + 60 = 15:30 > 15:00 → false
+        assertFalse(slots.contains(LocalTime.of(14, 30)), "Slot 14:30 przekraczałby koniec grafiku")
+    }
+
+    @Test
+    fun `should throw when employee has assignments but service is not assigned`() {
+        // GIVEN
+        val service = ProvidedService(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
+        every { serviceRepository.findById(serviceId) } returns Optional.of(service)
+        every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns true
+        every { assignmentRepository.existsByEmployeeIdAndServiceId(employeeId, serviceId) } returns false
+
+        // WHEN & THEN
+        val ex = assertThrows<IllegalArgumentException> {
+            availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+        }
+        assertEquals("Ten pracownik nie wykonuje wybranej usługi", ex.message)
     }
 }

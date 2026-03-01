@@ -46,6 +46,12 @@ export default function Navbar() {
                   <Link to="/schedule" className="hover:text-indigo-200 transition">
                     Harmonogram
                   </Link>
+                  <Link to="/employees" className="hover:text-indigo-200 transition">
+                    Pracownicy
+                  </Link>
+                  <Link to="/settings" className="hover:text-indigo-200 transition">
+                    Ustawienia
+                  </Link>
                 </>
               )}
               <button

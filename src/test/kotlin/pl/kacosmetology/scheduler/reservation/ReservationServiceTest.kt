@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
+import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignmentRepository
 import pl.kacosmetology.scheduler.treatment.ProvidedService
 import pl.kacosmetology.scheduler.treatment.TreatmentRepository
 import pl.kacosmetology.scheduler.user.User
@@ -28,6 +29,9 @@ class ReservationServiceTest {
 
     @MockK
     private lateinit var userRepository: UserRepository
+
+    @MockK
+    private lateinit var assignmentRepository: EmployeeServiceAssignmentRepository
 
     @InjectMockKs
     private lateinit var reservationService: ReservationService
@@ -49,6 +53,7 @@ class ReservationServiceTest {
         )
 
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         // Zakładamy, że termin jest wolny
         every {
             reservationRepository.existsOverlapping(
@@ -87,6 +92,7 @@ class ReservationServiceTest {
         )
 
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
 
         // SYMULUJEMY ZAJĘTY TERMIN:
         every { reservationRepository.existsOverlapping(employeeId, any(), any()) } returns true
@@ -111,6 +117,24 @@ class ReservationServiceTest {
             reservationService.createReservation(customerId, employeeId, serviceId, startTime)
         }
         assertEquals("Usługa nie istnieje", exception.message)
+    }
+
+    @Test
+    fun `should throw when employee has service assignments but not for this service`() {
+        // GIVEN
+        val mockService = ProvidedService(
+            id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 50
+        )
+        every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns true
+        every { assignmentRepository.existsByEmployeeIdAndServiceId(employeeId, serviceId) } returns false
+
+        // WHEN & THEN
+        val exception = assertThrows<IllegalArgumentException> {
+            reservationService.createReservation(customerId, employeeId, serviceId, startTime)
+        }
+        assertEquals("Ten pracownik nie wykonuje wybranej usługi", exception.message)
+        verify(exactly = 0) { reservationRepository.save(any()) }
     }
 
     @Test
@@ -233,6 +257,7 @@ class ReservationServiceTest {
 
         every { userRepository.findByPhoneNumber(existingCustomer.phoneNumber) } returns existingCustomer
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         every { reservationRepository.existsOverlapping(employeeId, startTime, startTime.plusMinutes(duration.toLong())) } returns false
         every { reservationRepository.save(any()) } answers { firstArg() }
 
@@ -262,6 +287,7 @@ class ReservationServiceTest {
         every { userRepository.findByPhoneNumber(newPhone) } returns null
         every { userRepository.save(any()) } returns newCustomer
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         every { reservationRepository.existsOverlapping(employeeId, startTime, startTime.plusMinutes(duration.toLong())) } returns false
         every { reservationRepository.save(any()) } answers { firstArg() }
 

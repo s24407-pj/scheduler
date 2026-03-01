@@ -63,7 +63,8 @@ class TreatmentService(
                 name = request.name,
                 durationMinutes = request.durationMinutes,
                 price = request.price,
-                active = existing.active
+                active = existing.active,
+                categoryId = existing.categoryId
             )
         )
     }
@@ -85,7 +86,8 @@ class TreatmentService(
                 name = existing.name,
                 durationMinutes = existing.durationMinutes,
                 price = existing.price,
-                active = true
+                active = true,
+                categoryId = existing.categoryId
             )
         )
     }
@@ -107,7 +109,8 @@ class TreatmentService(
                 name = existing.name,
                 durationMinutes = existing.durationMinutes,
                 price = existing.price,
-                active = false
+                active = false,
+                categoryId = existing.categoryId
             )
         )
     }

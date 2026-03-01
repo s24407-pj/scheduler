@@ -13,6 +13,8 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignment
+import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignmentRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
@@ -22,7 +24,10 @@ import pl.kacosmetology.scheduler.treatment.ProvidedService
 import pl.kacosmetology.scheduler.treatment.TreatmentRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
+import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import java.time.LocalDate
+import java.time.LocalTime
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -50,6 +55,12 @@ class AvailabilityIntegrationTest {
     @Autowired
     private lateinit var scheduleBlockRepository: ScheduleBlockRepository
 
+    @Autowired
+    private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
+
+    @Autowired
+    private lateinit var assignmentRepository: EmployeeServiceAssignmentRepository
+
     private var employeeId: Long = 0
     private var serviceId: Long = 0
     private var companyId: Long = 0
@@ -59,6 +70,8 @@ class AvailabilityIntegrationTest {
     fun setup() {
         reservationRepository.deleteAll()
         scheduleBlockRepository.deleteAll()
+        assignmentRepository.deleteAll()
+        workScheduleRepository.deleteAll()
         serviceRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
@@ -89,6 +102,17 @@ class AvailabilityIntegrationTest {
 
         employeeId = employee.id
         serviceId = service.id!!
+
+        // Grafik pracownika: 9:00-17:00 dla dnia testu
+        workScheduleRepository.save(
+            EmployeeWorkSchedule(
+                companyId = companyId,
+                employeeId = employeeId,
+                dayOfWeek = testDate.dayOfWeek,
+                startTime = LocalTime.of(9, 0),
+                endTime = LocalTime.of(17, 0)
+            )
+        )
 
         // Wstawiamy rezerwację od 10:00 do 12:00
         reservationRepository.save(
@@ -160,6 +184,69 @@ class AvailabilityIntegrationTest {
 
             // Slot 14:00-16:00 zaczyna się po blokadzie -> dostępny
             jsonPath("$[?(@ == '14:00:00')]") { exists() }
+        }
+    }
+
+    @Test
+    fun `should return empty list when employee has no schedule for the requested day`() {
+        // Usuwamy wpis grafiku dla dnia testu
+        workScheduleRepository.deleteAll()
+
+        mockMvc.get("/api/availability") {
+            param("employeeId", employeeId.toString())
+            param("serviceId", serviceId.toString())
+            param("date", testDate.toString())
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(0) }
+        }
+    }
+
+    @Test
+    fun `should return 400 when employee has service assignments but not for requested service`() {
+        val otherService = serviceRepository.save(
+            ProvidedService(companyId = companyId, name = "Inny Serwis", durationMinutes = 30, price = 50)
+        )
+        // Pracownik ma przypisanie tylko do innej usługi
+        assignmentRepository.save(EmployeeServiceAssignment(companyId = companyId, employeeId = employeeId, serviceId = otherService.id!!))
+
+        mockMvc.get("/api/availability") {
+            param("employeeId", employeeId.toString())
+            param("serviceId", serviceId.toString())
+            param("date", testDate.toString())
+        }.andExpect {
+            status { isBadRequest() }
+        }
+    }
+
+    @Test
+    fun `should use employee work schedule hours for slot boundaries`() {
+        // Grafik skrócony: 13:00-17:00 tylko dla dnia testu (nadpisujemy setup)
+        workScheduleRepository.deleteAll()
+        workScheduleRepository.save(
+            EmployeeWorkSchedule(
+                companyId = companyId,
+                employeeId = employeeId,
+                dayOfWeek = testDate.dayOfWeek,
+                startTime = LocalTime.of(13, 0),
+                endTime = LocalTime.of(17, 0)
+            )
+        )
+
+        mockMvc.get("/api/availability") {
+            param("employeeId", employeeId.toString())
+            param("serviceId", serviceId.toString())
+            param("date", testDate.toString())
+        }.andExpect {
+            status { isOk() }
+            // Firma otwarta od 9:00, ale pracownik od 13:00 – slot 9:00 nie powinien istnieć
+            jsonPath("$[?(@ == '09:00:00')]") { doesNotExist() }
+            // Slot 13:00-15:00 jest dostępny
+            jsonPath("$[?(@ == '13:00:00')]") { exists() }
+            // Slot 15:00-17:00 jest dostępny
+            jsonPath("$[?(@ == '15:00:00')]") { exists() }
+            // Slot 15:30-17:30 przekracza koniec grafiku
+            jsonPath("$[?(@ == '15:30:00')]") { doesNotExist() }
         }
     }
 }

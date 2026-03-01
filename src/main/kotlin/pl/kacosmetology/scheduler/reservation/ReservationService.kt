@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.reservation
 
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignmentRepository
 import pl.kacosmetology.scheduler.treatment.TreatmentRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -12,12 +13,14 @@ import java.time.LocalDateTime
 class ReservationService(
     private val reservationRepository: ReservationRepository,
     private val serviceRepository: TreatmentRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val assignmentRepository: EmployeeServiceAssignmentRepository
 ) {
 
     /**
      * Creates a new reservation with a price snapshot from the service catalog.
      * Validates that the requested time slot is available.
+     * Throws [IllegalArgumentException] if the employee has service assignments but not for this service.
      */
     @Transactional
     fun createReservation(
@@ -31,6 +34,12 @@ class ReservationService(
 
         if (!service.active) {
             throw IllegalArgumentException("Ta usługa nie jest już dostępna")
+        }
+
+        if (assignmentRepository.existsByEmployeeId(employeeId) &&
+            !assignmentRepository.existsByEmployeeIdAndServiceId(employeeId, serviceId)
+        ) {
+            throw IllegalArgumentException("Ten pracownik nie wykonuje wybranej usługi")
         }
 
         val endTime = startTime.plusMinutes(service.durationMinutes.toLong())

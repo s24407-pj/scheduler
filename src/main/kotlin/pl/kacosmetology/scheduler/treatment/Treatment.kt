@@ -25,6 +25,9 @@ class ProvidedService(
     @Column(nullable = false)
     val active: Boolean = true,
 
+    @Column(name = "category_id")
+    val categoryId: Long? = null,
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     val createdAt: LocalDateTime? = null
 )

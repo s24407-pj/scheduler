@@ -63,13 +63,15 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 src/main/kotlin/pl/kacosmetology/scheduler/
 ├── auth/           # SMS OTP + staff login → JWT issuance
 ├── availability/   # Available time slot calculation (public endpoint)
-├── company/        # Company and employee-role entities
+├── company/        # Company entity, settings CRUD (hours, slot interval)
 ├── config/         # Security, CORS, Redis, DataInitializer (dev seed)
+├── employeeservice/ # Employee–service assignments (which services an employee performs)
 ├── reservation/    # Booking lifecycle (PENDING → CONFIRMED → COMPLETED/CANCELLED)
 ├── scheduleblock/  # Employee time blocks (breaks, unavailability)
 ├── security/       # JWT filter, CustomUserDetails, CustomUserDetailsService
-├── treatment/      # Service catalog (ProvidedService entity mapped to `services` table)
-└── user/           # User profile management
+├── treatment/      # Service catalog (ProvidedService) and service categories
+├── user/           # User profile management
+└── workschedule/   # Employee weekly work schedules (per-day hours)
 ```
 
 **Layering:** Controller → Service → Repository. No cross-module service calls; modules communicate through IDs only.
@@ -86,20 +88,31 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **Optimistic locking:** `Reservation` has a `@Version` field to prevent double-booking race conditions.
 
-**Availability calculation:** `AvailabilityService` computes free slots by comparing company opening/closing hours and slot intervals against existing reservations **and schedule blocks** for that employee.
+**Availability calculation:** `AvailabilityService` computes free slots using the employee's work schedule for opening/closing hours (falls back to empty list if no schedule entry for that day). Slot interval comes from the company config. Filters out slots overlapping with existing reservations and schedule blocks.
+
+**Work schedules:** Owners set a weekly schedule per employee via `PUT /api/employees/{id}/work-schedule`. If an employee has no entry for a given day of week, `AvailabilityService` returns an empty list for that day.
+
+**Employee service assignments:** Owners assign which services each employee can perform via `POST /api/employees/{id}/services/{serviceId}`. If an employee has any assignments configured, `AvailabilityService` and `ReservationService` reject requests for unassigned services. Employees with no assignments at all can perform any service (backward-compatible default).
 
 **Schedule blocks:** Employees can block time ranges (breaks, personal unavailability) via `POST /api/schedule-blocks`. Blocks are validated with `@Future` on `startTime` (DTO layer) and checked for overlap with existing reservations and other blocks (service layer). Blocked slots are excluded from availability.
 
+**Service categories:** Owners can group services into categories via `POST /api/categories`. Categories are company-scoped; services carry an optional `category_id` (set to null on category deletion).
+
 **Staff booking:** Staff can create a reservation on behalf of a client via `POST /api/reservations/staff`. If the client's phone number is not found in the database, a new `User` is auto-created — `firstName` and `lastName` are required in that case.
+
+**Company settings:** Owners can update business hours and slot interval via `PUT /api/company/settings`. `closingTime` must be strictly after `openingTime`.
 
 ### Database Schema
 
-PostgreSQL with Flyway migrations (`src/main/resources/db/migration/`). Key tables:
+PostgreSQL with a single Flyway migration (`src/main/resources/db/migration/V1__init_schema.sql`). Key tables:
 - `users` — unified table for customers and staff (distinguished by `company_employees` membership)
 - `company_employees` — join table assigning users to a company with a role (`OWNER`/`EMPLOYEE`)
-- `services` — treatment catalog (named `ProvidedService` in Kotlin, mapped to `services` table)
+- `services` — treatment catalog (named `ProvidedService` in Kotlin); has optional `category_id`
+- `service_categories` — company-scoped groupings for services
 - `reservations` — stores price snapshot at booking time, has `@Version` for optimistic locking
-- `schedule_blocks` — employee time blocks; checked by `AvailabilityService` alongside reservations (V2 migration)
+- `schedule_blocks` — employee time blocks; checked by `AvailabilityService` alongside reservations
+- `employee_work_schedules` — per-employee, per-day-of-week working hours
+- `employee_services` — which services each employee is allowed to perform
 
 ### Frontend Structure
 

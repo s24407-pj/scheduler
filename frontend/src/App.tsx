@@ -10,6 +10,8 @@ import Profile from './pages/Profile';
 import StaffDashboard from './pages/StaffDashboard';
 import ServicesManagement from './pages/ServicesManagement';
 import EmployeeSchedule from './pages/EmployeeSchedule';
+import CompanySettings from './pages/CompanySettings';
+import EmployeeManagement from './pages/EmployeeManagement';
 
 function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode; allowedRole?: 'customer' | 'staff' }) {
   const { isAuthenticated, role } = useAuth();
@@ -37,6 +39,8 @@ function AppRoutes() {
           <Route path="/dashboard" element={<ProtectedRoute allowedRole="staff"><StaffDashboard /></ProtectedRoute>} />
           <Route path="/services" element={<ProtectedRoute allowedRole="staff"><ServicesManagement /></ProtectedRoute>} />
           <Route path="/schedule" element={<ProtectedRoute allowedRole="staff"><EmployeeSchedule /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute allowedRole="staff"><CompanySettings /></ProtectedRoute>} />
+          <Route path="/employees" element={<ProtectedRoute allowedRole="staff"><EmployeeManagement /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
