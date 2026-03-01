@@ -20,6 +20,7 @@ CREATE TABLE users
     password_hash VARCHAR(255),
     first_name    VARCHAR(100) NOT NULL,
     last_name     VARCHAR(100) NOT NULL,
+    photo_url     VARCHAR(500),
     created_at    TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
