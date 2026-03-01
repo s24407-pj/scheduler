@@ -36,6 +36,13 @@ otp:
   max-attempts: ${OTP_MAX_ATTEMPTS:3}
   rate-window-minutes: ${OTP_RATE_WINDOW_MINUTES:5}
 
+r2:
+  endpoint: ${R2_ENDPOINT:http://localhost:9000}
+  access-key: ${R2_ACCESS_KEY:minioadmin}
+  secret-key: ${R2_SECRET_KEY:minioadmin}
+  bucket-name: ${R2_BUCKET_NAME:scheduler}
+  public-url: ${R2_PUBLIC_URL:http://localhost:9000/scheduler}
+
 management:
   endpoints:
     web:

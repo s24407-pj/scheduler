@@ -130,3 +130,15 @@ CREATE TABLE employee_services
 );
 CREATE INDEX idx_employee_services_employee_id ON employee_services (employee_id);
 CREATE INDEX idx_employee_services_service_id  ON employee_services (service_id);
+
+-- 11. Service images (up to 5 per service, stored in R2)
+CREATE TABLE service_images
+(
+    id         BIGSERIAL PRIMARY KEY,
+    service_id BIGINT       NOT NULL REFERENCES services (id) ON DELETE CASCADE,
+    image_url  VARCHAR(500) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_service_images_service_id ON service_images (service_id);
+
+ALTER TABLE reservations ADD COLUMN reminder_sent BOOLEAN NOT NULL DEFAULT FALSE;

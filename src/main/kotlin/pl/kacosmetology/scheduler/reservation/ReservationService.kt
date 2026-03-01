@@ -1,8 +1,10 @@
 package pl.kacosmetology.scheduler.reservation
 
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignmentRepository
+import pl.kacosmetology.scheduler.notification.NotificationService
 import pl.kacosmetology.scheduler.treatment.TreatmentRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -14,8 +16,10 @@ class ReservationService(
     private val reservationRepository: ReservationRepository,
     private val serviceRepository: TreatmentRepository,
     private val userRepository: UserRepository,
-    private val assignmentRepository: EmployeeServiceAssignmentRepository
+    private val assignmentRepository: EmployeeServiceAssignmentRepository,
+    private val notificationService: NotificationService
 ) {
+    private val logger = LoggerFactory.getLogger(ReservationService::class.java)
 
     /**
      * Creates a new reservation with a price snapshot from the service catalog.
@@ -48,7 +52,7 @@ class ReservationService(
             throw IllegalStateException("Ten termin jest już zajęty")
         }
 
-        return reservationRepository.save(
+        val saved = reservationRepository.save(
             Reservation(
                 companyId = service.companyId,
                 customerId = customerId,
@@ -60,6 +64,12 @@ class ReservationService(
                 status = ReservationStatus.PENDING
             )
         )
+        try {
+            notificationService.sendBookingConfirmation(saved)
+        } catch (e: Exception) {
+            logger.warn("Failed to send booking confirmation for reservation ${saved.id}", e)
+        }
+        return saved
     }
 
     /** Cancels a reservation. Only the owning customer can cancel, and only if not already completed. */
@@ -78,6 +88,11 @@ class ReservationService(
 
         reservation.status = ReservationStatus.CANCELLED
         reservationRepository.save(reservation)
+        try {
+            notificationService.sendCancellationNotification(reservation)
+        } catch (e: Exception) {
+            logger.warn("Failed to send cancellation notification for reservation ${reservation.id}", e)
+        }
     }
 
     /** Marks a reservation as completed. Called by staff members. */

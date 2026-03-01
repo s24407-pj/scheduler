@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
+import org.springframework.mock.web.MockMultipartFile
 import pl.kacosmetology.scheduler.treatment.dto.TreatmentRequest
 import java.util.*
 
@@ -17,6 +18,9 @@ class TreatmentServiceTest {
 
     @MockK
     private lateinit var treatmentRepository: TreatmentRepository
+
+    @MockK
+    private lateinit var imageService: ImageService
 
     @InjectMockKs
     private lateinit var treatmentService: TreatmentService
@@ -157,6 +161,65 @@ class TreatmentServiceTest {
         assertThrows<IllegalArgumentException> {
             treatmentService.deleteService(999L, companyId)
         }
+    }
+
+    @Test
+    fun `uploadImage should delegate to imageService and return service`() {
+        // GIVEN
+        val service = ProvidedService(id = 1, companyId = companyId, name = "Masaż", durationMinutes = 60, price = 200)
+        val file = MockMultipartFile("image", "photo.jpg", "image/jpeg", ByteArray(100))
+        every { treatmentRepository.findById(1L) } returns Optional.of(service)
+        every { imageService.upload(companyId, 1L, file) } returns
+            ServiceImage(id = 10, serviceId = 1L, imageUrl = "http://cdn/img.jpg")
+
+        // WHEN
+        val result = treatmentService.uploadImage(1L, companyId, file)
+
+        // THEN
+        assertEquals(service, result)
+        verify(exactly = 1) { imageService.upload(companyId, 1L, file) }
+    }
+
+    @Test
+    fun `uploadImage should throw when service belongs to different company`() {
+        // GIVEN
+        val service = ProvidedService(id = 1, companyId = 999L, name = "Obca", durationMinutes = 30, price = 100)
+        val file = MockMultipartFile("image", "photo.jpg", "image/jpeg", ByteArray(100))
+        every { treatmentRepository.findById(1L) } returns Optional.of(service)
+
+        // WHEN & THEN
+        assertThrows<IllegalStateException> {
+            treatmentService.uploadImage(1L, companyId, file)
+        }
+        verify(exactly = 0) { imageService.upload(any(), any(), any()) }
+    }
+
+    @Test
+    fun `deleteImage should delegate to imageService and return service`() {
+        // GIVEN
+        val service = ProvidedService(id = 1, companyId = companyId, name = "Masaż", durationMinutes = 60, price = 200)
+        every { treatmentRepository.findById(1L) } returns Optional.of(service)
+        every { imageService.delete(42L, 1L) } returns Unit
+
+        // WHEN
+        val result = treatmentService.deleteImage(1L, 42L, companyId)
+
+        // THEN
+        assertEquals(service, result)
+        verify(exactly = 1) { imageService.delete(42L, 1L) }
+    }
+
+    @Test
+    fun `deleteImage should throw when service belongs to different company`() {
+        // GIVEN
+        val service = ProvidedService(id = 1, companyId = 999L, name = "Obca", durationMinutes = 30, price = 100)
+        every { treatmentRepository.findById(1L) } returns Optional.of(service)
+
+        // WHEN & THEN
+        assertThrows<IllegalStateException> {
+            treatmentService.deleteImage(1L, 42L, companyId)
+        }
+        verify(exactly = 0) { imageService.delete(any(), any()) }
     }
 }
 

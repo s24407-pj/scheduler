@@ -69,6 +69,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 ├── reservation/    # Booking lifecycle (PENDING → CONFIRMED → COMPLETED/CANCELLED)
 ├── scheduleblock/  # Employee time blocks (breaks, unavailability)
 ├── security/       # JWT filter, CustomUserDetails, CustomUserDetailsService
+├── notification/   # SMS notifications (booking confirmation, cancellation, reminders)
 ├── treatment/      # Service catalog (ProvidedService) and service categories
 ├── user/           # User profile management
 └── workschedule/   # Employee weekly work schedules (per-day hours)
@@ -84,7 +85,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **Authorization roles:** `CUSTOMER`, `EMPLOYEE`, `OWNER` stored in `company_employees`. `CustomUserDetails` carries `companyId` and role as Spring authorities (`ROLE_OWNER`, etc.). Method-level security uses `@PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")`.
 
-**OTP/Rate limiting:** `OtpStore` uses Redis with key prefixes `otp:<phone>` (TTL from config) and `rate:sms:<phone>` (sliding window counter). `SmsSender` is a `ConsoleSmsSender` stub in dev.
+**OTP/Rate limiting:** `OtpStore` uses Redis with key prefixes `otp:<phone>` (TTL from config) and `rate:sms:<phone>` (sliding window counter). `SmsSender` has two methods: `sendOtp` (OTP flow) and `sendMessage` (general notifications). `ConsoleSmsSender` is the dev stub for both.
 
 **Optimistic locking:** `Reservation` has a `@Version` field to prevent double-booking race conditions.
 
@@ -102,6 +103,10 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **Company settings:** Owners can update business hours and slot interval via `PUT /api/company/settings`. `closingTime` must be strictly after `openingTime`.
 
+**SMS notifications:** `NotificationService` sends booking confirmation and cancellation SMS after `ReservationService` saves. `NotificationScheduler` runs hourly (`0 0 * * * *`) and sends reminders for reservations starting in 23–25 h (`reminder_sent` flag on `Reservation` prevents duplicates). SMS failures are logged but never propagate — they are side-effects of the main transaction. `@EnableScheduling` is on `RedisConfig`.
+
+**Service images:** Owners can upload up to 5 images per service via `POST /api/services/{id}/image` (multipart field `image`; max 5 MB; JPEG/PNG/WebP). Images are stored in Cloudflare R2 (S3-compatible). Delete a single image via `DELETE /api/services/{id}/image/{imageId}`. `TreatmentController` returns `ProvidedServiceResponse` (DTO wrapping entity fields + `images` list). `ImageService` handles all R2 operations. R2 credentials are configured via `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`. In tests, `S3Client` is replaced with `@MockkBean`.
+
 ### Database Schema
 
 PostgreSQL with a single Flyway migration (`src/main/resources/db/migration/V1__init_schema.sql`). Key tables:
@@ -109,7 +114,8 @@ PostgreSQL with a single Flyway migration (`src/main/resources/db/migration/V1__
 - `company_employees` — join table assigning users to a company with a role (`OWNER`/`EMPLOYEE`)
 - `services` — treatment catalog (named `ProvidedService` in Kotlin); has optional `category_id`
 - `service_categories` — company-scoped groupings for services
-- `reservations` — stores price snapshot at booking time, has `@Version` for optimistic locking
+- `service_images` — up to 5 images per service, references `services(id)` ON DELETE CASCADE
+- `reservations` — stores price snapshot at booking time, has `@Version` for optimistic locking, `reminder_sent` flag for deduplication
 - `schedule_blocks` — employee time blocks; checked by `AvailabilityService` alongside reservations
 - `employee_work_schedules` — per-employee, per-day-of-week working hours
 - `employee_services` — which services each employee is allowed to perform
@@ -147,5 +153,6 @@ Environment variables override application YAML values. Key vars for docker-comp
 - `SPRING_DATA_REDIS_HOST/PORT`
 - `CORS_ORIGINS`
 - `OTP_TTL_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RATE_WINDOW_MINUTES`
+- `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`
 
 Dev profile (`application-dev.yaml`) enables SQL logging and DEBUG-level logging for the app and Spring Security.

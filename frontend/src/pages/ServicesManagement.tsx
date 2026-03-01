@@ -6,6 +6,11 @@ interface Category {
   name: string;
 }
 
+interface ServiceImage {
+  id: number;
+  imageUrl: string;
+}
+
 interface Service {
   id: number;
   companyId: number;
@@ -15,6 +20,7 @@ interface Service {
   active: boolean;
   categoryId: number | null;
   createdAt: string;
+  images: ServiceImage[];
 }
 
 export default function ServicesManagement() {
@@ -151,6 +157,34 @@ export default function ServicesManagement() {
       }
     } finally {
       setSavingCategory(false);
+    }
+  };
+
+  const handleUploadImage = async (serviceId: number, file: File) => {
+    setError('');
+    setSuccess('');
+    const formData = new FormData();
+    formData.append('image', file);
+    try {
+      await api.post(`/services/${serviceId}/image`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setSuccess('Zdjęcie dodane!');
+      fetchAll();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || err.response?.data?.message || 'Błąd dodawania zdjęcia');
+    }
+  };
+
+  const handleDeleteImage = async (serviceId: number, imageId: number) => {
+    setError('');
+    setSuccess('');
+    try {
+      await api.delete(`/services/${serviceId}/image/${imageId}`);
+      setSuccess('Zdjęcie usunięte');
+      fetchAll();
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Błąd usuwania zdjęcia');
     }
   };
 
@@ -341,6 +375,42 @@ export default function ServicesManagement() {
                         ))}
                       </select>
                     </div>
+                  )}
+                  {/* Images */}
+                  {s.images.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {s.images.map((img) => (
+                        <div key={img.id} className="relative group w-16 h-16">
+                          <img
+                            src={img.imageUrl}
+                            alt="zdjęcie usługi"
+                            className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                          />
+                          <button
+                            onClick={() => handleDeleteImage(s.id, img.id)}
+                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition leading-none"
+                            title="Usuń zdjęcie"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {s.images.length < 5 && s.active && (
+                    <label className="mt-2 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 cursor-pointer transition">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleUploadImage(s.id, file);
+                          e.target.value = '';
+                        }}
+                      />
+                      + Dodaj zdjęcie ({s.images.length}/5)
+                    </label>
                   )}
                 </div>
                 <div className="flex gap-2 shrink-0">

@@ -4,12 +4,14 @@ import org.springframework.cache.annotation.CacheEvict
 import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.multipart.MultipartFile
 import pl.kacosmetology.scheduler.treatment.dto.TreatmentRequest
 
 /** Business logic for managing salon services (CRUD). Results are cached per company. */
 @Service
 class TreatmentService(
-    private val treatmentRepository: TreatmentRepository
+    private val treatmentRepository: TreatmentRepository,
+    private val imageService: ImageService
 ) {
 
     /** Returns only active services for a company. Used by public endpoints and booking. Cached in Redis. */
@@ -90,6 +92,32 @@ class TreatmentService(
                 categoryId = existing.categoryId
             )
         )
+    }
+
+    /**
+     * Uploads an image for the service and persists it in R2 + DB.
+     * Validates that [companyId] owns the service and that the per-service image limit is not exceeded.
+     */
+    @Transactional
+    @CacheEvict("companyServices", key = "#companyId")
+    fun uploadImage(serviceId: Long, companyId: Long, file: MultipartFile): ProvidedService {
+        val service = getServiceById(serviceId)
+        if (service.companyId != companyId) throw IllegalStateException("Brak dostępu do tej usługi")
+        imageService.upload(companyId, serviceId, file)
+        return service
+    }
+
+    /**
+     * Deletes the specified image from R2 and DB.
+     * Validates that [companyId] owns the service.
+     */
+    @Transactional
+    @CacheEvict("companyServices", key = "#companyId")
+    fun deleteImage(serviceId: Long, imageId: Long, companyId: Long): ProvidedService {
+        val service = getServiceById(serviceId)
+        if (service.companyId != companyId) throw IllegalStateException("Brak dostępu do tej usługi")
+        imageService.delete(imageId, serviceId)
+        return service
     }
 
     /** Soft-deletes a service by marking it as inactive. Existing reservations are preserved. */

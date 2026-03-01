@@ -12,4 +12,9 @@ class ConsoleSmsSender : SmsSender {
     override fun sendOtp(phoneNumber: String, code: String) {
         logger.info("MOCK SMS to: $phoneNumber | OTP code: $code | Valid for 5 minutes")
     }
+
+    /** Logs the message to the console instead of sending a real SMS. */
+    override fun sendMessage(phoneNumber: String, message: String) {
+        logger.info("MOCK SMS to $phoneNumber | $message")
+    }
 }

@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.reservation
 
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
@@ -49,4 +50,18 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
     """
     )
     fun findEmployeeSchedule(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<Reservation>
+
+    /** Returns reservations starting within [windowStart]..[windowEnd] that are active and have not had a reminder sent. */
+    @Query(
+        """
+        SELECT r FROM Reservation r
+        WHERE r.startTime BETWEEN :windowStart AND :windowEnd
+        AND r.status IN ('PENDING', 'CONFIRMED')
+        AND r.reminderSent = false
+    """
+    )
+    fun findPendingReminders(
+        @Param("windowStart") windowStart: LocalDateTime,
+        @Param("windowEnd") windowEnd: LocalDateTime
+    ): List<Reservation>
 }
