@@ -72,6 +72,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 ├── notification/   # SMS notifications (booking confirmation, cancellation, reminders)
 ├── treatment/      # Service catalog (ProvidedService) and service categories
 ├── user/           # User profile management
+├── whatsapp/       # WhatsApp booking bot (webhook, conversation state machine, Meta sender)
 └── workschedule/   # Employee weekly work schedules (per-day hours)
 ```
 
@@ -109,12 +110,14 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **Service images:** Owners can upload up to 5 images per service via `POST /api/services/{id}/image` (multipart field `image`; max 5 MB; JPEG/PNG/WebP). Images are stored in Cloudflare R2 (S3-compatible). Delete a single image via `DELETE /api/services/{id}/image/{imageId}`. `TreatmentController` returns `ProvidedServiceResponse` (DTO wrapping entity fields + `images` list). `ImageService` handles all R2 operations. R2 credentials are configured via `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`. In tests, `S3Client` is replaced with `@MockkBean`.
 
-**Employee photos:** Owners can upload a single profile photo per employee via `POST /api/employees/{id}/photo` (multipart field `photo`; max 5 MB; JPEG/PNG/WebP). Uploading replaces any existing photo (old R2 object deleted). Delete via `DELETE /api/employees/{id}/photo`. Photo URL is stored as `photo_url` on the `users` table (V2 migration). `EmployeePhotoService` handles R2 operations. `EmployeeController` at `/api/employees` serves both endpoints (OWNER only). `photoUrl` is included in `UserProfileResponse` and `CompanyEmployeeResponse`.
+**Employee photos:** Owners can upload a single profile photo per employee via `POST /api/employees/{id}/photo` (multipart field `photo`; max 5 MB; JPEG/PNG/WebP). Uploading replaces any existing photo (old R2 object deleted). Delete via `DELETE /api/employees/{id}/photo`. Photo URL is stored as `photo_url` on the `users` table (in V1 schema). `EmployeePhotoService` handles R2 operations. `EmployeeController` at `/api/employees` serves both endpoints (OWNER only). `photoUrl` is included in `UserProfileResponse` and `CompanyEmployeeResponse`.
+
+**WhatsApp booking bot:** Clients can book via WhatsApp without logging in — Meta verifies the phone number. `WhatsAppWebhookController` at `GET/POST /api/whatsapp/webhook` (public, no auth) handles Meta webhook subscription and message ingestion. `ConversationHandler` is a Redis-backed state machine (`ConversationStore`, key `whatsapp:conv:<phone>`, TTL 30 min) that guides clients through service → employee → date → time → confirmation. New clients go through a name-collection sub-flow (`AWAITING_FIRST_NAME` → `AWAITING_LAST_NAME`); existing clients (looked up by phone) skip it. Reservation is created via `ReservationService.createReservationByStaff()`. Sending is abstracted behind `WhatsAppSender`: `ConsoleWhatsAppSender` (dev default, `whatsapp.sender=console`) logs to SLF4J; `MetaWhatsAppSender` (`whatsapp.sender=meta`) calls the Meta Graph API v21.0 using `RestClient`. `WhatsAppProperties` holds `verifyToken`, `accessToken`, `phoneNumberId`, `companyId`, `sender`. Errors are logged but never propagated (200 always returned to Meta). Phone numbers are normalised to E.164 (`+` prepended if missing).
 
 ### Database Schema
 
 PostgreSQL with a single Flyway migration (`src/main/resources/db/migration/V1__init_schema.sql`). Key tables:
-- `users` — unified table for customers and staff (distinguished by `company_employees` membership); has `photo_url` column (V2)
+- `users` — unified table for customers and staff (distinguished by `company_employees` membership); has `photo_url` column (V1)
 - `company_employees` — join table assigning users to a company with a role (`OWNER`/`EMPLOYEE`)
 - `services` — treatment catalog (named `ProvidedService` in Kotlin); has optional `category_id`
 - `service_categories` — company-scoped groupings for services
@@ -159,5 +162,6 @@ Environment variables override application YAML values. Key vars for docker-comp
 - `OTP_TTL_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RATE_WINDOW_MINUTES`
 - `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES`
 - `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`
+- `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_COMPANY_ID`, `WHATSAPP_SENDER`
 
 Dev profile (`application-dev.yaml`) enables SQL logging and DEBUG-level logging for the app and Spring Security.

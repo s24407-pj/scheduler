@@ -12,6 +12,7 @@ import ServicesManagement from './pages/ServicesManagement';
 import EmployeeSchedule from './pages/EmployeeSchedule';
 import CompanySettings from './pages/CompanySettings';
 import EmployeeManagement from './pages/EmployeeManagement';
+import WhatsAppSimulator from './pages/WhatsAppSimulator';
 
 function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode; allowedRole?: 'customer' | 'staff' }) {
   const { isAuthenticated, role } = useAuth();
@@ -41,6 +42,9 @@ function AppRoutes() {
           <Route path="/schedule" element={<ProtectedRoute allowedRole="staff"><EmployeeSchedule /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute allowedRole="staff"><CompanySettings /></ProtectedRoute>} />
           <Route path="/employees" element={<ProtectedRoute allowedRole="staff"><EmployeeManagement /></ProtectedRoute>} />
+
+          {/* Dev tools */}
+          <Route path="/wa-simulator" element={<WhatsAppSimulator />} />
 
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

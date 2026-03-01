@@ -10,3 +10,6 @@ logging:
     pl.kacosmetology.scheduler: DEBUG
     org.springframework.security: DEBUG
 
+whatsapp:
+  sender: dev
+

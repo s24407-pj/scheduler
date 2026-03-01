@@ -23,6 +23,14 @@ export default function Navbar() {
             Umów wizytę
           </Link>
 
+          <Link
+            to="/wa-simulator"
+            className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded transition text-sm"
+            title="WhatsApp Simulator (dev)"
+          >
+            WA Sim
+          </Link>
+
           {isAuthenticated ? (
             <>
               {role === 'customer' && (

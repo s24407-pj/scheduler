@@ -47,6 +47,13 @@ r2:
   bucket-name: ${R2_BUCKET_NAME:scheduler}
   public-url: ${R2_PUBLIC_URL:https://pub-e2e7a57b5ea74031a70f3c42d58af33f.r2.dev}
 
+whatsapp:
+  verify-token: ${WHATSAPP_VERIFY_TOKEN:dev_verify_token}
+  access-token: ${WHATSAPP_ACCESS_TOKEN:}
+  phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
+  company-id: ${WHATSAPP_COMPANY_ID:1}
+  sender: ${WHATSAPP_SENDER:console}
+
 management:
   endpoints:
     web:
