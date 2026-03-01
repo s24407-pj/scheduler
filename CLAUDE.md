@@ -87,6 +87,8 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **OTP/Rate limiting:** `OtpStore` uses Redis with key prefixes `otp:<phone>` (TTL from config) and `rate:sms:<phone>` (sliding window counter). `SmsSender` has two methods: `sendOtp` (OTP flow) and `sendMessage` (general notifications). `ConsoleSmsSender` is the dev stub for both.
 
+**Login rate limiting:** `LoginRateLimiter` uses Redis key `rate:login:<ip>` to limit staff login attempts per client IP. Default: 10 attempts per 1-minute window. Configured via `LOGIN_MAX_ATTEMPTS` / `LOGIN_RATE_WINDOW_MINUTES`. The controller extracts IP from `X-Forwarded-For` (first value) or falls back to `remoteAddr`. Exceeding the limit throws `RateLimitExceededException` → HTTP 429.
+
 **Optimistic locking:** `Reservation` has a `@Version` field to prevent double-booking race conditions.
 
 **Availability calculation:** `AvailabilityService` computes free slots using the employee's work schedule for opening/closing hours (falls back to empty list if no schedule entry for that day). Slot interval comes from the company config. Filters out slots overlapping with existing reservations and schedule blocks.
@@ -107,10 +109,12 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **Service images:** Owners can upload up to 5 images per service via `POST /api/services/{id}/image` (multipart field `image`; max 5 MB; JPEG/PNG/WebP). Images are stored in Cloudflare R2 (S3-compatible). Delete a single image via `DELETE /api/services/{id}/image/{imageId}`. `TreatmentController` returns `ProvidedServiceResponse` (DTO wrapping entity fields + `images` list). `ImageService` handles all R2 operations. R2 credentials are configured via `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`. In tests, `S3Client` is replaced with `@MockkBean`.
 
+**Employee photos:** Owners can upload a single profile photo per employee via `POST /api/employees/{id}/photo` (multipart field `photo`; max 5 MB; JPEG/PNG/WebP). Uploading replaces any existing photo (old R2 object deleted). Delete via `DELETE /api/employees/{id}/photo`. Photo URL is stored as `photo_url` on the `users` table (V2 migration). `EmployeePhotoService` handles R2 operations. `EmployeeController` at `/api/employees` serves both endpoints (OWNER only). `photoUrl` is included in `UserProfileResponse` and `CompanyEmployeeResponse`.
+
 ### Database Schema
 
 PostgreSQL with a single Flyway migration (`src/main/resources/db/migration/V1__init_schema.sql`). Key tables:
-- `users` — unified table for customers and staff (distinguished by `company_employees` membership)
+- `users` — unified table for customers and staff (distinguished by `company_employees` membership); has `photo_url` column (V2)
 - `company_employees` — join table assigning users to a company with a role (`OWNER`/`EMPLOYEE`)
 - `services` — treatment catalog (named `ProvidedService` in Kotlin); has optional `category_id`
 - `service_categories` — company-scoped groupings for services
@@ -153,6 +157,7 @@ Environment variables override application YAML values. Key vars for docker-comp
 - `SPRING_DATA_REDIS_HOST/PORT`
 - `CORS_ORIGINS`
 - `OTP_TTL_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RATE_WINDOW_MINUTES`
+- `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES`
 - `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`
 
 Dev profile (`application-dev.yaml`) enables SQL logging and DEBUG-level logging for the app and Spring Security.

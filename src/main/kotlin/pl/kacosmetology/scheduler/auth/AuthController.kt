@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.auth
 
+import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
@@ -33,7 +34,12 @@ class AuthController(
 
     /** Authenticates a staff member using email and password. Returns a JWT token. */
     @PostMapping("/login-staff")
-    fun loginStaff(@Valid @RequestBody request: StaffLoginRequest): ResponseEntity<AuthResponse> {
-        return ResponseEntity.ok(authService.loginStaff(request))
+    fun loginStaff(
+        @Valid @RequestBody request: StaffLoginRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<AuthResponse> {
+        val clientIp = httpRequest.getHeader("X-Forwarded-For")?.split(",")?.first()?.trim()
+            ?: httpRequest.remoteAddr
+        return ResponseEntity.ok(authService.loginStaff(request, clientIp))
     }
 }

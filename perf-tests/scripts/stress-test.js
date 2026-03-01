@@ -1,7 +1,7 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { loginStaff, authHeaders } from './helpers/auth.js';
-import { getPublicServices, getAvailability, futureDate } from './helpers/endpoints.js';
+import { getPublicServices, getAvailability, getEmployees, futureDate } from './helpers/endpoints.js';
 
 /**
  * STRESS TEST
@@ -34,19 +34,27 @@ export default function () {
   const rand = Math.random();
   const date = futureDate(Math.floor(Math.random() * 7) + 1);
 
-  if (rand < 0.4) {
+  if (rand < 0.35) {
+    // 35% — Public services (Redis cached)
     getPublicServices();
-  } else if (rand < 0.7) {
+  } else if (rand < 0.60) {
+    // 25% — Availability check
     const serviceId = Math.floor(Math.random() * 3) + 1;
     getAvailability(1, serviceId, date);
-  } else if (rand < 0.85) {
+  } else if (rand < 0.75) {
+    // 15% — Staff login
     loginStaff();
-  } else {
+  } else if (rand < 0.90) {
+    // 15% — Authenticated services list
     const token = loginStaff();
     const res = http.get(`${BASE_URL}/api/services/company/1`, authHeaders(token));
     check(res, {
       'auth services 200': (r) => r.status === 200,
     });
+  } else {
+    // 10% — Employee list
+    const token = loginStaff();
+    getEmployees(token);
   }
 
   sleep(Math.random() * 1.5 + 0.3); // 0.3–1.8s think time (faster pace)

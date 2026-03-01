@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignmentRepository
+import pl.kacosmetology.scheduler.notification.NotificationService
 import pl.kacosmetology.scheduler.treatment.ProvidedService
 import pl.kacosmetology.scheduler.treatment.TreatmentRepository
 import pl.kacosmetology.scheduler.user.User
@@ -32,6 +33,9 @@ class ReservationServiceTest {
 
     @MockK
     private lateinit var assignmentRepository: EmployeeServiceAssignmentRepository
+
+    @MockK(relaxed = true)
+    private lateinit var notificationService: NotificationService
 
     @InjectMockKs
     private lateinit var reservationService: ReservationService

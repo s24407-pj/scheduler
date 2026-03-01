@@ -1,7 +1,7 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { loginStaff, authHeaders } from './helpers/auth.js';
-import { getPublicServices, getAvailability, futureDate } from './helpers/endpoints.js';
+import { getPublicServices, getAvailability, getEmployees, futureDate } from './helpers/endpoints.js';
 
 /**
  * SMOKE TEST
@@ -41,7 +41,11 @@ export default function () {
   });
   sleep(0.5);
 
-  // 5. Health endpoint
+  // 5. Employee list (authenticated)
+  getEmployees(token);
+  sleep(0.5);
+
+  // 6. Health endpoint
   const healthRes = http.get(`${BASE_URL}/actuator/health`);
   check(healthRes, {
     'health status 200': (r) => r.status === 200,

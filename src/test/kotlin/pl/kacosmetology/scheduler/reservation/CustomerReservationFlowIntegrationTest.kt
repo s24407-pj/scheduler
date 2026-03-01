@@ -29,6 +29,7 @@ import pl.kacosmetology.scheduler.treatment.ProvidedService
 import pl.kacosmetology.scheduler.treatment.TreatmentRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
+import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 import java.time.LocalDateTime
 
@@ -63,6 +64,9 @@ class CustomerReservationFlowIntegrationTest {
 
     @MockkBean
     private lateinit var smsSender: SmsSender
+
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private var employeeId: Long = 0
     private var serviceId: Long = 0

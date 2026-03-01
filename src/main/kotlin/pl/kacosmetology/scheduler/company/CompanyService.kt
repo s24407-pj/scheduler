@@ -41,7 +41,8 @@ class CompanyService(
                 userId = ce.userId,
                 firstName = user.firstName,
                 lastName = user.lastName,
-                role = ce.role
+                role = ce.role,
+                photoUrl = user.photoUrl
             )
         }
     }

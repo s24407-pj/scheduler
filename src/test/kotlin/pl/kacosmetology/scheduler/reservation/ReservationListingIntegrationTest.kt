@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.reservation
 
+import com.ninjasquad.springmockk.MockkBean
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -10,6 +11,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
+import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
@@ -47,6 +49,9 @@ class ReservationListingIntegrationTest {
 
     @Autowired
     private lateinit var jwtService: JwtService
+
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private lateinit var customerToken: String
     private lateinit var employeeToken: String

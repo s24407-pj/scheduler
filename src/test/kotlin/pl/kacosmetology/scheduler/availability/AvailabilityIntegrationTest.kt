@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.availability
 
+import com.ninjasquad.springmockk.MockkBean
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -9,6 +10,7 @@ import org.springframework.context.annotation.Import
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
+import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
@@ -60,6 +62,9 @@ class AvailabilityIntegrationTest {
 
     @Autowired
     private lateinit var assignmentRepository: EmployeeServiceAssignmentRepository
+
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private var employeeId: Long = 0
     private var serviceId: Long = 0

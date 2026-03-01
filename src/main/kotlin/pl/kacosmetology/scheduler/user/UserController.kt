@@ -40,6 +40,7 @@ class UserController(
         phoneNumber = phoneNumber,
         firstName = firstName,
         lastName = lastName,
-        email = email
+        email = email,
+        photoUrl = photoUrl
     )
 }

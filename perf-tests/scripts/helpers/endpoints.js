@@ -30,6 +30,23 @@ export function getAvailability(employeeId, serviceId, date) {
 }
 
 /**
+ * Fetches the employee list for company 1 (requires auth token).
+ */
+export function getEmployees(token) {
+  const res = http.get(`${BASE_URL}/api/company/employees`, {
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  check(res, {
+    'employees status 200': (r) => r.status === 200,
+    'employees is array': (r) => Array.isArray(r.json()),
+  });
+  return res;
+}
+
+/**
  * Returns a future date string (YYYY-MM-DD) offset from today.
  */
 export function futureDate(daysFromNow) {

@@ -23,6 +23,7 @@ import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
+import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
 @SpringBootTest
@@ -48,6 +49,9 @@ class AuthFlowIntegrationTest {
     // Zastępujemy prawdziwy serwis sztucznym (żeby nie sypało logami ani nie wysyłało prawdziwych SMS)
     @MockkBean
     private lateinit var smsSender: SmsSender
+
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     @BeforeEach
     fun setup() {
@@ -214,6 +218,27 @@ class AuthFlowIntegrationTest {
             content = badRequest
         }.andExpect {
             status { isBadRequest() }
+        }
+    }
+
+    @Test
+    fun `login-staff should return 429 after exceeding rate limit`() {
+        // GIVEN - 10 attempts allowed per minute (application.yaml default)
+        val loginDto = StaffLoginRequest(email = "test@salon.pl", password = "jakiesHaslo1")
+
+        repeat(10) {
+            mockMvc.post("/api/auth/login-staff") {
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(loginDto)
+            }
+        }
+
+        // 11th attempt from the same IP — should be rate limited
+        mockMvc.post("/api/auth/login-staff") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(loginDto)
+        }.andExpect {
+            status { isTooManyRequests() }
         }
     }
 

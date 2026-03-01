@@ -25,7 +25,8 @@ class AuthService(
     private val smsSender: SmsSender,
     private val jwtService: JwtService,
     private val passwordEncoder: PasswordEncoder,
-    private val companyEmployeeRepository: CompanyEmployeeRepository
+    private val companyEmployeeRepository: CompanyEmployeeRepository,
+    private val loginRateLimiter: LoginRateLimiter
 ) {
 
     private val secureRandom = SecureRandom()
@@ -83,9 +84,13 @@ class AuthService(
     /**
      * Authenticates a staff member using email and password.
      * Returns a JWT token containing the company ID and employee roles.
+     * Throws [RateLimitExceededException] if [clientIp] has exceeded the allowed login attempt rate.
      */
     @Transactional(readOnly = true)
-    fun loginStaff(request: StaffLoginRequest): AuthResponse {
+    fun loginStaff(request: StaffLoginRequest, clientIp: String): AuthResponse {
+        if (!loginRateLimiter.checkAndIncrement(clientIp)) {
+            throw RateLimitExceededException()
+        }
         val user = userRepository.findByEmail(request.email)
             ?: throw IllegalArgumentException("Nieprawidłowy email lub hasło")
 

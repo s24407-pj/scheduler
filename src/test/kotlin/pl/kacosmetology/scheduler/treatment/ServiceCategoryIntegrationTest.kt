@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.treatment
 
+import com.ninjasquad.springmockk.MockkBean
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
@@ -16,6 +17,7 @@ import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
+import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
@@ -41,6 +43,8 @@ class ServiceCategoryIntegrationTest {
     @Autowired private lateinit var categoryRepository: ServiceCategoryRepository
     @Autowired private lateinit var serviceRepository: TreatmentRepository
     @Autowired private lateinit var reservationRepository: ReservationRepository
+
+    @MockkBean private lateinit var s3Client: S3Client
 
     private var companyId: Long = 0
     private var serviceId: Long = 0
