@@ -2,6 +2,8 @@ package pl.kacosmetology.scheduler.user
 
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.config.R2Properties
@@ -54,17 +56,9 @@ class EmployeePhotoService(
         val user = userRepository.findById(employeeId)
             .orElseThrow { NoSuchElementException("Użytkownik $employeeId nie istnieje") }
 
-        user.photoUrl?.let { oldUrl ->
-            val oldKey = oldUrl.removePrefix("${r2Props.publicUrl}/")
-            s3Client.deleteObject(
-                DeleteObjectRequest.builder()
-                    .bucket(r2Props.bucketName)
-                    .key(oldKey)
-                    .build()
-            )
-        }
-
+        val oldUrl = user.photoUrl
         val key = "employees/$companyId/$employeeId/${UUID.randomUUID()}.$ext"
+
         s3Client.putObject(
             PutObjectRequest.builder()
                 .bucket(r2Props.bucketName)
@@ -75,8 +69,30 @@ class EmployeePhotoService(
             RequestBody.fromInputStream(file.inputStream, file.size)
         )
 
-        user.photoUrl = "${r2Props.publicUrl}/$key"
-        return userRepository.save(user)
+        try {
+            user.photoUrl = "${r2Props.publicUrl}/$key"
+            val saved = userRepository.save(user)
+            TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
+                override fun afterCommit() {
+                    oldUrl?.let { url ->
+                        val oldKey = url.removePrefix("${r2Props.publicUrl}/")
+                        runCatching {
+                            s3Client.deleteObject(
+                                DeleteObjectRequest.builder().bucket(r2Props.bucketName).key(oldKey).build()
+                            )
+                        }
+                    }
+                }
+            })
+            return saved
+        } catch (e: Exception) {
+            runCatching {
+                s3Client.deleteObject(
+                    DeleteObjectRequest.builder().bucket(r2Props.bucketName).key(key).build()
+                )
+            }
+            throw e
+        }
     }
 
     /**
@@ -94,18 +110,22 @@ class EmployeePhotoService(
         val user = userRepository.findById(employeeId)
             .orElseThrow { NoSuchElementException("Użytkownik $employeeId nie istnieje") }
 
-        user.photoUrl?.let { url ->
-            val key = url.removePrefix("${r2Props.publicUrl}/")
-            s3Client.deleteObject(
-                DeleteObjectRequest.builder()
-                    .bucket(r2Props.bucketName)
-                    .key(key)
-                    .build()
-            )
-            user.photoUrl = null
-            userRepository.save(user)
-        }
+        val url = user.photoUrl ?: return user
+        val key = url.removePrefix("${r2Props.publicUrl}/")
 
-        return user
+        user.photoUrl = null
+        val saved = userRepository.save(user)
+
+        TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization {
+            override fun afterCommit() {
+                runCatching {
+                    s3Client.deleteObject(
+                        DeleteObjectRequest.builder().bucket(r2Props.bucketName).key(key).build()
+                    )
+                }
+            }
+        })
+
+        return saved
     }
 }

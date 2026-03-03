@@ -28,9 +28,8 @@ class EmployeeOfferingService(
     @Transactional(readOnly = true)
     fun getOfferingsForEmployee(employeeId: Long): List<Offering> {
         if (!assignmentRepository.existsByEmployeeId(employeeId)) return emptyList()
-        return assignmentRepository.findAllByEmployeeId(employeeId)
-            .mapNotNull { offeringRepository.findById(it.offeringId).orElse(null) }
-            .filter { it.active }
+        val ids = assignmentRepository.findAllByEmployeeId(employeeId).map { it.offeringId }
+        return offeringRepository.findAllById(ids).filter { it.active }
     }
 
     /**

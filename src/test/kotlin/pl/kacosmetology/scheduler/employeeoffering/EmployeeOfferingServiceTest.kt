@@ -118,7 +118,7 @@ class EmployeeOfferingServiceTest {
         val assignment = EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = offeringId)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns true
         every { assignmentRepository.findAllByEmployeeId(employeeId) } returns listOf(assignment)
-        every { offeringRepository.findById(offeringId) } returns Optional.of(mockOffering)
+        every { offeringRepository.findAllById(listOf(offeringId)) } returns listOf(mockOffering)
 
         val result = service.getOfferingsForEmployee(employeeId)
 

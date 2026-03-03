@@ -1,16 +1,23 @@
 package pl.kacosmetology.scheduler.user
 
+import io.mockk.Runs
 import io.mockk.every
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
+import io.mockk.just
+import io.mockk.mockkStatic
+import io.mockk.slot
+import io.mockk.unmockkAll
 import io.mockk.verify
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.mock.web.MockMultipartFile
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.config.R2Properties
 import software.amazon.awssdk.core.sync.RequestBody
@@ -35,6 +42,9 @@ class EmployeePhotoServiceTest {
     private val companyId = 1L
     private val employeeId = 10L
 
+    @AfterEach
+    fun tearDown() { unmockkAll() }
+
     private fun stubR2Props() {
         every { r2Props.bucketName } returns "test-bucket"
         every { r2Props.publicUrl } returns "https://pub.r2.dev"
@@ -51,6 +61,8 @@ class EmployeePhotoServiceTest {
         every { userRepository.findById(employeeId) } returns Optional.of(user)
         every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder().build()
         every { userRepository.save(any()) } answers { firstArg() }
+        mockkStatic(TransactionSynchronizationManager::class)
+        every { TransactionSynchronizationManager.registerSynchronization(any()) } just Runs
 
         // WHEN
         val result = employeePhotoService.upload(companyId, employeeId, file)
@@ -76,9 +88,13 @@ class EmployeePhotoServiceTest {
         every { s3Client.deleteObject(any<DeleteObjectRequest>()) } returns DeleteObjectResponse.builder().build()
         every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder().build()
         every { userRepository.save(any()) } answers { firstArg() }
+        val syncSlot = slot<TransactionSynchronization>()
+        mockkStatic(TransactionSynchronizationManager::class)
+        every { TransactionSynchronizationManager.registerSynchronization(capture(syncSlot)) } just Runs
 
         // WHEN
         employeePhotoService.upload(companyId, employeeId, file)
+        syncSlot.captured.afterCommit()
 
         // THEN
         verify(exactly = 1) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
@@ -138,9 +154,13 @@ class EmployeePhotoServiceTest {
         every { userRepository.findById(employeeId) } returns Optional.of(user)
         every { s3Client.deleteObject(any<DeleteObjectRequest>()) } returns DeleteObjectResponse.builder().build()
         every { userRepository.save(any()) } answers { firstArg() }
+        val syncSlot = slot<TransactionSynchronization>()
+        mockkStatic(TransactionSynchronizationManager::class)
+        every { TransactionSynchronizationManager.registerSynchronization(capture(syncSlot)) } just Runs
 
         // WHEN
         val result = employeePhotoService.delete(companyId, employeeId)
+        syncSlot.captured.afterCommit()
 
         // THEN
         assertNull(result.photoUrl)

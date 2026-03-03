@@ -60,9 +60,18 @@ class OfferingImageService(
             RequestBody.fromInputStream(file.inputStream, file.size)
         )
 
-        return offeringImageRepository.save(
-            OfferingImage(offeringId = offeringId, imageUrl = "${r2Props.publicUrl}/$key")
-        )
+        try {
+            return offeringImageRepository.save(
+                OfferingImage(offeringId = offeringId, imageUrl = "${r2Props.publicUrl}/$key")
+            )
+        } catch (e: Exception) {
+            runCatching {
+                s3Client.deleteObject(
+                    DeleteObjectRequest.builder().bucket(r2Props.bucketName).key(key).build()
+                )
+            }
+            throw e
+        }
     }
 
     /**
@@ -80,14 +89,15 @@ class OfferingImageService(
         }
 
         val key = image.imageUrl.removePrefix("${r2Props.publicUrl}/")
+
+        offeringImageRepository.deleteById(imageId)
+
         s3Client.deleteObject(
             DeleteObjectRequest.builder()
                 .bucket(r2Props.bucketName)
                 .key(key)
                 .build()
         )
-
-        offeringImageRepository.deleteById(imageId)
     }
 
     /** Batch-fetches images for the given offering IDs. */
