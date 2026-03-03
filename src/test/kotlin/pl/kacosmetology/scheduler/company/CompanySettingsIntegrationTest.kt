@@ -182,6 +182,25 @@ class CompanySettingsIntegrationTest {
     }
 
     @Test
+    fun `PUT api-company-settings should persist maxNoShows`() {
+        val body = mapOf(
+            "openingTime" to "09:00:00",
+            "closingTime" to "17:00:00",
+            "slotIntervalMinutes" to 30,
+            "maxNoShows" to 5
+        )
+
+        mockMvc.put("/api/company/settings") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.maxNoShows") { value(5) }
+        }
+    }
+
+    @Test
     fun `PUT api-company-settings should return 400 when closingTime is before openingTime`() {
         val body = mapOf(
             "openingTime" to "18:00:00",

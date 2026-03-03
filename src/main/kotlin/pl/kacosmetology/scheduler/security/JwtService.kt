@@ -18,11 +18,15 @@ class JwtService(
 
     private val signingKey: SecretKey by lazy { Keys.hmacShaKeyFor(secret.toByteArray()) }
 
-    /** Generates a JWT token with the user's identity and optional company ID in claims. */
+    /** Generates a JWT token with the user's identity, optional company ID, and role in claims. */
     fun generateToken(userDetails: UserDetails, companyId: Long?): String {
         val claims = mutableMapOf<String, Any>()
         if (companyId != null) {
             claims["companyId"] = companyId
+        }
+        val role = userDetails.authorities.firstOrNull()?.authority?.removePrefix("ROLE_")?.lowercase()
+        if (role != null) {
+            claims["role"] = role
         }
 
         return Jwts.builder()

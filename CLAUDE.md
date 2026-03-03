@@ -66,12 +66,12 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 ├── company/        # Company entity, settings CRUD (hours, slot interval)
 ├── config/         # Security, CORS, Redis, DataInitializer (dev seed)
 ├── employeeoffering/ # Employee–offering assignments (which offerings an employee performs)
-├── reservation/    # Booking lifecycle (PENDING → CONFIRMED → COMPLETED/CANCELLED)
+├── reservation/    # Booking lifecycle (PENDING → CONFIRMED → COMPLETED/CANCELLED/NO_SHOW)
 ├── scheduleblock/  # Employee time blocks (breaks, unavailability)
 ├── security/       # JWT filter, CustomUserDetails, CustomUserDetailsService
 ├── notification/   # SMS notifications (booking confirmation, cancellation, reminders)
 ├── offering/       # Offering catalog (Offering entity) and offering categories
-├── user/           # User profile management
+├── user/           # User profile management; CustomerService/CustomerController for block/unblock
 ├── whatsapp/       # WhatsApp booking bot (webhook, conversation state machine, Meta sender)
 └── workschedule/   # Employee weekly work schedules (per-day hours)
 ```
@@ -114,15 +114,20 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **WhatsApp booking bot:** Clients can book via WhatsApp without logging in — Meta verifies the phone number. `WhatsAppWebhookController` at `GET/POST /api/whatsapp/webhook` (public, no auth) handles Meta webhook subscription and message ingestion. `ConversationHandler` is a Redis-backed state machine (`ConversationStore`, key `whatsapp:conv:<phone>`, TTL 30 min) that guides clients through service → employee → date → time → confirmation. New clients go through a name-collection sub-flow (`AWAITING_FIRST_NAME` → `AWAITING_LAST_NAME`); existing clients (looked up by phone) skip it. Reservation is created via `ReservationService.createReservationByStaff()`. Sending is abstracted behind `WhatsAppSender`: `ConsoleWhatsAppSender` (dev default, `whatsapp.sender=console`) logs to SLF4J; `MetaWhatsAppSender` (`whatsapp.sender=meta`) calls the Meta Graph API v21.0 using `RestClient`. `WhatsAppProperties` holds `verifyToken`, `accessToken`, `phoneNumberId`, `companyId`, `sender`. Errors are logged but never propagated (200 always returned to Meta). Phone numbers are normalised to E.164 (`+` prepended if missing).
 
+**No-show tracking:** Staff can mark a reservation as `NO_SHOW` via `PATCH /api/reservations/{id}/no-show` (OWNER or EMPLOYEE). This increments `users.no_show_count` and auto-blocks the customer (`users.blocked = true`) when the count reaches `companies.max_no_shows` (configured via `PUT /api/company/settings`; `maxNoShows = 0` disables auto-block). A blocked customer who calls `POST /api/reservations` receives HTTP 400. Owners can manually block/unblock any customer via `PATCH /api/customers/{id}/block` and `PATCH /api/customers/{id}/unblock` (OWNER only, HTTP 204); unblocking resets `noShowCount` to 0. Customer status (name, noShowCount, blocked) is readable by staff at `GET /api/customers/{id}`. Block is **global** — not scoped to a single company. The `blocked` guard runs in `ReservationService.createReservation()` before the overlap check.
+
+**JWT role claim:** `JwtService.generateToken()` includes a `role` claim (lowercase: `owner`, `employee`, `customer`) so the frontend can distinguish OWNER from EMPLOYEE without an extra API call.
+
 ### Database Schema
 
-PostgreSQL with Flyway migrations in `src/main/resources/db/migration/`. Key tables (after V2 rename):
-- `users` — unified table for customers and staff (distinguished by `company_employees` membership); has `photo_url` column
+PostgreSQL with Flyway migrations in `src/main/resources/db/migration/`. Key tables (after V3):
+- `users` — unified table for customers and staff (distinguished by `company_employees` membership); has `photo_url`, `no_show_count`, `blocked` columns
 - `company_employees` — join table assigning users to a company with a role (`OWNER`/`EMPLOYEE`)
 - `offerings` — offering catalog (`Offering` entity); has optional `category_id`
 - `offering_categories` — company-scoped groupings for offerings
 - `offering_images` — up to 5 images per offering, references `offerings(id)` ON DELETE CASCADE; column `offering_id`
-- `reservations` — stores price snapshot at booking time, has `@Version` for optimistic locking, `reminder_sent` flag for deduplication
+- `companies` — has `max_no_shows` column (auto-block threshold)
+- `reservations` — stores price snapshot at booking time, has `@Version` for optimistic locking, `reminder_sent` flag for deduplication; status enum includes `NO_SHOW`
 - `schedule_blocks` — employee time blocks; checked by `AvailabilityService` alongside reservations
 - `employee_work_schedules` — per-employee, per-day-of-week working hours
 - `employee_offerings` — which offerings each employee is allowed to perform; column `offering_id`

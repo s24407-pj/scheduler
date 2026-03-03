@@ -9,7 +9,8 @@ data class CompanySettingsResponse(
     val name: String,
     val openingTime: LocalTime,
     val closingTime: LocalTime,
-    val slotIntervalMinutes: Int
+    val slotIntervalMinutes: Int,
+    val maxNoShows: Int
 )
 
 /** Maps a [Company] entity to a [CompanySettingsResponse] DTO. */
@@ -18,5 +19,6 @@ fun Company.toSettingsResponse() = CompanySettingsResponse(
     name = name,
     openingTime = openingTime,
     closingTime = closingTime,
-    slotIntervalMinutes = slotIntervalMinutes
+    slotIntervalMinutes = slotIntervalMinutes,
+    maxNoShows = maxNoShows
 )

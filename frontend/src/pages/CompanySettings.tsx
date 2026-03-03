@@ -6,6 +6,7 @@ interface CompanySettings {
   openingTime: string;
   closingTime: string;
   slotIntervalMinutes: number;
+  maxNoShows: number;
 }
 
 /** Converts "HH:mm:ss" to "HH:mm" for HTML time inputs. */
@@ -28,6 +29,7 @@ export default function CompanySettings() {
   const [openingTime, setOpeningTime] = useState('');
   const [closingTime, setClosingTime] = useState('');
   const [slotInterval, setSlotInterval] = useState('30');
+  const [maxNoShows, setMaxNoShows] = useState('3');
 
   useEffect(() => {
     api.get('/company/settings')
@@ -37,6 +39,7 @@ export default function CompanySettings() {
         setOpeningTime(toTimeInput(s.openingTime));
         setClosingTime(toTimeInput(s.closingTime));
         setSlotInterval(String(s.slotIntervalMinutes));
+        setMaxNoShows(String(s.maxNoShows));
       })
       .catch(() => setError('Nie udało się pobrać ustawień firmy'))
       .finally(() => setLoading(false));
@@ -52,6 +55,7 @@ export default function CompanySettings() {
         openingTime: fromTimeInput(openingTime),
         closingTime: fromTimeInput(closingTime),
         slotIntervalMinutes: Number(slotInterval),
+        maxNoShows: Number(maxNoShows),
       });
       setSettings(res.data);
       setSuccess('Ustawienia zapisane!');
@@ -125,6 +129,23 @@ export default function CompanySettings() {
             <p className="text-xs text-gray-500 mt-1">Min. 5 minut, maks. 240 minut</p>
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Próg nieobecności (auto-blokada)
+            </label>
+            <input
+              type="number"
+              value={maxNoShows}
+              onChange={(e) => setMaxNoShows(e.target.value)}
+              min="0"
+              required
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Po ilu nieobecnościach klient jest automatycznie blokowany. Wpisz 0, aby wyłączyć.
+            </p>
+          </div>
+
           <button
             type="submit"
             disabled={saving}
@@ -137,7 +158,8 @@ export default function CompanySettings() {
         {settings && (
           <div className="mt-5 pt-5 border-t border-gray-100 text-sm text-gray-500">
             Aktualne: {settings.openingTime.slice(0, 5)} – {settings.closingTime.slice(0, 5)},
-            interwał {settings.slotIntervalMinutes} min
+            interwał {settings.slotIntervalMinutes} min,
+            próg nieobecności: {settings.maxNoShows === 0 ? 'wyłączony' : settings.maxNoShows}
           </div>
         )}
       </div>

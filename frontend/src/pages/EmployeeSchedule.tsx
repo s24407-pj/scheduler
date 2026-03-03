@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
+import { useAuth } from '../AuthContext';
 
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -34,6 +35,7 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   CONFIRMED: { label: 'Potwierdzona', color: 'bg-blue-100 text-blue-800' },
   CANCELLED: { label: 'Anulowana',   color: 'bg-red-100 text-red-800' },
   COMPLETED: { label: 'Zakończona',  color: 'bg-green-100 text-green-800' },
+  NO_SHOW:   { label: 'Nieobecność', color: 'bg-gray-100 text-gray-600' },
 };
 
 function fmt(iso: string) {
@@ -99,14 +101,111 @@ export default function EmployeeSchedule() {
   );
 }
 
+// ─── Customer status panel (owner-only inline expand) ────────────────────────
+
+interface CustomerStatus {
+  id: number;
+  firstName: string;
+  lastName: string;
+  noShowCount: number;
+  blocked: boolean;
+}
+
+function CustomerPanel({ customerId, onClose }: { customerId: number; onClose: () => void }) {
+  const [status, setStatus] = useState<CustomerStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [actionError, setActionError] = useState('');
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.get(`/customers/${customerId}`);
+      setStatus(res.data);
+    } catch {
+      setError('Nie udało się pobrać danych klienta');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [customerId]);
+
+  const block = async () => {
+    setActionError('');
+    try {
+      await api.patch(`/customers/${customerId}/block`);
+      setStatus((s) => s ? { ...s, blocked: true } : s);
+    } catch (err) {
+      const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+      setActionError(msg || 'Błąd blokowania');
+    }
+  };
+
+  const unblock = async () => {
+    setActionError('');
+    try {
+      await api.patch(`/customers/${customerId}/unblock`);
+      setStatus((s) => s ? { ...s, blocked: false, noShowCount: 0 } : s);
+    } catch (err) {
+      const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+      setActionError(msg || 'Błąd odblokowywania');
+    }
+  };
+
+  return (
+    <div className="mt-3 bg-gray-50 rounded-lg p-4 border border-gray-200 text-sm">
+      {loading ? (
+        <div className="text-gray-400">Ładowanie...</div>
+      ) : error ? (
+        <div className="text-red-600">{error}</div>
+      ) : status ? (
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <span className="font-medium text-gray-800">{status.firstName} {status.lastName}</span>
+            <span className="ml-3 text-gray-500">Nieobecności: {status.noShowCount}</span>
+            {status.blocked && (
+              <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs font-medium">Zablokowany</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {actionError && <span className="text-red-600 text-xs">{actionError}</span>}
+            {status.blocked ? (
+              <button
+                onClick={unblock}
+                className="bg-green-500 text-white px-3 py-1 rounded-lg text-xs hover:bg-green-600 transition"
+              >
+                Odblokuj
+              </button>
+            ) : (
+              <button
+                onClick={block}
+                className="bg-red-500 text-white px-3 py-1 rounded-lg text-xs hover:bg-red-600 transition"
+              >
+                Zablokuj klienta
+              </button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xs transition">✕</button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ─── Tab 1: Reservations ─────────────────────────────────────────────────────
 
 function ReservationsTab({ date }: { date: string }) {
+  const { staffRole } = useAuth();
+  const isOwner = staffRole === 'owner';
+
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [expandedCustomer, setExpandedCustomer] = useState<number | null>(null);
 
-  const fetch = async () => {
+  const fetchSchedule = async () => {
     setLoading(true);
     setError('');
     try {
@@ -121,15 +220,30 @@ function ReservationsTab({ date }: { date: string }) {
     }
   };
 
-  useEffect(() => { fetch(); }, [date]);
+  useEffect(() => { fetchSchedule(); }, [date]);
 
   const complete = async (id: number) => {
     try {
       await api.patch(`/reservations/${id}/complete`);
-      fetch();
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Błąd');
+      fetchSchedule();
+    } catch (err) {
+      const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+      setError(msg || 'Błąd');
     }
+  };
+
+  const markNoShow = async (id: number) => {
+    try {
+      await api.patch(`/reservations/${id}/no-show`);
+      fetchSchedule();
+    } catch (err) {
+      const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+      setError(msg || 'Błąd oznaczania nieobecności');
+    }
+  };
+
+  const toggleCustomer = (customerId: number) => {
+    setExpandedCustomer((prev) => (prev === customerId ? null : customerId));
   };
 
   if (loading) return <div className="text-center text-gray-400 py-12">Ładowanie...</div>;
@@ -143,25 +257,48 @@ function ReservationsTab({ date }: { date: string }) {
         <div className="space-y-3">
           {schedule.map((item) => {
             const st = statusLabels[item.status] || { label: item.status, color: 'bg-gray-100 text-gray-800' };
+            const isActive = item.status === 'PENDING' || item.status === 'CONFIRMED';
             return (
-              <div key={item.id} className="bg-white rounded-xl shadow-md p-5 flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-gray-800">{fmt(item.startTime)} – {fmt(item.endTime)}</div>
-                  <div className="text-sm text-gray-500 mt-1">
-                    Klient #{item.customerId} · Usługa #{item.serviceId} · {item.price} zł
+              <div key={item.id} className="bg-white rounded-xl shadow-md p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-gray-800">{fmt(item.startTime)} – {fmt(item.endTime)}</div>
+                    <div className="text-sm text-gray-500 mt-1 flex items-center gap-2">
+                      <span>Usługa #{item.serviceId} · {item.price} zł</span>
+                      <button
+                        onClick={() => toggleCustomer(item.customerId)}
+                        className="text-indigo-600 hover:text-indigo-800 text-xs underline transition"
+                      >
+                        Klient #{item.customerId}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${st.color}`}>{st.label}</span>
+                    {isActive && (
+                      <>
+                        <button
+                          onClick={() => complete(item.id)}
+                          className="bg-green-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-green-600 transition"
+                        >
+                          Zakończ
+                        </button>
+                        <button
+                          onClick={() => markNoShow(item.id)}
+                          className="bg-gray-400 text-white px-3 py-1 rounded-lg text-sm hover:bg-gray-500 transition"
+                        >
+                          Nieobecny
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${st.color}`}>{st.label}</span>
-                  {item.status === 'PENDING' && (
-                    <button
-                      onClick={() => complete(item.id)}
-                      className="bg-green-500 text-white px-3 py-1 rounded-lg text-sm hover:bg-green-600 transition"
-                    >
-                      Zakończ
-                    </button>
-                  )}
-                </div>
+                {isOwner && expandedCustomer === item.customerId && (
+                  <CustomerPanel
+                    customerId={item.customerId}
+                    onClose={() => setExpandedCustomer(null)}
+                  />
+                )}
               </div>
             );
           })}

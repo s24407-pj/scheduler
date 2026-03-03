@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.reservation
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.notification.NotificationService
 import pl.kacosmetology.scheduler.offering.OfferingRepository
@@ -10,21 +11,22 @@ import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalDateTime
 
-/** Core business logic for reservation lifecycle: create, cancel, complete. */
+/** Core business logic for reservation lifecycle: create, cancel, complete, and no-show marking. */
 @Service
 class ReservationService(
     private val reservationRepository: ReservationRepository,
     private val offeringRepository: OfferingRepository,
     private val userRepository: UserRepository,
     private val assignmentRepository: EmployeeOfferingAssignmentRepository,
+    private val companyRepository: CompanyRepository,
     private val notificationService: NotificationService
 ) {
     private val logger = LoggerFactory.getLogger(ReservationService::class.java)
 
     /**
      * Creates a new reservation with a price snapshot from the offering catalog.
-     * Validates that the requested time slot is available.
-     * Throws [IllegalArgumentException] if the employee has offering assignments but not for this offering.
+     * Validates that the requested time slot is available and the customer is not blocked.
+     * Throws [IllegalArgumentException] if the customer is blocked or the employee has offering assignments but not for this offering.
      */
     @Transactional
     fun createReservation(
@@ -33,6 +35,12 @@ class ReservationService(
         offeringId: Long,
         startTime: LocalDateTime
     ): Reservation {
+        val customer = userRepository.findById(customerId)
+            .orElseThrow { NoSuchElementException("Klient nie istnieje") }
+        if (customer.blocked) {
+            throw IllegalArgumentException("Klient jest zablokowany i nie może rezerwować online")
+        }
+
         val offering = offeringRepository.findById(offeringId)
             .orElseThrow { IllegalArgumentException("Usługa nie istnieje") }
 
@@ -115,6 +123,37 @@ class ReservationService(
 
         reservation.status = ReservationStatus.COMPLETED
         reservationRepository.save(reservation)
+    }
+
+    /**
+     * Marks a reservation as [ReservationStatus.NO_SHOW] and increments the customer's no-show counter.
+     * If the counter reaches the company's [pl.kacosmetology.scheduler.company.Company.maxNoShows] threshold
+     * (and it is greater than zero), the customer is automatically blocked from online booking.
+     * Only PENDING or CONFIRMED reservations can be marked as no-show.
+     */
+    @Transactional
+    fun markNoShow(reservationId: Long) {
+        val reservation = reservationRepository.findById(reservationId)
+            .orElseThrow { NoSuchElementException("Rezerwacja nie istnieje") }
+
+        if (reservation.status != ReservationStatus.PENDING && reservation.status != ReservationStatus.CONFIRMED) {
+            throw IllegalStateException("Tylko aktywna rezerwacja może być oznaczona jako nieobecność")
+        }
+
+        reservation.status = ReservationStatus.NO_SHOW
+        reservationRepository.save(reservation)
+
+        val customer = userRepository.findById(reservation.customerId)
+            .orElseThrow { NoSuchElementException("Klient nie istnieje") }
+        customer.noShowCount++
+
+        val company = companyRepository.findById(reservation.companyId)
+            .orElseThrow { NoSuchElementException("Firma nie istnieje") }
+        if (company.maxNoShows > 0 && customer.noShowCount >= company.maxNoShows) {
+            customer.blocked = true
+        }
+
+        userRepository.save(customer)
     }
 
     /** Returns all reservations for a customer, ordered by start time descending. */

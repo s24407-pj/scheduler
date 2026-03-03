@@ -70,4 +70,7 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
     @Modifying
     @Query("UPDATE Reservation r SET r.reminderSent = true WHERE r.id IN :ids")
     fun markRemindersAsSent(@Param("ids") ids: List<Long>)
+
+    /** Checks if a customer has any reservation in the given company. */
+    fun existsByCustomerIdAndCompanyId(customerId: Long, companyId: Long): Boolean
 }

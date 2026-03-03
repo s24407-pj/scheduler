@@ -1,9 +1,24 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 
+/** Granular role decoded from the JWT — 'owner', 'employee', or 'customer'. */
+// eslint-disable-next-line react-refresh/only-export-components
+export type StaffRole = 'owner' | 'employee' | 'customer';
+
+function decodeJwtRole(token: string): StaffRole | null {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return (payload.role as StaffRole) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 interface AuthContextType {
   token: string | null;
   role: 'customer' | 'staff' | null;
+  /** Granular role from JWT: 'owner', 'employee', or 'customer'. */
+  staffRole: StaffRole | null;
   login: (token: string, role: 'customer' | 'staff') => void;
   logout: () => void;
   isAuthenticated: boolean;
@@ -12,9 +27,13 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const storedToken = localStorage.getItem('token');
+  const [token, setToken] = useState<string | null>(storedToken);
   const [role, setRole] = useState<'customer' | 'staff' | null>(
     localStorage.getItem('role') as 'customer' | 'staff' | null
+  );
+  const [staffRole, setStaffRole] = useState<StaffRole | null>(
+    storedToken ? decodeJwtRole(storedToken) : null
   );
 
   const login = (newToken: string, newRole: 'customer' | 'staff') => {
@@ -22,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('role', newRole);
     setToken(newToken);
     setRole(newRole);
+    setStaffRole(decodeJwtRole(newToken));
   };
 
   const logout = () => {
@@ -29,19 +49,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('role');
     setToken(null);
     setRole(null);
+    setStaffRole(null);
   };
 
   useEffect(() => {
     const handleStorage = () => {
-      setToken(localStorage.getItem('token'));
+      const t = localStorage.getItem('token');
+      setToken(t);
       setRole(localStorage.getItem('role') as 'customer' | 'staff' | null);
+      setStaffRole(t ? decodeJwtRole(t) : null);
     };
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ token, role, login, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{ token, role, staffRole, login, logout, isAuthenticated: !!token }}>
       {children}
     </AuthContext.Provider>
   );

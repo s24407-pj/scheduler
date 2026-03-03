@@ -59,6 +59,14 @@ class ReservationController(
         reservationService.completeReservation(id)
     }
 
+    /** Marks a reservation as no-show and increments the customer's counter. Requires OWNER or EMPLOYEE role. */
+    @PatchMapping("/{id}/no-show")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun markNoShow(@PathVariable id: Long) {
+        reservationService.markNoShow(id)
+    }
+
     /** Returns the authenticated customer's reservation history. */
     @GetMapping("/me")
     fun getMyReservations(@AuthenticationPrincipal userDetails: CustomUserDetails?): List<ReservationResponse> {

@@ -3,7 +3,7 @@ package pl.kacosmetology.scheduler.reservation
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
-enum class ReservationStatus { PENDING, CONFIRMED, CANCELLED, COMPLETED }
+enum class ReservationStatus { PENDING, CONFIRMED, CANCELLED, COMPLETED, NO_SHOW }
 
 @Entity
 @Table(name = "reservations")

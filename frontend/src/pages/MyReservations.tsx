@@ -13,10 +13,11 @@ interface Reservation {
 }
 
 const statusLabels: Record<string, { label: string; color: string }> = {
-  PENDING: { label: 'Oczekująca', color: 'bg-yellow-100 text-yellow-800' },
+  PENDING:   { label: 'Oczekująca',  color: 'bg-yellow-100 text-yellow-800' },
   CONFIRMED: { label: 'Potwierdzona', color: 'bg-blue-100 text-blue-800' },
-  CANCELLED: { label: 'Anulowana', color: 'bg-red-100 text-red-800' },
-  COMPLETED: { label: 'Zakończona', color: 'bg-green-100 text-green-800' },
+  CANCELLED: { label: 'Anulowana',   color: 'bg-red-100 text-red-800' },
+  COMPLETED: { label: 'Zakończona',  color: 'bg-green-100 text-green-800' },
+  NO_SHOW:   { label: 'Nieobecność', color: 'bg-gray-100 text-gray-600' },
 };
 
 export default function MyReservations() {

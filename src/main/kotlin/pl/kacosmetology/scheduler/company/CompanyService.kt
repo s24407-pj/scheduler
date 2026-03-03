@@ -68,7 +68,8 @@ class CompanyService(
                 address = company.address,
                 openingTime = request.openingTime,
                 closingTime = request.closingTime,
-                slotIntervalMinutes = request.slotIntervalMinutes
+                slotIntervalMinutes = request.slotIntervalMinutes,
+                maxNoShows = request.maxNoShows
             )
         )
         return updated.toSettingsResponse()

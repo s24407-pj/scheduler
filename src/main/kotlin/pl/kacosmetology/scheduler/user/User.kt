@@ -28,5 +28,11 @@ class User(
     val passwordHash: String? = null,
 
     @Column(name = "photo_url")
-    var photoUrl: String? = null
+    var photoUrl: String? = null,
+
+    @Column(name = "no_show_count", nullable = false)
+    var noShowCount: Int = 0,
+
+    @Column(nullable = false)
+    var blocked: Boolean = false
 )

@@ -30,6 +30,9 @@ class Company(
     @Column(name = "slot_interval_minutes", nullable = false)
     val slotIntervalMinutes: Int = 30,
 
+    @Column(name = "max_no_shows", nullable = false)
+    val maxNoShows: Int = 3,
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     val createdAt: LocalDateTime? = null
 )
