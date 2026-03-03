@@ -2,8 +2,11 @@ package pl.kacosmetology.scheduler.whatsapp
 
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.http.client.JdkClientHttpRequestFactory
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestClient
+import java.net.http.HttpClient
+import java.time.Duration
 
 /**
  * Production [WhatsAppSender] that calls the Meta Graph API to deliver messages.
@@ -14,7 +17,11 @@ import org.springframework.web.client.RestClient
 class MetaWhatsAppSender(private val properties: WhatsAppProperties) : WhatsAppSender {
 
     private val logger = LoggerFactory.getLogger(MetaWhatsAppSender::class.java)
-    private val restClient = RestClient.create()
+    private val restClient = RestClient.builder()
+        .requestFactory(JdkClientHttpRequestFactory(
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
+        ))
+        .build()
 
     /**
      * Sends a text message via the Meta Cloud API.

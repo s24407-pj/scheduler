@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.authentication.BadCredentialsException
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -54,6 +55,11 @@ class RestExceptionHandler {
     @ExceptionHandler(RateLimitExceededException::class)
     fun handleRateLimit(ex: RateLimitExceededException): ResponseEntity<ApiError> {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(ApiError(ex.message ?: "Zbyt wiele żądań"))
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleMalformedBody(ex: HttpMessageNotReadableException): ResponseEntity<ApiError> {
+        return ResponseEntity.badRequest().body(ApiError("Malformed request body"))
     }
 
     @ExceptionHandler(ResponseStatusException::class)

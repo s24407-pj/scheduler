@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.auth
 
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.stereotype.Component
 import java.time.Duration
 
@@ -15,6 +16,15 @@ class LoginRateLimiter(
 
     companion object {
         private const val KEY_PREFIX = "rate:login:"
+
+        private val incrWithExpireScript = RedisScript.of<Long>(
+            """
+            local v = redis.call('INCR', KEYS[1])
+            if v == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+            return v
+            """.trimIndent(),
+            Long::class.java
+        )
     }
 
     /**
@@ -24,10 +34,11 @@ class LoginRateLimiter(
      */
     fun checkAndIncrement(ip: String): Boolean {
         val key = "$KEY_PREFIX$ip"
-        val count = redisTemplate.opsForValue().increment(key) ?: 1L
-        if (count == 1L) {
-            redisTemplate.expire(key, Duration.ofMinutes(rateWindowMinutes))
-        }
+        val count = redisTemplate.execute(
+            incrWithExpireScript,
+            listOf(key),
+            (rateWindowMinutes * 60).toString()
+        ) ?: 1L
         return count <= maxAttempts
     }
 }

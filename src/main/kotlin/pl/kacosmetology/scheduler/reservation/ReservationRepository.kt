@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.reservation
 
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
@@ -64,4 +65,9 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
         @Param("windowStart") windowStart: LocalDateTime,
         @Param("windowEnd") windowEnd: LocalDateTime
     ): List<Reservation>
+
+    /** Bulk-marks the given reservations as having had a reminder sent. */
+    @Modifying
+    @Query("UPDATE Reservation r SET r.reminderSent = true WHERE r.id IN :ids")
+    fun markRemindersAsSent(@Param("ids") ids: List<Long>)
 }

@@ -7,7 +7,6 @@ import io.mockk.junit5.MockKExtension
 import io.mockk.just
 import io.mockk.runs
 import io.mockk.verify
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.reservation.Reservation
@@ -42,16 +41,15 @@ class NotificationSchedulerTest {
     )
 
     @Test
-    fun `sendReminders should call sendReminder and mark reminderSent when reservation found`() {
+    fun `sendReminders should call sendReminder and bulk-mark sent when reservation found`() {
         every { reservationRepository.findPendingReminders(any(), any()) } returns listOf(reservation)
         every { notificationService.sendReminder(reservation) } just runs
-        every { reservationRepository.save(reservation) } returns reservation
+        every { reservationRepository.markRemindersAsSent(listOf(1L)) } just runs
 
         notificationScheduler.sendReminders()
 
         verify { notificationService.sendReminder(reservation) }
-        assertTrue(reservation.reminderSent, "reminderSent should be set to true after successful reminder")
-        verify { reservationRepository.save(reservation) }
+        verify { reservationRepository.markRemindersAsSent(listOf(1L)) }
     }
 
     @Test
@@ -61,16 +59,16 @@ class NotificationSchedulerTest {
         notificationScheduler.sendReminders()
 
         verify(exactly = 0) { notificationService.sendReminder(any()) }
-        verify(exactly = 0) { reservationRepository.save(any()) }
+        verify(exactly = 0) { reservationRepository.markRemindersAsSent(any()) }
     }
 
     @Test
-    fun `sendReminders should not save reservation when sendReminder throws`() {
+    fun `sendReminders should not mark reservation when sendReminder throws`() {
         every { reservationRepository.findPendingReminders(any(), any()) } returns listOf(reservation)
         every { notificationService.sendReminder(reservation) } throws RuntimeException("SMS failed")
 
         notificationScheduler.sendReminders()
 
-        verify(exactly = 0) { reservationRepository.save(any()) }
+        verify(exactly = 0) { reservationRepository.markRemindersAsSent(any()) }
     }
 }

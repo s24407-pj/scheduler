@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.auth
 
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.stereotype.Component
 import java.time.Duration
 
@@ -17,6 +18,15 @@ class OtpStore(
     companion object {
         private const val OTP_KEY_PREFIX = "otp:"
         private const val RATE_KEY_PREFIX = "rate:sms:"
+
+        private val incrWithExpireScript = RedisScript.of<Long>(
+            """
+            local v = redis.call('INCR', KEYS[1])
+            if v == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+            return v
+            """.trimIndent(),
+            Long::class.java
+        )
     }
 
     /** Stores an OTP code in Redis with automatic TTL expiration. */
@@ -41,12 +51,11 @@ class OtpStore(
      */
     fun checkAndIncrementRateLimit(phoneNumber: String): Boolean {
         val key = "$RATE_KEY_PREFIX$phoneNumber"
-        val currentCount = redisTemplate.opsForValue().increment(key) ?: 1
-
-        if (currentCount == 1L) {
-            redisTemplate.expire(key, Duration.ofMinutes(rateWindowMinutes))
-        }
-
+        val currentCount = redisTemplate.execute(
+            incrWithExpireScript,
+            listOf(key),
+            (rateWindowMinutes * 60).toString()
+        ) ?: 1L
         return currentCount <= maxAttempts
     }
 }

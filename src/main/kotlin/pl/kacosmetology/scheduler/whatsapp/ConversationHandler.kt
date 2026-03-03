@@ -139,7 +139,12 @@ class ConversationHandler(
         val user = userRepository.findById(employeeId).orElse(null)
         val employeeName = user?.let { "${it.firstName} ${it.lastName.first()}." } ?: "Pracownik"
 
-        val availableDates = findAvailableDates(employeeId, state.serviceId!!)
+        val offeringId = state.serviceId ?: run {
+            sender.sendMessage(phone, "Coś poszło nie tak. Zacznijmy od nowa.")
+            store.delete(phone)
+            return
+        }
+        val availableDates = findAvailableDates(employeeId, offeringId)
         if (availableDates.isEmpty()) {
             sender.sendMessage(phone, "Brak wolnych terminów w ciągu najbliższych 7 dni dla wybranego pracownika. Wybierz innego pracownika.")
             resendEmployeeList(phone, state)
@@ -169,10 +174,20 @@ class ConversationHandler(
         val dateStr = state.dateOptions[index]
         val date = LocalDate.parse(dateStr, dateFormatter)
 
+        val employeeId = state.employeeId ?: run {
+            sender.sendMessage(phone, "Coś poszło nie tak. Zacznijmy od nowa.")
+            store.delete(phone)
+            return
+        }
+        val serviceId = state.serviceId ?: run {
+            sender.sendMessage(phone, "Coś poszło nie tak. Zacznijmy od nowa.")
+            store.delete(phone)
+            return
+        }
         val slots = try {
-            availabilityService.getAvailableSlots(state.employeeId!!, state.serviceId!!, date)
+            availabilityService.getAvailableSlots(employeeId, serviceId, date)
         } catch (e: Exception) {
-            logger.warn("Failed to get slots for employee={} service={} date={}", state.employeeId, state.serviceId, dateStr, e)
+            logger.warn("Failed to get slots for employee={} service={} date={}", employeeId, serviceId, dateStr, e)
             emptyList()
         }
 
@@ -252,14 +267,34 @@ class ConversationHandler(
     // -------------------------------------------------------------------------
 
     private fun createReservation(phone: String, state: ConversationState, firstName: String, lastName: String) {
-        val date = LocalDate.parse(state.date!!, dateFormatter)
-        val time = LocalTime.parse(state.time!!, timeFormatter)
+        val dateStr = state.date ?: run {
+            sender.sendMessage(phone, "Coś poszło nie tak. Zacznijmy od nowa.")
+            store.delete(phone)
+            return
+        }
+        val timeStr = state.time ?: run {
+            sender.sendMessage(phone, "Coś poszło nie tak. Zacznijmy od nowa.")
+            store.delete(phone)
+            return
+        }
+        val employeeId = state.employeeId ?: run {
+            sender.sendMessage(phone, "Coś poszło nie tak. Zacznijmy od nowa.")
+            store.delete(phone)
+            return
+        }
+        val serviceId = state.serviceId ?: run {
+            sender.sendMessage(phone, "Coś poszło nie tak. Zacznijmy od nowa.")
+            store.delete(phone)
+            return
+        }
+        val date = LocalDate.parse(dateStr, dateFormatter)
+        val time = LocalTime.parse(timeStr, timeFormatter)
         val startTime = LocalDateTime.of(date, time)
 
         try {
             val reservation = reservationService.createReservationByStaff(
-                employeeId = state.employeeId!!,
-                serviceId = state.serviceId!!,
+                employeeId = employeeId,
+                serviceId = serviceId,
                 startTime = startTime,
                 customerPhone = phone,
                 customerFirstName = firstName,

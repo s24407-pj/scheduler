@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.notification
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import java.time.LocalDateTime
 
@@ -16,19 +17,19 @@ class NotificationScheduler(
 
     /** Runs every hour on the hour. Sends reminders for reservations starting in 23–25 hours. */
     @Scheduled(cron = "0 0 * * * *")
+    @Transactional
     fun sendReminders() {
         val now = LocalDateTime.now()
         val pending = reservationRepository.findPendingReminders(
             windowStart = now.plusHours(23),
             windowEnd = now.plusHours(25)
         )
+        val sentIds = mutableListOf<Long>()
         pending.forEach { reservation ->
             runCatching { notificationService.sendReminder(reservation) }
-                .onSuccess {
-                    reservation.reminderSent = true
-                    reservationRepository.save(reservation)
-                }
+                .onSuccess { sentIds += reservation.id!! }
                 .onFailure { logger.warn("Failed to send reminder for reservation ${reservation.id}", it) }
         }
+        if (sentIds.isNotEmpty()) reservationRepository.markRemindersAsSent(sentIds)
     }
 }
