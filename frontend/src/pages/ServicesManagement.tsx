@@ -1,17 +1,17 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
 
-interface Category {
+interface OfferingCategory {
   id: number;
   name: string;
 }
 
-interface ServiceImage {
+interface OfferingImage {
   id: number;
   imageUrl: string;
 }
 
-interface Service {
+interface Offering {
   id: number;
   companyId: number;
   name: string;
@@ -20,17 +20,17 @@ interface Service {
   active: boolean;
   categoryId: number | null;
   createdAt: string;
-  images: ServiceImage[];
+  images: OfferingImage[];
 }
 
 export default function ServicesManagement() {
-  const [services, setServices] = useState<Service[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [offerings, setOfferings] = useState<Offering[]>([]);
+  const [categories, setCategories] = useState<OfferingCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Service form state
+  // Offering form state
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState('');
@@ -45,11 +45,11 @@ export default function ServicesManagement() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [servicesRes, categoriesRes] = await Promise.all([
-        api.get('/services/company/1'),
-        api.get('/categories'),
+      const [offeringsRes, categoriesRes] = await Promise.all([
+        api.get('/offerings/company/1'),
+        api.get('/offering-categories'),
       ]);
-      setServices(servicesRes.data);
+      setOfferings(offeringsRes.data);
       setCategories(categoriesRes.data);
     } catch {
       setError('Nie udało się pobrać danych');
@@ -70,11 +70,11 @@ export default function ServicesManagement() {
     setShowForm(false);
   };
 
-  const startEdit = (s: Service) => {
-    setName(s.name);
-    setDurationMinutes(String(s.durationMinutes));
-    setPrice(String(s.price));
-    setEditingId(s.id);
+  const startEdit = (o: Offering) => {
+    setName(o.name);
+    setDurationMinutes(String(o.durationMinutes));
+    setPrice(String(o.price));
+    setEditingId(o.id);
     setShowForm(true);
   };
 
@@ -90,10 +90,10 @@ export default function ServicesManagement() {
         price: Number(price),
       };
       if (editingId) {
-        await api.put(`/services/${editingId}`, payload);
+        await api.put(`/offerings/${editingId}`, payload);
         setSuccess('Usługa zaktualizowana!');
       } else {
-        await api.post('/services', payload);
+        await api.post('/offerings', payload);
         setSuccess('Usługa dodana!');
       }
       resetForm();
@@ -108,7 +108,7 @@ export default function ServicesManagement() {
   const handleDelete = async (id: number) => {
     if (!confirm('Czy na pewno chcesz dezaktywować tę usługę? Istniejące rezerwacje zostaną zachowane.')) return;
     try {
-      await api.delete(`/services/${id}`);
+      await api.delete(`/offerings/${id}`);
       setSuccess('Usługa dezaktywowana');
       fetchAll();
     } catch (err: any) {
@@ -118,7 +118,7 @@ export default function ServicesManagement() {
 
   const handleActivate = async (id: number) => {
     try {
-      await api.patch(`/services/${id}/activate`);
+      await api.patch(`/offerings/${id}/activate`);
       setSuccess('Usługa aktywowana');
       fetchAll();
     } catch (err: any) {
@@ -126,9 +126,9 @@ export default function ServicesManagement() {
     }
   };
 
-  const handleAssignCategory = async (serviceId: number, categoryId: number | null) => {
+  const handleAssignCategory = async (offeringId: number, categoryId: number | null) => {
     try {
-      await api.patch(`/services/${serviceId}/category`, { categoryId });
+      await api.patch(`/offerings/${offeringId}/category`, { categoryId });
       setSuccess('Kategoria przypisana');
       fetchAll();
     } catch (err: any) {
@@ -143,7 +143,7 @@ export default function ServicesManagement() {
     setError('');
     setSuccess('');
     try {
-      await api.post('/categories', { name: newCategoryName.trim() });
+      await api.post('/offering-categories', { name: newCategoryName.trim() });
       setNewCategoryName('');
       setSuccess('Kategoria dodana!');
       fetchAll();
@@ -160,13 +160,13 @@ export default function ServicesManagement() {
     }
   };
 
-  const handleUploadImage = async (serviceId: number, file: File) => {
+  const handleUploadImage = async (offeringId: number, file: File) => {
     setError('');
     setSuccess('');
     const formData = new FormData();
     formData.append('image', file);
     try {
-      await api.post(`/services/${serviceId}/image`, formData, {
+      await api.post(`/offerings/${offeringId}/image`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setSuccess('Zdjęcie dodane!');
@@ -176,11 +176,11 @@ export default function ServicesManagement() {
     }
   };
 
-  const handleDeleteImage = async (serviceId: number, imageId: number) => {
+  const handleDeleteImage = async (offeringId: number, imageId: number) => {
     setError('');
     setSuccess('');
     try {
-      await api.delete(`/services/${serviceId}/image/${imageId}`);
+      await api.delete(`/offerings/${offeringId}/image/${imageId}`);
       setSuccess('Zdjęcie usunięte');
       fetchAll();
     } catch (err: any) {
@@ -191,7 +191,7 @@ export default function ServicesManagement() {
   const handleDeleteCategory = async (id: number) => {
     if (!confirm('Usunąć kategorię? Usługi przypisane do tej kategorii zostaną bez kategorii.')) return;
     try {
-      await api.delete(`/categories/${id}`);
+      await api.delete(`/offering-categories/${id}`);
       setSuccess('Kategoria usunięta');
       fetchAll();
     } catch (err: any) {
@@ -266,7 +266,7 @@ export default function ServicesManagement() {
         )}
       </div>
 
-      {/* Services header + add button */}
+      {/* Offerings header + add button */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-gray-800">Usługi</h3>
         <button
@@ -277,7 +277,7 @@ export default function ServicesManagement() {
         </button>
       </div>
 
-      {/* Service form */}
+      {/* Offering form */}
       {showForm && (
         <div className="bg-white rounded-2xl shadow-xl p-6">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">
@@ -330,42 +330,42 @@ export default function ServicesManagement() {
         </div>
       )}
 
-      {/* Services list */}
-      {services.length === 0 ? (
+      {/* Offerings list */}
+      {offerings.length === 0 ? (
         <div className="bg-white rounded-2xl shadow-xl p-8 text-center text-gray-400">
           Brak usług — dodaj pierwszą!
         </div>
       ) : (
         <div className="space-y-3">
-          {services.map((s) => (
+          {offerings.map((o) => (
             <div
-              key={s.id}
-              className={`bg-white rounded-xl shadow-md p-5 ${!s.active ? 'opacity-50' : ''}`}
+              key={o.id}
+              className={`bg-white rounded-xl shadow-md p-5 ${!o.active ? 'opacity-50' : ''}`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-gray-800 flex items-center gap-2 flex-wrap">
-                    {s.name}
-                    {!s.active && (
+                    {o.name}
+                    {!o.active && (
                       <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">Nieaktywna</span>
                     )}
-                    {categoryName(s.categoryId) && (
+                    {categoryName(o.categoryId) && (
                       <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">
-                        {categoryName(s.categoryId)}
+                        {categoryName(o.categoryId)}
                       </span>
                     )}
                   </div>
                   <div className="text-sm text-gray-500 mt-0.5">
-                    {s.durationMinutes} min · {s.price} zł
+                    {o.durationMinutes} min · {o.price} zł
                   </div>
                   {/* Category selector */}
-                  {s.active && (
+                  {o.active && (
                     <div className="mt-2 flex items-center gap-2">
                       <label className="text-xs text-gray-500">Kategoria:</label>
                       <select
-                        value={s.categoryId ?? ''}
+                        value={o.categoryId ?? ''}
                         onChange={(e) =>
-                          handleAssignCategory(s.id, e.target.value ? Number(e.target.value) : null)
+                          handleAssignCategory(o.id, e.target.value ? Number(e.target.value) : null)
                         }
                         className="text-xs border border-gray-200 rounded px-2 py-1 focus:ring-1 focus:ring-indigo-400 outline-none bg-white"
                       >
@@ -377,9 +377,9 @@ export default function ServicesManagement() {
                     </div>
                   )}
                   {/* Images */}
-                  {s.images.length > 0 && (
+                  {o.images.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {s.images.map((img) => (
+                      {o.images.map((img) => (
                         <div key={img.id} className="relative group w-16 h-16">
                           <img
                             src={img.imageUrl}
@@ -387,7 +387,7 @@ export default function ServicesManagement() {
                             className="w-16 h-16 object-cover rounded-lg border border-gray-200"
                           />
                           <button
-                            onClick={() => handleDeleteImage(s.id, img.id)}
+                            onClick={() => handleDeleteImage(o.id, img.id)}
                             className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition leading-none"
                             title="Usuń zdjęcie"
                           >
@@ -397,7 +397,7 @@ export default function ServicesManagement() {
                       ))}
                     </div>
                   )}
-                  {s.images.length < 5 && s.active && (
+                  {o.images.length < 5 && o.active && (
                     <label className="mt-2 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 cursor-pointer transition">
                       <input
                         type="file"
@@ -405,25 +405,25 @@ export default function ServicesManagement() {
                         className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
-                          if (file) handleUploadImage(s.id, file);
+                          if (file) handleUploadImage(o.id, file);
                           e.target.value = '';
                         }}
                       />
-                      + Dodaj zdjęcie ({s.images.length}/5)
+                      + Dodaj zdjęcie ({o.images.length}/5)
                     </label>
                   )}
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  {s.active ? (
+                  {o.active ? (
                     <>
                       <button
-                        onClick={() => startEdit(s)}
+                        onClick={() => startEdit(o)}
                         className="text-indigo-600 hover:text-indigo-800 text-sm font-medium transition"
                       >
                         Edytuj
                       </button>
                       <button
-                        onClick={() => handleDelete(s.id)}
+                        onClick={() => handleDelete(o.id)}
                         className="text-red-500 hover:text-red-700 text-sm font-medium transition"
                       >
                         Usuń
@@ -431,7 +431,7 @@ export default function ServicesManagement() {
                     </>
                   ) : (
                     <button
-                      onClick={() => handleActivate(s.id)}
+                      onClick={() => handleActivate(o.id)}
                       className="text-green-600 hover:text-green-800 text-sm font-medium transition"
                     >
                       Aktywuj

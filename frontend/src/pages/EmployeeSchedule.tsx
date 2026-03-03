@@ -335,7 +335,7 @@ function BookForClientTab({ date, myId }: { date: string; myId: number | null })
 
   // Load services
   useEffect(() => {
-    api.get('/services/public/company/1')
+    api.get('/offerings/public/company/1')
       .then((r) => {
         setServices(r.data);
         if (r.data.length > 0) setSelectedService(r.data[0].id);

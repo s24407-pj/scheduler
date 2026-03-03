@@ -4,9 +4,9 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import pl.kacosmetology.scheduler.availability.AvailabilityService
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
-import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignmentRepository
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
+import pl.kacosmetology.scheduler.offering.OfferingService
 import pl.kacosmetology.scheduler.reservation.ReservationService
-import pl.kacosmetology.scheduler.treatment.TreatmentService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.DayOfWeek
@@ -26,12 +26,12 @@ class ConversationHandler(
     private val sender: WhatsAppSender,
     private val store: ConversationStore,
     private val properties: WhatsAppProperties,
-    private val treatmentService: TreatmentService,
+    private val offeringService: OfferingService,
     private val availabilityService: AvailabilityService,
     private val reservationService: ReservationService,
     private val userRepository: UserRepository,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
-    private val assignmentRepository: EmployeeServiceAssignmentRepository
+    private val assignmentRepository: EmployeeOfferingAssignmentRepository
 ) {
 
     private val logger = LoggerFactory.getLogger(ConversationHandler::class.java)
@@ -73,18 +73,18 @@ class ConversationHandler(
     // -------------------------------------------------------------------------
 
     private fun startFlow(phone: String) {
-        val services = treatmentService.getCompanyServices(properties.companyId)
-        if (services.isEmpty()) {
+        val offerings = offeringService.getCompanyOfferings(properties.companyId)
+        if (offerings.isEmpty()) {
             sender.sendMessage(phone, "Przepraszamy, aktualnie nie ma dostępnych usług. Spróbuj ponownie później.")
             return
         }
         val sb = StringBuilder("Witaj! Wybierz usługę (wpisz numer):\n")
-        services.forEachIndexed { i, svc ->
-            sb.append("\n${i + 1}. ${svc.name} (${svc.durationMinutes} min) - ${svc.price} zł")
+        offerings.forEachIndexed { i, offering ->
+            sb.append("\n${i + 1}. ${offering.name} (${offering.durationMinutes} min) - ${offering.price} zł")
         }
         val newState = ConversationState(
             step = ConversationStep.SELECTING_SERVICE,
-            serviceOptions = services.map { it.id!! }
+            serviceOptions = offerings.map { it.id!! }
         )
         store.save(phone, newState)
         sender.sendMessage(phone, sb.toString())
@@ -96,14 +96,14 @@ class ConversationHandler(
             sender.sendMessage(phone, "Wpisz numer od 1 do ${state.serviceOptions.size}.")
             return
         }
-        val serviceId = state.serviceOptions[index]
-        val service = treatmentService.getServiceById(serviceId)
+        val offeringId = state.serviceOptions[index]
+        val offering = offeringService.getOfferingById(offeringId)
 
         val companyEmployees = companyEmployeeRepository.findAllByCompanyId(properties.companyId)
         val eligibleUsers = companyEmployees
             .filter { emp ->
                 !assignmentRepository.existsByEmployeeId(emp.userId) ||
-                    assignmentRepository.existsByEmployeeIdAndServiceId(emp.userId, serviceId)
+                    assignmentRepository.existsByEmployeeIdAndOfferingId(emp.userId, offeringId)
             }
             .mapNotNull { emp ->
                 userRepository.findById(emp.userId).orElse(null)?.let { user -> Pair(emp.userId, user) }
@@ -121,8 +121,8 @@ class ConversationHandler(
         }
         val newState = state.copy(
             step = ConversationStep.SELECTING_EMPLOYEE,
-            serviceId = serviceId,
-            serviceName = service.name,
+            serviceId = offeringId,
+            serviceName = offering.name,
             employeeOptions = eligibleUsers.map { it.first }
         )
         store.save(phone, newState)
@@ -296,16 +296,16 @@ class ConversationHandler(
         sender.sendMessage(phone, sb.toString())
     }
 
-    /** Returns available date strings for the next 7 calendar days for the given employee + service. */
-    private fun findAvailableDates(employeeId: Long, serviceId: Long): List<String> {
+    /** Returns available date strings for the next 7 calendar days for the given employee + offering. */
+    private fun findAvailableDates(employeeId: Long, offeringId: Long): List<String> {
         val today = LocalDate.now()
         return (0..6).mapNotNull { offset ->
             val date = today.plusDays(offset.toLong())
             try {
-                val slots = availabilityService.getAvailableSlots(employeeId, serviceId, date)
+                val slots = availabilityService.getAvailableSlots(employeeId, offeringId, date)
                 if (slots.isNotEmpty()) date.format(dateFormatter) else null
             } catch (e: Exception) {
-                logger.warn("Error fetching slots for employee={} service={} date={}: {}", employeeId, serviceId, date, e.message)
+                logger.warn("Error fetching slots for employee={} service={} date={}: {}", employeeId, offeringId, date, e.message)
                 null
             }
         }

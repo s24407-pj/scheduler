@@ -34,7 +34,7 @@ class ReservationController(
         return reservationService.createReservation(
             customerId = customerId,
             employeeId = request.employeeId,
-            serviceId = request.serviceId,
+            offeringId = request.serviceId,
             startTime = request.startTime
         ).toResponse()
     }

@@ -65,12 +65,12 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 ├── availability/   # Available time slot calculation (public endpoint)
 ├── company/        # Company entity, settings CRUD (hours, slot interval)
 ├── config/         # Security, CORS, Redis, DataInitializer (dev seed)
-├── employeeservice/ # Employee–service assignments (which services an employee performs)
+├── employeeoffering/ # Employee–offering assignments (which offerings an employee performs)
 ├── reservation/    # Booking lifecycle (PENDING → CONFIRMED → COMPLETED/CANCELLED)
 ├── scheduleblock/  # Employee time blocks (breaks, unavailability)
 ├── security/       # JWT filter, CustomUserDetails, CustomUserDetailsService
 ├── notification/   # SMS notifications (booking confirmation, cancellation, reminders)
-├── treatment/      # Service catalog (ProvidedService) and service categories
+├── offering/       # Offering catalog (Offering entity) and offering categories
 ├── user/           # User profile management
 ├── whatsapp/       # WhatsApp booking bot (webhook, conversation state machine, Meta sender)
 └── workschedule/   # Employee weekly work schedules (per-day hours)
@@ -96,11 +96,11 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **Work schedules:** Owners set a weekly schedule per employee via `PUT /api/employees/{id}/work-schedule`. If an employee has no entry for a given day of week, `AvailabilityService` returns an empty list for that day.
 
-**Employee service assignments:** Owners assign which services each employee can perform via `POST /api/employees/{id}/services/{serviceId}`. If an employee has any assignments configured, `AvailabilityService` and `ReservationService` reject requests for unassigned services. Employees with no assignments at all can perform any service (backward-compatible default).
+**Employee offering assignments:** Owners assign which offerings each employee can perform via `POST /api/employees/{id}/offerings/{offeringId}`. If an employee has any assignments configured, `AvailabilityService` and `ReservationService` reject requests for unassigned offerings. Employees with no assignments at all can perform any offering (backward-compatible default).
 
 **Schedule blocks:** Employees can block time ranges (breaks, personal unavailability) via `POST /api/schedule-blocks`. Blocks are validated with `@Future` on `startTime` (DTO layer) and checked for overlap with existing reservations and other blocks (service layer). Blocked slots are excluded from availability.
 
-**Service categories:** Owners can group services into categories via `POST /api/categories`. Categories are company-scoped; services carry an optional `category_id` (set to null on category deletion).
+**Offering categories:** Owners can group offerings into categories via `POST /api/offering-categories`. Categories are company-scoped; offerings carry an optional `category_id` (set to null on category deletion).
 
 **Staff booking:** Staff can create a reservation on behalf of a client via `POST /api/reservations/staff`. If the client's phone number is not found in the database, a new `User` is auto-created — `firstName` and `lastName` are required in that case.
 
@@ -108,7 +108,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **SMS notifications:** `NotificationService` sends booking confirmation and cancellation SMS after `ReservationService` saves. `NotificationScheduler` runs hourly (`0 0 * * * *`) and sends reminders for reservations starting in 23–25 h (`reminder_sent` flag on `Reservation` prevents duplicates). SMS failures are logged but never propagate — they are side-effects of the main transaction. `@EnableScheduling` is on `RedisConfig`.
 
-**Service images:** Owners can upload up to 5 images per service via `POST /api/services/{id}/image` (multipart field `image`; max 5 MB; JPEG/PNG/WebP). Images are stored in Cloudflare R2 (S3-compatible). Delete a single image via `DELETE /api/services/{id}/image/{imageId}`. `TreatmentController` returns `ProvidedServiceResponse` (DTO wrapping entity fields + `images` list). `ImageService` handles all R2 operations. R2 credentials are configured via `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`. In tests, `S3Client` is replaced with `@MockkBean`.
+**Offering images:** Owners can upload up to 5 images per offering via `POST /api/offerings/{id}/image` (multipart field `image`; max 5 MB; JPEG/PNG/WebP). Images are stored in Cloudflare R2 (S3-compatible). Delete a single image via `DELETE /api/offerings/{id}/image/{imageId}`. `OfferingController` returns `OfferingResponse` (DTO wrapping entity fields + `images` list). `OfferingImageService` handles all R2 operations. R2 credentials are configured via `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`. In tests, `S3Client` is replaced with `@MockkBean`.
 
 **Employee photos:** Owners can upload a single profile photo per employee via `POST /api/employees/{id}/photo` (multipart field `photo`; max 5 MB; JPEG/PNG/WebP). Uploading replaces any existing photo (old R2 object deleted). Delete via `DELETE /api/employees/{id}/photo`. Photo URL is stored as `photo_url` on the `users` table (in V1 schema). `EmployeePhotoService` handles R2 operations. `EmployeeController` at `/api/employees` serves both endpoints (OWNER only). `photoUrl` is included in `UserProfileResponse` and `CompanyEmployeeResponse`.
 
@@ -116,16 +116,16 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 ### Database Schema
 
-PostgreSQL with a single Flyway migration (`src/main/resources/db/migration/V1__init_schema.sql`). Key tables:
-- `users` — unified table for customers and staff (distinguished by `company_employees` membership); has `photo_url` column (V1)
+PostgreSQL with Flyway migrations in `src/main/resources/db/migration/`. Key tables (after V2 rename):
+- `users` — unified table for customers and staff (distinguished by `company_employees` membership); has `photo_url` column
 - `company_employees` — join table assigning users to a company with a role (`OWNER`/`EMPLOYEE`)
-- `services` — treatment catalog (named `ProvidedService` in Kotlin); has optional `category_id`
-- `service_categories` — company-scoped groupings for services
-- `service_images` — up to 5 images per service, references `services(id)` ON DELETE CASCADE
+- `offerings` — offering catalog (`Offering` entity); has optional `category_id`
+- `offering_categories` — company-scoped groupings for offerings
+- `offering_images` — up to 5 images per offering, references `offerings(id)` ON DELETE CASCADE; column `offering_id`
 - `reservations` — stores price snapshot at booking time, has `@Version` for optimistic locking, `reminder_sent` flag for deduplication
 - `schedule_blocks` — employee time blocks; checked by `AvailabilityService` alongside reservations
 - `employee_work_schedules` — per-employee, per-day-of-week working hours
-- `employee_services` — which services each employee is allowed to perform
+- `employee_offerings` — which offerings each employee is allowed to perform; column `offering_id`
 
 ### Frontend Structure
 

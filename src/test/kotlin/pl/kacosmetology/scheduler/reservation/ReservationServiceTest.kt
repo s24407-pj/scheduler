@@ -10,10 +10,10 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
-import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignmentRepository
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.notification.NotificationService
-import pl.kacosmetology.scheduler.treatment.ProvidedService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalDateTime
@@ -26,13 +26,13 @@ class ReservationServiceTest {
     private lateinit var reservationRepository: ReservationRepository
 
     @MockK
-    private lateinit var serviceRepository: TreatmentRepository
+    private lateinit var serviceRepository: OfferingRepository
 
     @MockK
     private lateinit var userRepository: UserRepository
 
     @MockK
-    private lateinit var assignmentRepository: EmployeeServiceAssignmentRepository
+    private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
     @MockK(relaxed = true)
     private lateinit var notificationService: NotificationService
@@ -51,7 +51,7 @@ class ReservationServiceTest {
         // GIVEN
         val duration = 45
         val servicePrice = 150
-        val mockService = ProvidedService(
+        val mockService = Offering(
             id = serviceId, companyId = companyId, name = "Strzyżenie",
             durationMinutes = duration, price = servicePrice
         )
@@ -91,7 +91,7 @@ class ReservationServiceTest {
     @Test
     fun `should throw when time slot is already taken`() {
         // GIVEN
-        val mockService = ProvidedService(
+        val mockService = Offering(
             id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 50
         )
 
@@ -126,12 +126,12 @@ class ReservationServiceTest {
     @Test
     fun `should throw when employee has service assignments but not for this service`() {
         // GIVEN
-        val mockService = ProvidedService(
+        val mockService = Offering(
             id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 50
         )
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns true
-        every { assignmentRepository.existsByEmployeeIdAndServiceId(employeeId, serviceId) } returns false
+        every { assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, serviceId) } returns false
 
         // WHEN & THEN
         val exception = assertThrows<IllegalArgumentException> {
@@ -257,7 +257,7 @@ class ReservationServiceTest {
         // GIVEN
         val existingCustomer = User(id = customerId, phoneNumber = "+48111111111", firstName = "Ala", lastName = "Nowak")
         val duration = 30
-        val mockService = ProvidedService(id = serviceId, companyId = companyId, name = "Paznokcie", durationMinutes = duration, price = 80)
+        val mockService = Offering(id = serviceId, companyId = companyId, name = "Paznokcie", durationMinutes = duration, price = 80)
 
         every { userRepository.findByPhoneNumber(existingCustomer.phoneNumber) } returns existingCustomer
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
@@ -286,7 +286,7 @@ class ReservationServiceTest {
         val newPhone = "+48999000111"
         val newCustomer = User(id = 500L, phoneNumber = newPhone, firstName = "Nowy", lastName = "Klient")
         val duration = 45
-        val mockService = ProvidedService(id = serviceId, companyId = companyId, name = "Masaż", durationMinutes = duration, price = 120)
+        val mockService = Offering(id = serviceId, companyId = companyId, name = "Masaż", durationMinutes = duration, price = 120)
 
         every { userRepository.findByPhoneNumber(newPhone) } returns null
         every { userRepository.save(any()) } returns newCustomer

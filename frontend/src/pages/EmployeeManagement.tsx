@@ -25,7 +25,7 @@ interface Service {
 }
 
 interface ServiceAssignment {
-  serviceId: number;
+  offeringId: number;
   serviceName: string;
   durationMinutes: number;
   price: number;
@@ -124,8 +124,8 @@ export default function EmployeeManagement() {
     setLoadingAssignments(true);
     resetMessages();
     Promise.all([
-      api.get(`/employees/${selected.userId}/services`),
-      api.get('/services/company/1'),
+      api.get(`/employees/${selected.userId}/offerings`),
+      api.get('/offerings/company/1'),
     ])
       .then(([assignRes, servicesRes]) => {
         setAssignments(assignRes.data);
@@ -164,14 +164,14 @@ export default function EmployeeManagement() {
   const updateDayTime = (day: string, field: 'start' | 'end', value: string) =>
     setSchedule((prev) => ({ ...prev, [day]: { ...prev[day], [field]: value } }));
 
-  const isAssigned = (serviceId: number) => assignments.some((a) => a.serviceId === serviceId);
+  const isAssigned = (serviceId: number) => assignments.some((a) => a.offeringId === serviceId);
 
   const handleAssign = async (serviceId: number) => {
     if (!selected) return;
     resetMessages();
     try {
-      await api.post(`/employees/${selected.userId}/services/${serviceId}`);
-      const res = await api.get(`/employees/${selected.userId}/services`);
+      await api.post(`/employees/${selected.userId}/offerings/${serviceId}`);
+      const res = await api.get(`/employees/${selected.userId}/offerings`);
       setAssignments(res.data);
       setSuccess('Usługa przypisana');
     } catch (err: any) {
@@ -187,8 +187,8 @@ export default function EmployeeManagement() {
     if (!selected) return;
     resetMessages();
     try {
-      await api.delete(`/employees/${selected.userId}/services/${serviceId}`);
-      setAssignments((prev) => prev.filter((a) => a.serviceId !== serviceId));
+      await api.delete(`/employees/${selected.userId}/offerings/${serviceId}`);
+      setAssignments((prev) => prev.filter((a) => a.offeringId !== serviceId));
       setSuccess('Przypisanie usunięte');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Błąd usuwania przypisania');

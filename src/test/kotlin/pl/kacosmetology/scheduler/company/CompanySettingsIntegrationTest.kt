@@ -17,7 +17,7 @@ import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import tools.jackson.databind.ObjectMapper
@@ -34,7 +34,7 @@ class CompanySettingsIntegrationTest {
     @Autowired private lateinit var companyRepository: CompanyRepository
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
     @Autowired private lateinit var reservationRepository: ReservationRepository
-    @Autowired private lateinit var serviceRepository: TreatmentRepository
+    @Autowired private lateinit var serviceRepository: OfferingRepository
 
     @MockkBean private lateinit var s3Client: S3Client
 

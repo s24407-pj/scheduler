@@ -15,15 +15,15 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignment
-import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignmentRepository
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignment
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
-import pl.kacosmetology.scheduler.treatment.ProvidedService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
@@ -49,7 +49,7 @@ class AvailabilityIntegrationTest {
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
     @Autowired
-    private lateinit var serviceRepository: TreatmentRepository
+    private lateinit var serviceRepository: OfferingRepository
 
     @Autowired
     private lateinit var reservationRepository: ReservationRepository
@@ -61,7 +61,7 @@ class AvailabilityIntegrationTest {
     private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
 
     @Autowired
-    private lateinit var assignmentRepository: EmployeeServiceAssignmentRepository
+    private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
     @MockkBean
     private lateinit var s3Client: S3Client
@@ -97,7 +97,7 @@ class AvailabilityIntegrationTest {
         )
 
         val service = serviceRepository.save(
-            ProvidedService(
+            Offering(
                 companyId = company.id!!,
                 name = "Farbowanie",
                 durationMinutes = 120,
@@ -210,10 +210,10 @@ class AvailabilityIntegrationTest {
     @Test
     fun `should return 400 when employee has service assignments but not for requested service`() {
         val otherService = serviceRepository.save(
-            ProvidedService(companyId = companyId, name = "Inny Serwis", durationMinutes = 30, price = 50)
+            Offering(companyId = companyId, name = "Inny Serwis", durationMinutes = 30, price = 50)
         )
         // Pracownik ma przypisanie tylko do innej usługi
-        assignmentRepository.save(EmployeeServiceAssignment(companyId = companyId, employeeId = employeeId, serviceId = otherService.id!!))
+        assignmentRepository.save(EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = otherService.id!!))
 
         mockMvc.get("/api/availability") {
             param("employeeId", employeeId.toString())

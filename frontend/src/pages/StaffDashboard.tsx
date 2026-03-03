@@ -26,7 +26,7 @@ export default function StaffDashboard() {
   useEffect(() => {
     Promise.all([
       api.get('/users/me').catch(() => null),
-      api.get('/services/company/1').catch(() => null),
+      api.get('/offerings/company/1').catch(() => null),
     ]).then(([profileRes, servicesRes]) => {
       if (profileRes) setProfile(profileRes.data);
       if (servicesRes) setServices(servicesRes.data);

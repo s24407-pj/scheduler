@@ -3,9 +3,9 @@ package pl.kacosmetology.scheduler.reservation
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignmentRepository
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.notification.NotificationService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalDateTime
@@ -14,39 +14,39 @@ import java.time.LocalDateTime
 @Service
 class ReservationService(
     private val reservationRepository: ReservationRepository,
-    private val serviceRepository: TreatmentRepository,
+    private val offeringRepository: OfferingRepository,
     private val userRepository: UserRepository,
-    private val assignmentRepository: EmployeeServiceAssignmentRepository,
+    private val assignmentRepository: EmployeeOfferingAssignmentRepository,
     private val notificationService: NotificationService
 ) {
     private val logger = LoggerFactory.getLogger(ReservationService::class.java)
 
     /**
-     * Creates a new reservation with a price snapshot from the service catalog.
+     * Creates a new reservation with a price snapshot from the offering catalog.
      * Validates that the requested time slot is available.
-     * Throws [IllegalArgumentException] if the employee has service assignments but not for this service.
+     * Throws [IllegalArgumentException] if the employee has offering assignments but not for this offering.
      */
     @Transactional
     fun createReservation(
         customerId: Long,
         employeeId: Long,
-        serviceId: Long,
+        offeringId: Long,
         startTime: LocalDateTime
     ): Reservation {
-        val service = serviceRepository.findById(serviceId)
+        val offering = offeringRepository.findById(offeringId)
             .orElseThrow { IllegalArgumentException("Usługa nie istnieje") }
 
-        if (!service.active) {
+        if (!offering.active) {
             throw IllegalArgumentException("Ta usługa nie jest już dostępna")
         }
 
         if (assignmentRepository.existsByEmployeeId(employeeId) &&
-            !assignmentRepository.existsByEmployeeIdAndServiceId(employeeId, serviceId)
+            !assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId)
         ) {
             throw IllegalArgumentException("Ten pracownik nie wykonuje wybranej usługi")
         }
 
-        val endTime = startTime.plusMinutes(service.durationMinutes.toLong())
+        val endTime = startTime.plusMinutes(offering.durationMinutes.toLong())
 
         if (reservationRepository.existsOverlapping(employeeId, startTime, endTime)) {
             throw IllegalStateException("Ten termin jest już zajęty")
@@ -54,11 +54,11 @@ class ReservationService(
 
         val saved = reservationRepository.save(
             Reservation(
-                companyId = service.companyId,
+                companyId = offering.companyId,
                 customerId = customerId,
                 employeeId = employeeId,
-                serviceId = serviceId,
-                price = service.price,
+                serviceId = offeringId,
+                price = offering.price,
                 startTime = startTime,
                 endTime = endTime,
                 status = ReservationStatus.PENDING
@@ -154,7 +154,7 @@ class ReservationService(
         return createReservation(
             customerId = customer.id,
             employeeId = employeeId,
-            serviceId = serviceId,
+            offeringId = serviceId,
             startTime = startTime
         )
     }

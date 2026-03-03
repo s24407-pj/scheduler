@@ -4,8 +4,8 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.format.DateTimeFormatter
 
@@ -14,7 +14,7 @@ import java.time.format.DateTimeFormatter
 class NotificationService(
     private val smsSender: SmsSender,
     private val userRepository: UserRepository,
-    private val treatmentRepository: TreatmentRepository,
+    private val offeringRepository: OfferingRepository,
     private val companyRepository: CompanyRepository
 ) {
     private val logger = LoggerFactory.getLogger(NotificationService::class.java)
@@ -73,7 +73,7 @@ class NotificationService(
     private fun loadDetails(reservation: Reservation): ReservationDetails {
         val customer = userRepository.findById(reservation.customerId)
             .orElseThrow { NoSuchElementException("Customer ${reservation.customerId} not found") }
-        val service = treatmentRepository.findById(reservation.serviceId)
+        val offering = offeringRepository.findById(reservation.serviceId)
             .orElseThrow { NoSuchElementException("Service ${reservation.serviceId} not found") }
         val employee = userRepository.findById(reservation.employeeId)
             .orElseThrow { NoSuchElementException("Employee ${reservation.employeeId} not found") }
@@ -82,7 +82,7 @@ class NotificationService(
 
         return ReservationDetails(
             customerPhone = customer.phoneNumber,
-            serviceName = service.name,
+            serviceName = offering.name,
             employeeName = "${employee.firstName} ${employee.lastName}",
             companyName = company.name
         )

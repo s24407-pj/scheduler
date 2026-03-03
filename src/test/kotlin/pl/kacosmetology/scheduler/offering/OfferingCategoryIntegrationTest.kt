@@ -1,7 +1,8 @@
-package pl.kacosmetology.scheduler.workschedule
+package pl.kacosmetology.scheduler.offering
 
 import com.ninjasquad.springmockk.MockkBean
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -11,8 +12,10 @@ import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
-import org.springframework.test.web.servlet.put
+import org.springframework.test.web.servlet.patch
+import org.springframework.test.web.servlet.post
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.company.Company
@@ -22,16 +25,14 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import tools.jackson.databind.ObjectMapper
-import java.time.DayOfWeek
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
-class WorkScheduleIntegrationTest {
+class OfferingCategoryIntegrationTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
     @Autowired private lateinit var objectMapper: ObjectMapper
@@ -39,96 +40,84 @@ class WorkScheduleIntegrationTest {
     @Autowired private lateinit var userRepository: UserRepository
     @Autowired private lateinit var companyRepository: CompanyRepository
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
+    @Autowired private lateinit var categoryRepository: OfferingCategoryRepository
+    @Autowired private lateinit var offeringRepository: OfferingRepository
     @Autowired private lateinit var reservationRepository: ReservationRepository
-    @Autowired private lateinit var serviceRepository: OfferingRepository
 
     @MockkBean private lateinit var s3Client: S3Client
 
     private var companyId: Long = 0
-    private var employeeId: Long = 0
+    private var offeringId: Long = 0
     private lateinit var ownerToken: String
     private lateinit var employeeToken: String
 
     @BeforeEach
     fun setup() {
         reservationRepository.deleteAll()
-        workScheduleRepository.deleteAll()
-        serviceRepository.deleteAll()
+        offeringRepository.deleteAll()
+        categoryRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
         companyRepository.deleteAll()
 
-        val company = companyRepository.save(Company(name = "Salon Grafik"))
+        val company = companyRepository.save(Company(name = "Salon Kategorii"))
         companyId = company.id!!
 
-        val owner = userRepository.save(User(phoneNumber = "+48111222333", firstName = "Owner", lastName = "Test"))
+        val owner = userRepository.save(User(phoneNumber = "+48500500500", firstName = "Owner", lastName = "Cat"))
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER"))
         ownerToken = jwtService.generateToken(
             CustomUserDetails(owner, companyId, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
             companyId
         )
 
-        val employee = userRepository.save(User(phoneNumber = "+48333222111", firstName = "Emp", lastName = "Test"))
+        val employee = userRepository.save(User(phoneNumber = "+48600600600", firstName = "Emp", lastName = "Cat"))
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
-        employeeId = employee.id
         employeeToken = jwtService.generateToken(
             CustomUserDetails(employee, companyId, listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE"))),
             companyId
         )
+
+        val offering = offeringRepository.save(
+            Offering(companyId = companyId, name = "Farbowanie", durationMinutes = 60, price = 150)
+        )
+        offeringId = offering.id!!
     }
 
     @Test
-    fun `PUT work-schedule should return 200 for owner and save entries`() {
-        val body = mapOf(
-            "entries" to listOf(
-                mapOf("dayOfWeek" to "MONDAY", "startTime" to "09:00:00", "endTime" to "17:00:00"),
-                mapOf("dayOfWeek" to "TUESDAY", "startTime" to "10:00:00", "endTime" to "18:00:00")
-            )
-        )
+    fun `POST api-offering-categories should return 201 for owner`() {
+        val body = mapOf("name" to "Koloryzacja")
 
-        mockMvc.put("/api/employees/$employeeId/work-schedule") {
+        mockMvc.post("/api/offering-categories") {
             header("Authorization", "Bearer $ownerToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(body)
         }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(2) }
+            status { isCreated() }
+            jsonPath("$.id") { exists() }
+            jsonPath("$.name") { value("Koloryzacja") }
         }
-
-        assertEquals(2, workScheduleRepository.findAllByEmployeeId(employeeId).size)
     }
 
     @Test
-    fun `PUT work-schedule should replace existing schedule idempotently`() {
-        workScheduleRepository.save(
-            EmployeeWorkSchedule(companyId = companyId, employeeId = employeeId, dayOfWeek = DayOfWeek.MONDAY, startTime = java.time.LocalTime.of(9, 0), endTime = java.time.LocalTime.of(17, 0))
-        )
+    fun `POST api-offering-categories should return 409 for duplicate name`() {
+        categoryRepository.save(OfferingCategory(companyId = companyId, name = "Koloryzacja"))
 
-        val body = mapOf(
-            "entries" to listOf(
-                mapOf("dayOfWeek" to "WEDNESDAY", "startTime" to "08:00:00", "endTime" to "16:00:00")
-            )
-        )
+        val body = mapOf("name" to "Koloryzacja")
 
-        mockMvc.put("/api/employees/$employeeId/work-schedule") {
+        mockMvc.post("/api/offering-categories") {
             header("Authorization", "Bearer $ownerToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(body)
         }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].dayOfWeek") { value("WEDNESDAY") }
+            status { isConflict() }
         }
-
-        assertEquals(1, workScheduleRepository.findAllByEmployeeId(employeeId).size)
     }
 
     @Test
-    fun `PUT work-schedule should return 403 for employee`() {
-        val body = mapOf("entries" to emptyList<Any>())
+    fun `POST api-offering-categories should return 403 for employee`() {
+        val body = mapOf("name" to "Strzyżenie")
 
-        mockMvc.put("/api/employees/$employeeId/work-schedule") {
+        mockMvc.post("/api/offering-categories") {
             header("Authorization", "Bearer $employeeToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(body)
@@ -138,52 +127,65 @@ class WorkScheduleIntegrationTest {
     }
 
     @Test
-    fun `PUT work-schedule should return 400 when duplicate days provided`() {
-        val body = mapOf(
-            "entries" to listOf(
-                mapOf("dayOfWeek" to "MONDAY", "startTime" to "09:00:00", "endTime" to "17:00:00"),
-                mapOf("dayOfWeek" to "MONDAY", "startTime" to "10:00:00", "endTime" to "18:00:00")
-            )
-        )
+    fun `GET api-offering-categories should return list for employee`() {
+        categoryRepository.save(OfferingCategory(companyId = companyId, name = "Kategoria A"))
+        categoryRepository.save(OfferingCategory(companyId = companyId, name = "Kategoria B"))
 
-        mockMvc.put("/api/employees/$employeeId/work-schedule") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isBadRequest() }
-        }
-    }
-
-    @Test
-    fun `PUT work-schedule should return 400 when endTime is not after startTime`() {
-        val body = mapOf(
-            "entries" to listOf(
-                mapOf("dayOfWeek" to "FRIDAY", "startTime" to "17:00:00", "endTime" to "09:00:00")
-            )
-        )
-
-        mockMvc.put("/api/employees/$employeeId/work-schedule") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isBadRequest() }
-        }
-    }
-
-    @Test
-    fun `GET work-schedule should return 200 with current schedule`() {
-        workScheduleRepository.save(
-            EmployeeWorkSchedule(companyId = companyId, employeeId = employeeId, dayOfWeek = DayOfWeek.THURSDAY, startTime = java.time.LocalTime.of(9, 0), endTime = java.time.LocalTime.of(17, 0))
-        )
-
-        mockMvc.get("/api/employees/$employeeId/work-schedule") {
-            header("Authorization", "Bearer $ownerToken")
+        mockMvc.get("/api/offering-categories") {
+            header("Authorization", "Bearer $employeeToken")
         }.andExpect {
             status { isOk() }
-            jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].dayOfWeek") { value("THURSDAY") }
+            jsonPath("$.length()") { value(2) }
         }
+    }
+
+    @Test
+    fun `DELETE api-offering-categories should return 204 for owner`() {
+        val category = categoryRepository.save(OfferingCategory(companyId = companyId, name = "Do Usunięcia"))
+
+        mockMvc.delete("/api/offering-categories/${category.id}") {
+            header("Authorization", "Bearer $ownerToken")
+        }.andExpect {
+            status { isNoContent() }
+        }
+    }
+
+    @Test
+    fun `PATCH api-offerings-category should assign category to offering`() {
+        val category = categoryRepository.save(OfferingCategory(companyId = companyId, name = "Koloryzacja"))
+
+        val body = mapOf("categoryId" to category.id)
+
+        mockMvc.patch("/api/offerings/$offeringId/category") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isNoContent() }
+        }
+
+        val updated = offeringRepository.findById(offeringId).get()
+        assertEquals(category.id, updated.categoryId)
+    }
+
+    @Test
+    fun `PATCH api-offerings-category with null should clear category`() {
+        val category = categoryRepository.save(OfferingCategory(companyId = companyId, name = "Koloryzacja"))
+        offeringRepository.save(
+            Offering(id = offeringId, companyId = companyId, name = "Farbowanie", durationMinutes = 60, price = 150, categoryId = category.id)
+        )
+
+        val body = mapOf("categoryId" to null)
+
+        mockMvc.patch("/api/offerings/$offeringId/category") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isNoContent() }
+        }
+
+        val updated = offeringRepository.findById(offeringId).get()
+        assertNull(updated.categoryId)
     }
 }

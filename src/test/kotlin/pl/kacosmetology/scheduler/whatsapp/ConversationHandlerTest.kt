@@ -13,12 +13,12 @@ import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.availability.AvailabilityService
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
-import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignmentRepository
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationService
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
-import pl.kacosmetology.scheduler.treatment.ProvidedService
-import pl.kacosmetology.scheduler.treatment.TreatmentService
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalDate
@@ -32,12 +32,12 @@ class ConversationHandlerTest {
     @MockK private lateinit var sender: WhatsAppSender
     @MockK private lateinit var store: ConversationStore
     @MockK private lateinit var properties: WhatsAppProperties
-    @MockK private lateinit var treatmentService: TreatmentService
+    @MockK private lateinit var offeringService: OfferingService
     @MockK private lateinit var availabilityService: AvailabilityService
     @MockK private lateinit var reservationService: ReservationService
     @MockK private lateinit var userRepository: UserRepository
     @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @MockK private lateinit var assignmentRepository: EmployeeServiceAssignmentRepository
+    @MockK private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
     @InjectMockKs private lateinit var handler: ConversationHandler
 
@@ -58,9 +58,9 @@ class ConversationHandlerTest {
     @Test
     fun `IDLE state should send greeting and service list`() {
         setupCommonMocks()
-        val service = ProvidedService(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80)
+        val service = Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80)
         every { store.get(normalizedPhone) } returns ConversationState(step = ConversationStep.IDLE)
-        every { treatmentService.getCompanyServices(companyId) } returns listOf(service)
+        every { offeringService.getCompanyOfferings(companyId) } returns listOf(service)
 
         handler.handle(phone, "cześć")
 
@@ -75,7 +75,7 @@ class ConversationHandlerTest {
     @Test
     fun `SELECTING_SERVICE with valid number should transition to SELECTING_EMPLOYEE`() {
         setupCommonMocks()
-        val service = ProvidedService(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80)
+        val service = Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80)
         val employee = CompanyEmployee(companyId = companyId, userId = employeeId, role = "EMPLOYEE")
         val user = User(id = employeeId, phoneNumber = "+48999000111", firstName = "Anna", lastName = "Kowalska")
 
@@ -83,7 +83,7 @@ class ConversationHandlerTest {
             step = ConversationStep.SELECTING_SERVICE,
             serviceOptions = listOf(serviceId)
         )
-        every { treatmentService.getServiceById(serviceId) } returns service
+        every { offeringService.getOfferingById(serviceId) } returns service
         every { companyEmployeeRepository.findAllByCompanyId(companyId) } returns listOf(employee)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         every { userRepository.findById(employeeId) } returns Optional.of(user)

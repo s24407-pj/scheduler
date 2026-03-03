@@ -14,8 +14,8 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
-import pl.kacosmetology.scheduler.treatment.ProvidedService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalDateTime
@@ -31,7 +31,7 @@ class NotificationServiceTest {
     private lateinit var userRepository: UserRepository
 
     @MockK
-    private lateinit var treatmentRepository: TreatmentRepository
+    private lateinit var offeringRepository: OfferingRepository
 
     @MockK
     private lateinit var companyRepository: CompanyRepository
@@ -41,7 +41,7 @@ class NotificationServiceTest {
 
     private val customer = User(id = 1L, phoneNumber = "+48123456789", firstName = "Anna", lastName = "Kowalska")
     private val employee = User(id = 2L, phoneNumber = "+48987654321", firstName = "Jan", lastName = "Nowak")
-    private val service = ProvidedService(id = 10L, companyId = 5L, name = "Masaż", durationMinutes = 60, price = 200)
+    private val service = Offering(id = 10L, companyId = 5L, name = "Masaż", durationMinutes = 60, price = 200)
     private val company = Company(id = 5L, name = "Salon Piękności")
     private val startTime = LocalDateTime.of(2026, 3, 15, 14, 0)
 
@@ -60,7 +60,7 @@ class NotificationServiceTest {
     private fun setupMocks() {
         every { userRepository.findById(1L) } returns Optional.of(customer)
         every { userRepository.findById(2L) } returns Optional.of(employee)
-        every { treatmentRepository.findById(10L) } returns Optional.of(service)
+        every { offeringRepository.findById(10L) } returns Optional.of(service)
         every { companyRepository.findById(5L) } returns Optional.of(company)
         every { smsSender.sendMessage(any(), any()) } returns Unit
     }

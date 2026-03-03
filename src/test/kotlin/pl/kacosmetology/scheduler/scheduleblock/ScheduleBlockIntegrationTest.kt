@@ -24,8 +24,8 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.treatment.ProvidedService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
@@ -48,7 +48,7 @@ class ScheduleBlockIntegrationTest {
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
     @Autowired private lateinit var scheduleBlockRepository: ScheduleBlockRepository
     @Autowired private lateinit var reservationRepository: ReservationRepository
-    @Autowired private lateinit var serviceRepository: TreatmentRepository
+    @Autowired private lateinit var serviceRepository: OfferingRepository
     @Autowired private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
 
     @MockkBean private lateinit var s3Client: S3Client
@@ -243,7 +243,7 @@ class ScheduleBlockIntegrationTest {
         )
 
         val service = serviceRepository.save(
-            ProvidedService(companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 80)
+            Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 80)
         )
 
         mockMvc.get("/api/availability") {

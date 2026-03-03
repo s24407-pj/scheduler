@@ -9,8 +9,8 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.treatment.ProvidedService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 
@@ -21,7 +21,7 @@ class DataInitializer(
     private val companyRepository: CompanyRepository,
     private val userRepository: UserRepository,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
-    private val serviceRepository: TreatmentRepository,
+    private val offeringRepository: OfferingRepository,
     private val passwordEncoder: PasswordEncoder
 ) : CommandLineRunner {
 
@@ -48,16 +48,16 @@ class DataInitializer(
             CompanyEmployee(companyId = company.id!!, userId = employee.id, role = "OWNER")
         )
 
-        serviceRepository.saveAll(
+        offeringRepository.saveAll(
             listOf(
-                ProvidedService(companyId = company.id!!, name = "Strzyżenie Męskie", durationMinutes = 30, price = 60),
-                ProvidedService(
+                Offering(companyId = company.id!!, name = "Strzyżenie Męskie", durationMinutes = 30, price = 60),
+                Offering(
                     companyId = company.id!!,
                     name = "Strzyżenie + Broda",
                     durationMinutes = 60,
                     price = 100
                 ),
-                ProvidedService(companyId = company.id!!, name = "Tuszowanie siwizny", durationMinutes = 45, price = 80)
+                Offering(companyId = company.id!!, name = "Tuszowanie siwizny", durationMinutes = 45, price = 80)
             )
         )
 

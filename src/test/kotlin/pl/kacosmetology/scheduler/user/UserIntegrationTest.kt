@@ -19,7 +19,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.dto.UpdateUserProfileRequest
 import tools.jackson.databind.ObjectMapper
 
@@ -47,7 +47,7 @@ class UserIntegrationTest {
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
     @Autowired
-    private lateinit var treatmentRepository: TreatmentRepository
+    private lateinit var offeringRepository: OfferingRepository
 
     @MockkBean
     private lateinit var s3Client: S3Client
@@ -59,7 +59,7 @@ class UserIntegrationTest {
     fun setup() {
         // Czyszczenie w kolejności odwrotnej do zależności FK
         reservationRepository.deleteAll()
-        treatmentRepository.deleteAll()
+        offeringRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
 

@@ -10,14 +10,14 @@ import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignmentRepository
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
-import pl.kacosmetology.scheduler.treatment.ProvidedService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import java.time.LocalDate
@@ -31,7 +31,7 @@ class AvailabilityServiceTest {
     private lateinit var reservationRepository: ReservationRepository
 
     @MockK
-    private lateinit var serviceRepository: TreatmentRepository
+    private lateinit var serviceRepository: OfferingRepository
 
     @MockK
     private lateinit var companyRepository: CompanyRepository
@@ -43,7 +43,7 @@ class AvailabilityServiceTest {
     private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
 
     @MockK
-    private lateinit var assignmentRepository: EmployeeServiceAssignmentRepository
+    private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
     @InjectMockKs
     private lateinit var availabilityService: AvailabilityService
@@ -67,7 +67,7 @@ class AvailabilityServiceTest {
     fun `should return all possible slots when day is completely free`() {
         // GIVEN - Usługa trwa 60 minut (od 9:00 do 17:00 zmieści się dużo takich slotów co 30 minut)
         val service =
-            ProvidedService(
+            Offering(
                 id = serviceId,
                 companyId = companyId,
                 name = "Strzyżenie",
@@ -107,7 +107,7 @@ class AvailabilityServiceTest {
     fun `should exclude slots that overlap with existing reservation`() {
         // GIVEN - Usługa trwa 60 minut
         val service =
-            ProvidedService(
+            Offering(
                 id = serviceId,
                 companyId = companyId,
                 name = "Strzyżenie",
@@ -154,7 +154,7 @@ class AvailabilityServiceTest {
     @Test
     fun `should exclude slots that overlap with a schedule block`() {
         // GIVEN - Usługa trwa 60 minut
-        val service = ProvidedService(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
+        val service = Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
@@ -191,7 +191,7 @@ class AvailabilityServiceTest {
     @Test
     fun `should return empty list when employee has no schedule entry for that day`() {
         // GIVEN
-        val service = ProvidedService(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
+        val service = Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
@@ -207,7 +207,7 @@ class AvailabilityServiceTest {
     @Test
     fun `should use employee work schedule hours instead of company hours`() {
         // GIVEN - Pracownik pracuje tylko od 13:00 do 15:00
-        val service = ProvidedService(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
+        val service = Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
         val shortSchedule = EmployeeWorkSchedule(
             companyId = companyId,
             employeeId = employeeId,
@@ -239,11 +239,11 @@ class AvailabilityServiceTest {
     @Test
     fun `should throw when employee has assignments but service is not assigned`() {
         // GIVEN
-        val service = ProvidedService(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
+        val service = Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns true
-        every { assignmentRepository.existsByEmployeeIdAndServiceId(employeeId, serviceId) } returns false
+        every { assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, serviceId) } returns false
 
         // WHEN & THEN
         val ex = assertThrows<IllegalArgumentException> {

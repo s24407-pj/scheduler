@@ -25,8 +25,8 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.dto.CreateReservationRequest
-import pl.kacosmetology.scheduler.treatment.ProvidedService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -54,7 +54,7 @@ class CustomerReservationFlowIntegrationTest {
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
     @Autowired
-    private lateinit var serviceRepository: TreatmentRepository
+    private lateinit var serviceRepository: OfferingRepository
 
     @Autowired
     private lateinit var redisTemplate: StringRedisTemplate
@@ -97,7 +97,7 @@ class CustomerReservationFlowIntegrationTest {
         )
 
         val service = serviceRepository.save(
-            ProvidedService(
+            Offering(
                 companyId = company.id!!, name = "Manicure", durationMinutes = 60, price = 120
             )
         )

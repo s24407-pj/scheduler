@@ -21,8 +21,8 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.treatment.ProvidedService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import tools.jackson.databind.ObjectMapper
@@ -39,7 +39,7 @@ class ReservationStaffIntegrationTest {
     @Autowired private lateinit var userRepository: UserRepository
     @Autowired private lateinit var companyRepository: CompanyRepository
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var serviceRepository: TreatmentRepository
+    @Autowired private lateinit var serviceRepository: OfferingRepository
     @Autowired private lateinit var reservationRepository: ReservationRepository
 
     @MockkBean private lateinit var s3Client: S3Client
@@ -65,7 +65,7 @@ class ReservationStaffIntegrationTest {
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
 
         val service = serviceRepository.save(
-            ProvidedService(companyId = companyId, name = "Koloryzacja", durationMinutes = 90, price = 300)
+            Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 90, price = 300)
         )
         serviceId = service.id!!
 

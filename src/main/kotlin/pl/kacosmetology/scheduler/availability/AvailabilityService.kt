@@ -2,24 +2,24 @@ package pl.kacosmetology.scheduler.availability
 
 import org.springframework.stereotype.Service
 import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.employeeservice.EmployeeServiceAssignmentRepository
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 
-/** Calculates available time slots for a given employee and service on a specific date. */
+/** Calculates available time slots for a given employee and offering on a specific date. */
 @Service
 class AvailabilityService(
     private val reservationRepository: ReservationRepository,
-    private val serviceRepository: TreatmentRepository,
+    private val offeringRepository: OfferingRepository,
     private val companyRepository: CompanyRepository,
     private val scheduleBlockRepository: ScheduleBlockRepository,
     private val workScheduleRepository: EmployeeWorkScheduleRepository,
-    private val assignmentRepository: EmployeeServiceAssignmentRepository
+    private val assignmentRepository: EmployeeOfferingAssignmentRepository
 ) {
 
     /**
@@ -27,18 +27,18 @@ class AvailabilityService(
      *
      * Uses the employee's work schedule for opening/closing hours (returns empty list if no entry for that day).
      * The slot interval is still taken from the company configuration.
-     * Throws [IllegalArgumentException] if the employee has service assignments and the requested service is not among them.
+     * Throws [IllegalArgumentException] if the employee has offering assignments and the requested offering is not among them.
      * Filters out slots that overlap with existing reservations, schedule blocks, and past times.
      */
-    fun getAvailableSlots(employeeId: Long, serviceId: Long, date: LocalDate): List<LocalTime> {
-        val service = serviceRepository.findById(serviceId)
+    fun getAvailableSlots(employeeId: Long, offeringId: Long, date: LocalDate): List<LocalTime> {
+        val offering = offeringRepository.findById(offeringId)
             .orElseThrow { IllegalArgumentException("Usługa nie istnieje") }
 
-        val company = companyRepository.findById(service.companyId)
+        val company = companyRepository.findById(offering.companyId)
             .orElseThrow { IllegalArgumentException("Firma nie istnieje") }
 
         if (assignmentRepository.existsByEmployeeId(employeeId) &&
-            !assignmentRepository.existsByEmployeeIdAndServiceId(employeeId, serviceId)
+            !assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId)
         ) {
             throw IllegalArgumentException("Ten pracownik nie wykonuje wybranej usługi")
         }
@@ -46,7 +46,7 @@ class AvailabilityService(
         val scheduleEntry = workScheduleRepository.findByEmployeeIdAndDayOfWeek(employeeId, date.dayOfWeek)
             ?: return emptyList()
 
-        val requiredDuration = service.durationMinutes.toLong()
+        val requiredDuration = offering.durationMinutes.toLong()
         val openingTime = scheduleEntry.startTime
         val closingTime = scheduleEntry.endTime
         val slotStep = company.slotIntervalMinutes.toLong()

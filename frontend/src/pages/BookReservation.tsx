@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import api from '../api';
 
-interface Service {
+interface Offering {
   id: number;
   name: string;
   durationMinutes: number;
@@ -11,7 +11,7 @@ interface Service {
 }
 
 /**
- * Public page — browse services and available slots WITHOUT login.
+ * Public page — browse offerings and available slots WITHOUT login.
  * Login is triggered only when the user wants to confirm a booking.
  */
 export default function BookReservation() {
@@ -19,8 +19,8 @@ export default function BookReservation() {
   const navigate = useNavigate();
 
   const [employeeId, setEmployeeId] = useState('1');
-  const [services, setServices] = useState<Service[]>([]);
-  const [selectedService, setSelectedService] = useState<number | null>(null);
+  const [offerings, setOfferings] = useState<Offering[]>([]);
+  const [selectedOffering, setSelectedOffering] = useState<number | null>(null);
   const [date, setDate] = useState(() => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -33,39 +33,39 @@ export default function BookReservation() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Load services publicly (no auth required)
+  // Load offerings publicly (no auth required)
   useEffect(() => {
-    api.get('/services/public/company/1')
+    api.get('/offerings/public/company/1')
       .then((res) => {
-        setServices(res.data);
-        if (res.data.length > 0) setSelectedService(res.data[0].id);
+        setOfferings(res.data);
+        if (res.data.length > 0) setSelectedOffering(res.data[0].id);
       })
       .catch(() => setError('Nie udało się pobrać usług. Sprawdź czy backend działa.'));
   }, []);
 
   // Load available slots (public endpoint)
   useEffect(() => {
-    if (!selectedService || !date || !employeeId) return;
+    if (!selectedOffering || !date || !employeeId) return;
     setSlotsLoading(true);
     setSlots([]);
     setSelectedSlot(null);
     api
       .get('/availability', {
-        params: { employeeId, serviceId: selectedService, date },
+        params: { employeeId, serviceId: selectedOffering, date },
       })
       .then((res) => setSlots(res.data))
       .catch(() => setError('Nie udało się pobrać dostępnych terminów'))
       .finally(() => setSlotsLoading(false));
-  }, [selectedService, date, employeeId]);
+  }, [selectedOffering, date, employeeId]);
 
   const handleBook = async () => {
-    if (!selectedSlot || !selectedService) return;
+    if (!selectedSlot || !selectedOffering) return;
 
     // If not logged in, redirect to login with booking data preserved
     if (!isAuthenticated) {
       const bookingData = {
         employeeId: Number(employeeId),
-        serviceId: selectedService,
+        serviceId: selectedOffering,
         date,
         slot: selectedSlot,
       };
@@ -81,14 +81,14 @@ export default function BookReservation() {
       const startTime = `${date}T${selectedSlot}`;
       await api.post('/reservations', {
         employeeId: Number(employeeId),
-        serviceId: selectedService,
+        serviceId: selectedOffering,
         startTime,
       });
       setSuccess('Wizyta zarezerwowana! 🎉');
       setSelectedSlot(null);
       // Refresh slots
       const res = await api.get('/availability', {
-        params: { employeeId, serviceId: selectedService, date },
+        params: { employeeId, serviceId: selectedOffering, date },
       });
       setSlots(res.data);
     } catch (err: any) {
@@ -98,7 +98,7 @@ export default function BookReservation() {
     }
   };
 
-  const selectedServiceData = services.find((s) => s.id === selectedService);
+  const selectedOfferingData = offerings.find((o) => o.id === selectedOffering);
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -115,24 +115,24 @@ export default function BookReservation() {
       )}
 
       <div className="bg-white rounded-2xl shadow-xl p-6 space-y-6">
-        {/* Step 1: Choose service */}
+        {/* Step 1: Choose offering */}
         <div>
           <h3 className="text-lg font-semibold text-gray-800 mb-3">1. Wybierz usługę</h3>
-          {services.length > 0 ? (
+          {offerings.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {services.map((s) => (
+              {offerings.map((o) => (
                 <button
-                  key={s.id}
-                  onClick={() => setSelectedService(s.id)}
+                  key={o.id}
+                  onClick={() => setSelectedOffering(o.id)}
                   className={`p-4 rounded-xl border-2 text-left transition ${
-                    selectedService === s.id
+                    selectedOffering === o.id
                       ? 'border-indigo-500 bg-indigo-50'
                       : 'border-gray-200 hover:border-indigo-300'
                   }`}
                 >
-                  <div className="font-semibold text-gray-800">{s.name}</div>
+                  <div className="font-semibold text-gray-800">{o.name}</div>
                   <div className="text-sm text-gray-500">
-                    ⏱ {s.durationMinutes} min · 💰 {s.price} zł
+                    ⏱ {o.durationMinutes} min · 💰 {o.price} zł
                   </div>
                 </button>
               ))}
@@ -143,7 +143,7 @@ export default function BookReservation() {
         </div>
 
         {/* Step 2: Choose date */}
-        {selectedService && (
+        {selectedOffering && (
           <div>
             <h3 className="text-lg font-semibold text-gray-800 mb-3">2. Wybierz datę</h3>
             <div className="flex items-center gap-4">
@@ -168,7 +168,7 @@ export default function BookReservation() {
         )}
 
         {/* Step 3: Choose time */}
-        {selectedService && (
+        {selectedOffering && (
           <div>
             <h3 className="text-lg font-semibold text-gray-800 mb-3">3. Wybierz godzinę</h3>
             {slotsLoading ? (
@@ -196,15 +196,15 @@ export default function BookReservation() {
         )}
 
         {/* Summary + Book */}
-        {selectedSlot && selectedServiceData && (
+        {selectedSlot && selectedOfferingData && (
           <div className="border-t border-gray-200 pt-4">
             <h3 className="text-lg font-semibold text-gray-800 mb-3">📝 Podsumowanie</h3>
             <div className="bg-indigo-50 rounded-xl p-4 mb-4 space-y-1 text-sm">
-              <p><span className="text-gray-500">Usługa:</span> <span className="font-medium">{selectedServiceData.name}</span></p>
+              <p><span className="text-gray-500">Usługa:</span> <span className="font-medium">{selectedOfferingData.name}</span></p>
               <p><span className="text-gray-500">Data:</span> <span className="font-medium">{new Date(date).toLocaleDateString('pl-PL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span></p>
               <p><span className="text-gray-500">Godzina:</span> <span className="font-medium">{selectedSlot.substring(0, 5)}</span></p>
-              <p><span className="text-gray-500">Czas trwania:</span> <span className="font-medium">{selectedServiceData.durationMinutes} min</span></p>
-              <p><span className="text-gray-500">Cena:</span> <span className="font-semibold text-indigo-700">{selectedServiceData.price} zł</span></p>
+              <p><span className="text-gray-500">Czas trwania:</span> <span className="font-medium">{selectedOfferingData.durationMinutes} min</span></p>
+              <p><span className="text-gray-500">Cena:</span> <span className="font-semibold text-indigo-700">{selectedOfferingData.price} zł</span></p>
             </div>
 
             <button
