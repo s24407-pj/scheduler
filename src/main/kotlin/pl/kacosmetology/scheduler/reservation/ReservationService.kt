@@ -82,6 +82,10 @@ class ReservationService(
             throw IllegalStateException("Nie możesz anulować nie swojej rezerwacji")
         }
 
+        if (reservation.status == ReservationStatus.CANCELLED) {
+            throw IllegalStateException("Rezerwacja jest już anulowana")
+        }
+
         if (reservation.status == ReservationStatus.COMPLETED) {
             throw IllegalStateException("Nie można anulować wizyty, która już się odbyła")
         }
@@ -103,6 +107,10 @@ class ReservationService(
 
         if (reservation.status == ReservationStatus.CANCELLED) {
             throw IllegalStateException("Nie można zakończyć odwołanej wizyty")
+        }
+
+        if (reservation.status == ReservationStatus.COMPLETED) {
+            throw IllegalStateException("Wizyta jest już zakończona")
         }
 
         reservation.status = ReservationStatus.COMPLETED

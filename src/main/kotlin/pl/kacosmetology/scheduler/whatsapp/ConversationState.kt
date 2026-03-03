@@ -1,10 +1,11 @@
 package pl.kacosmetology.scheduler.whatsapp
 
+import java.time.LocalDate
+import java.time.LocalTime
+
 /**
  * Holds all data accumulated during a WhatsApp booking conversation.
  * Stored as JSON in Redis with a 30-minute TTL.
- *
- * Dates and times are kept as ISO strings (`"yyyy-MM-dd"` / `"HH:mm"`) to avoid Jackson + Redis issues.
  */
 data class ConversationState(
     val step: ConversationStep = ConversationStep.IDLE,
@@ -12,10 +13,10 @@ data class ConversationState(
     val serviceName: String? = null,
     val employeeId: Long? = null,
     val employeeName: String? = null,
-    /** Selected date as `"yyyy-MM-dd"`. */
-    val date: String? = null,
-    /** Selected time as `"HH:mm"`. */
-    val time: String? = null,
+    /** Selected date. */
+    val date: LocalDate? = null,
+    /** Selected time. */
+    val time: LocalTime? = null,
     /** First name collected during the new-client sub-flow. */
     val pendingFirstName: String? = null,
     /** Maps option index (1-based) to service ID. */

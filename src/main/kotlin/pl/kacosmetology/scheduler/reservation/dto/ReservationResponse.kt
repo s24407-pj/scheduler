@@ -30,7 +30,7 @@ data class EmployeeReservationResponse(
 
 /** Maps a [Reservation] to the customer-facing [ReservationResponse]. */
 fun Reservation.toResponse() = ReservationResponse(
-    id = id!!,
+    id = requireNotNull(id) { "Reservation must be persisted before converting to DTO" },
     employeeId = employeeId,
     serviceId = serviceId,
     price = price,
@@ -42,7 +42,7 @@ fun Reservation.toResponse() = ReservationResponse(
 
 /** Maps a [Reservation] to the staff-facing [EmployeeReservationResponse]. */
 fun Reservation.toEmployeeResponse() = EmployeeReservationResponse(
-    id = id!!,
+    id = requireNotNull(id) { "Reservation must be persisted before converting to DTO" },
     customerId = customerId,
     serviceId = serviceId,
     price = price,

@@ -161,7 +161,7 @@ class ConversationHandlerTest {
         val stateSlot = slot<ConversationState>()
         verify { store.save(normalizedPhone, capture(stateSlot)) }
         assert(stateSlot.captured.step == ConversationStep.SELECTING_TIME)
-        assert(stateSlot.captured.date == dateStr)
+        assert(stateSlot.captured.date == today)
         assert(stateSlot.captured.timeOptions.size == 2)
     }
 
@@ -169,7 +169,6 @@ class ConversationHandlerTest {
     fun `SELECTING_TIME with valid number should show summary and transition to CONFIRMING`() {
         setupCommonMocks()
         val tomorrow = LocalDate.now().plusDays(1)
-        val dateStr = tomorrow.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
 
         every { store.get(normalizedPhone) } returns ConversationState(
             step = ConversationStep.SELECTING_TIME,
@@ -177,7 +176,7 @@ class ConversationHandlerTest {
             serviceName = "Strzyżenie",
             employeeId = employeeId,
             employeeName = "Anna K.",
-            date = dateStr,
+            date = tomorrow,
             timeOptions = listOf("09:00", "09:30")
         )
 
@@ -186,7 +185,7 @@ class ConversationHandlerTest {
         val stateSlot = slot<ConversationState>()
         verify { store.save(normalizedPhone, capture(stateSlot)) }
         assert(stateSlot.captured.step == ConversationStep.CONFIRMING)
-        assert(stateSlot.captured.time == "09:00")
+        assert(stateSlot.captured.time == LocalTime.of(9, 0))
 
         val msgSlot = slot<String>()
         verify { sender.sendMessage(eq(normalizedPhone), capture(msgSlot)) }
@@ -199,7 +198,6 @@ class ConversationHandlerTest {
     fun `CONFIRMING with 'tak' for existing customer should create reservation and reset`() {
         setupCommonMocks()
         val tomorrow = LocalDate.now().plusDays(1)
-        val dateStr = tomorrow.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
         val existingUser = User(id = 99L, phoneNumber = normalizedPhone, firstName = "Jan", lastName = "Kowalski")
         val reservation = Reservation(
             id = 42L, companyId = companyId, customerId = existingUser.id, employeeId = employeeId,
@@ -214,8 +212,8 @@ class ConversationHandlerTest {
             serviceName = "Strzyżenie",
             employeeId = employeeId,
             employeeName = "Anna K.",
-            date = dateStr,
-            time = "09:00"
+            date = tomorrow,
+            time = LocalTime.of(9, 0)
         )
         every { userRepository.findByPhoneNumber(normalizedPhone) } returns existingUser
         every { reservationService.createReservationByStaff(employeeId, serviceId, any(), normalizedPhone, "Jan", "Kowalski") } returns reservation
@@ -233,13 +231,12 @@ class ConversationHandlerTest {
     fun `CONFIRMING with 'tak' for new customer should transition to AWAITING_FIRST_NAME`() {
         setupCommonMocks()
         val tomorrow = LocalDate.now().plusDays(1)
-        val dateStr = tomorrow.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
 
         every { store.get(normalizedPhone) } returns ConversationState(
             step = ConversationStep.CONFIRMING,
             serviceId = serviceId,
-            date = dateStr,
-            time = "09:00"
+            date = tomorrow,
+            time = LocalTime.of(9, 0)
         )
         every { userRepository.findByPhoneNumber(normalizedPhone) } returns null
 
@@ -280,7 +277,6 @@ class ConversationHandlerTest {
     fun `AWAITING_LAST_NAME should create reservation for new customer`() {
         setupCommonMocks()
         val tomorrow = LocalDate.now().plusDays(1)
-        val dateStr = tomorrow.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
         val reservation = Reservation(
             id = 55L, companyId = companyId, customerId = 77L, employeeId = employeeId,
             serviceId = serviceId, price = 80, status = ReservationStatus.PENDING,
@@ -294,8 +290,8 @@ class ConversationHandlerTest {
             serviceName = "Strzyżenie",
             employeeId = employeeId,
             employeeName = "Anna K.",
-            date = dateStr,
-            time = "10:00",
+            date = tomorrow,
+            time = LocalTime.of(10, 0),
             pendingFirstName = "Jan"
         )
         every { reservationService.createReservationByStaff(employeeId, serviceId, any(), normalizedPhone, "Jan", "Nowak") } returns reservation
@@ -332,8 +328,8 @@ class ConversationHandlerTest {
             serviceName = "Strzyżenie",
             employeeId = employeeId,
             employeeName = "Anna K.",
-            date = dateStr,
-            time = "09:00",
+            date = tomorrow,
+            time = LocalTime.of(9, 0),
             dateOptions = listOf(dateStr)
         )
         every { userRepository.findByPhoneNumber(normalizedPhone) } returns existingUser

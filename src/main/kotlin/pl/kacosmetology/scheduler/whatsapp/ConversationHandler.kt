@@ -202,7 +202,7 @@ class ConversationHandler(
         }
         val newState = state.copy(
             step = ConversationStep.SELECTING_TIME,
-            date = dateStr,
+            date = date,
             timeOptions = slots.map { it.format(timeFormatter) }
         )
         store.save(phone, newState)
@@ -216,13 +216,17 @@ class ConversationHandler(
             return
         }
         val timeStr = state.timeOptions[index]
-        val date = LocalDate.parse(state.date!!, dateFormatter)
+        val date = state.date ?: run {
+            sender.sendMessage(phone, "Coś poszło nie tak. Zacznijmy od nowa.")
+            store.delete(phone)
+            return
+        }
         val time = LocalTime.parse(timeStr, timeFormatter)
 
         val summary = buildSummary(state, date, time)
         val newState = state.copy(
             step = ConversationStep.CONFIRMING,
-            time = timeStr
+            time = time
         )
         store.save(phone, newState)
         sender.sendMessage(phone, "$summary\n\nWpisz \"tak\" aby potwierdzić lub \"nie\" aby anulować.")
@@ -267,12 +271,12 @@ class ConversationHandler(
     // -------------------------------------------------------------------------
 
     private fun createReservation(phone: String, state: ConversationState, firstName: String, lastName: String) {
-        val dateStr = state.date ?: run {
+        val date = state.date ?: run {
             sender.sendMessage(phone, "Coś poszło nie tak. Zacznijmy od nowa.")
             store.delete(phone)
             return
         }
-        val timeStr = state.time ?: run {
+        val time = state.time ?: run {
             sender.sendMessage(phone, "Coś poszło nie tak. Zacznijmy od nowa.")
             store.delete(phone)
             return
@@ -287,8 +291,6 @@ class ConversationHandler(
             store.delete(phone)
             return
         }
-        val date = LocalDate.parse(dateStr, dateFormatter)
-        val time = LocalTime.parse(timeStr, timeFormatter)
         val startTime = LocalDateTime.of(date, time)
 
         try {
