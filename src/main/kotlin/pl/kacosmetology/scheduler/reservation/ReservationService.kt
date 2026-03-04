@@ -121,9 +121,13 @@ class ReservationService(
 
     /** Marks a reservation as completed. Called by staff members. */
     @Transactional
-    fun completeReservation(reservationId: Long) {
+    fun completeReservation(reservationId: Long, companyId: Long) {
         val reservation = reservationRepository.findById(reservationId)
             .orElseThrow { IllegalArgumentException("Rezerwacja nie istnieje") }
+
+        if (reservation.companyId != companyId) {
+            throw IllegalStateException("Brak dostępu do tej rezerwacji")
+        }
 
         if (reservation.status == ReservationStatus.CANCELLED) {
             throw IllegalStateException("Nie można zakończyć odwołanej wizyty")
@@ -144,9 +148,13 @@ class ReservationService(
      * Only PENDING or CONFIRMED reservations can be marked as no-show.
      */
     @Transactional
-    fun markNoShow(reservationId: Long) {
+    fun markNoShow(reservationId: Long, companyId: Long) {
         val reservation = reservationRepository.findById(reservationId)
             .orElseThrow { NoSuchElementException("Rezerwacja nie istnieje") }
+
+        if (reservation.companyId != companyId) {
+            throw IllegalStateException("Brak dostępu do tej rezerwacji")
+        }
 
         if (reservation.status != ReservationStatus.PENDING && reservation.status != ReservationStatus.CONFIRMED) {
             throw IllegalStateException("Tylko aktywna rezerwacja może być oznaczona jako nieobecność")

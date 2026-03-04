@@ -145,6 +145,52 @@ class ReservationNoShowIntegrationTest {
     }
 
     @Test
+    fun `PATCH no-show by staff from different company should return 409`() {
+        val reservation = saveReservation()
+
+        // Staff from a different company
+        val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
+        val otherOwner = userRepository.save(User(phoneNumber = "+48900000099", firstName = "Obcy", lastName = "Owner"))
+        companyEmployeeRepository.save(CompanyEmployee(companyId = otherCompany.id!!, userId = otherOwner.id, role = "OWNER"))
+        val otherToken = jwtService.generateToken(
+            CustomUserDetails(otherOwner, otherCompany.id, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
+            otherCompany.id
+        )
+
+        mockMvc.patch("/api/reservations/${reservation.id}/no-show") {
+            header("Authorization", "Bearer $otherToken")
+        }.andExpect {
+            status { isConflict() }
+        }
+
+        // Reservation status must be unchanged
+        val unchanged = reservationRepository.findById(reservation.id!!).get()
+        assertEquals(ReservationStatus.PENDING, unchanged.status)
+    }
+
+    @Test
+    fun `PATCH complete by staff from different company should return 409`() {
+        val reservation = saveReservation()
+
+        val otherCompany = companyRepository.save(Company(name = "Inny Salon B"))
+        val otherOwner = userRepository.save(User(phoneNumber = "+48900000098", firstName = "Obcy2", lastName = "Owner2"))
+        companyEmployeeRepository.save(CompanyEmployee(companyId = otherCompany.id!!, userId = otherOwner.id, role = "OWNER"))
+        val otherToken = jwtService.generateToken(
+            CustomUserDetails(otherOwner, otherCompany.id, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
+            otherCompany.id
+        )
+
+        mockMvc.patch("/api/reservations/${reservation.id}/complete") {
+            header("Authorization", "Bearer $otherToken")
+        }.andExpect {
+            status { isConflict() }
+        }
+
+        val unchanged = reservationRepository.findById(reservation.id!!).get()
+        assertEquals(ReservationStatus.PENDING, unchanged.status)
+    }
+
+    @Test
     fun `PATCH no-show three times should auto-block the customer`() {
         repeat(3) {
             val r = saveReservation()

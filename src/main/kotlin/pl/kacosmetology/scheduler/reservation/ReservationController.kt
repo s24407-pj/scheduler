@@ -55,16 +55,24 @@ class ReservationController(
     @PatchMapping("/{id}/complete")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
-    fun completeReservation(@PathVariable id: Long) {
-        reservationService.completeReservation(id)
+    fun completeReservation(
+        @PathVariable id: Long,
+        @AuthenticationPrincipal userDetails: CustomUserDetails?
+    ) {
+        val companyId = userDetails?.companyId ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        reservationService.completeReservation(id, companyId)
     }
 
     /** Marks a reservation as no-show and increments the customer's counter. Requires OWNER or EMPLOYEE role. */
     @PatchMapping("/{id}/no-show")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
-    fun markNoShow(@PathVariable id: Long) {
-        reservationService.markNoShow(id)
+    fun markNoShow(
+        @PathVariable id: Long,
+        @AuthenticationPrincipal userDetails: CustomUserDetails?
+    ) {
+        val companyId = userDetails?.companyId ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        reservationService.markNoShow(id, companyId)
     }
 
     /** Returns the authenticated customer's reservation history. */

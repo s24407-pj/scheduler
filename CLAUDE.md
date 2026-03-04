@@ -102,7 +102,9 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **Offering categories:** Owners can group offerings into categories via `POST /api/offering-categories`. Categories are company-scoped; offerings carry an optional `category_id` (set to null on category deletion).
 
-**Staff booking:** Staff can create a reservation on behalf of a client via `POST /api/reservations/staff`. If the client's phone number is not found in the database, a new `User` is auto-created — `firstName` and `lastName` are required in that case.
+**Staff booking:** Staff can create a reservation on behalf of a client via `POST /api/reservations/staff`. If the client's phone number is not found in the database, a new `User` is auto-created — `firstName` and `lastName` are required in that case. Note: staff booking bypasses availability/slot boundary validation (intentional — staff can override business hours). Customer bookings via `POST /api/reservations` currently also skip this validation (known gap).
+
+**Company isolation:** `completeReservation` and `markNoShow` both verify `reservation.companyId == userDetails.companyId` before proceeding (throws `IllegalStateException` → 409 if mismatch). Offering mutations check company ownership in the service layer. `OfferingCategoryService.deleteCategory()` and `assignCategory()` both carry `@CacheEvict("companyServices")` to invalidate the offering cache.
 
 **Company settings:** Owners can update business hours, slot interval, and last-minute discount via `PUT /api/company/settings`. `closingTime` must be strictly after `openingTime`. `lastMinuteDiscountPercent` (0–100; 0 disables) and `lastMinuteDiscountHours` (1–168) control the discount window. Both fields default to 0 / 24 and are returned by `GET /api/company/settings`.
 

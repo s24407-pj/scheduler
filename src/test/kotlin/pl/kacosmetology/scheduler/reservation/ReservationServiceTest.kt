@@ -236,7 +236,7 @@ class ReservationServiceTest {
         every { reservationRepository.save(any()) } answers { firstArg() }
 
         // WHEN
-        reservationService.completeReservation(reservationId)
+        reservationService.completeReservation(reservationId, companyId)
 
         // THEN
         assertEquals(ReservationStatus.COMPLETED, reservation.status)
@@ -263,9 +263,59 @@ class ReservationServiceTest {
 
         // WHEN & THEN
         val exception = assertThrows<IllegalStateException> {
-            reservationService.completeReservation(reservationId)
+            reservationService.completeReservation(reservationId, companyId)
         }
         assertEquals("Nie można zakończyć odwołanej wizyty", exception.message)
+        verify(exactly = 0) { reservationRepository.save(any()) }
+    }
+
+    @Test
+    fun `completeReservation should throw when reservation belongs to different company`() {
+        val reservationId = 1L
+        val otherCompanyId = 99L
+        val reservation = Reservation(
+            id = reservationId,
+            companyId = otherCompanyId,
+            customerId = customerId,
+            employeeId = employeeId,
+            serviceId = serviceId,
+            price = 100,
+            startTime = startTime,
+            endTime = startTime.plusMinutes(30),
+            status = ReservationStatus.PENDING
+        )
+
+        every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
+
+        val exception = assertThrows<IllegalStateException> {
+            reservationService.completeReservation(reservationId, companyId)
+        }
+        assertEquals("Brak dostępu do tej rezerwacji", exception.message)
+        verify(exactly = 0) { reservationRepository.save(any()) }
+    }
+
+    @Test
+    fun `markNoShow should throw when reservation belongs to different company`() {
+        val reservationId = 1L
+        val otherCompanyId = 99L
+        val reservation = Reservation(
+            id = reservationId,
+            companyId = otherCompanyId,
+            customerId = customerId,
+            employeeId = employeeId,
+            serviceId = serviceId,
+            price = 100,
+            startTime = startTime,
+            endTime = startTime.plusMinutes(30),
+            status = ReservationStatus.PENDING
+        )
+
+        every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
+
+        val exception = assertThrows<IllegalStateException> {
+            reservationService.markNoShow(reservationId, companyId)
+        }
+        assertEquals("Brak dostępu do tej rezerwacji", exception.message)
         verify(exactly = 0) { reservationRepository.save(any()) }
     }
 
@@ -387,7 +437,7 @@ class ReservationServiceTest {
         every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
 
         // WHEN
-        reservationService.markNoShow(reservationId)
+        reservationService.markNoShow(reservationId, companyId)
 
         // THEN
         assertEquals(ReservationStatus.NO_SHOW, reservation.status)
@@ -421,7 +471,7 @@ class ReservationServiceTest {
         every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
 
         // WHEN
-        reservationService.markNoShow(reservationId)
+        reservationService.markNoShow(reservationId, companyId)
 
         // THEN
         assertEquals(ReservationStatus.NO_SHOW, reservation.status)
@@ -453,7 +503,7 @@ class ReservationServiceTest {
         every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
 
         // WHEN
-        reservationService.markNoShow(reservationId)
+        reservationService.markNoShow(reservationId, companyId)
 
         // THEN
         assertEquals(3, block.noShowCount)
@@ -485,7 +535,7 @@ class ReservationServiceTest {
         every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
 
         // WHEN
-        reservationService.markNoShow(reservationId)
+        reservationService.markNoShow(reservationId, companyId)
 
         // THEN
         assertTrue(!block.blocked, "threshold=0 powinno wyłączyć automatyczne blokowanie")
@@ -511,7 +561,7 @@ class ReservationServiceTest {
 
         // WHEN & THEN
         val exception = assertThrows<IllegalStateException> {
-            reservationService.markNoShow(reservationId)
+            reservationService.markNoShow(reservationId, companyId)
         }
         assertEquals("Tylko aktywna rezerwacja może być oznaczona jako nieobecność", exception.message)
         verify(exactly = 0) { reservationRepository.save(any()) }
