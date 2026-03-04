@@ -17,6 +17,8 @@ import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRep
 import pl.kacosmetology.scheduler.notification.NotificationService
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomerBlock
+import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalDateTime
@@ -43,6 +45,9 @@ class ReservationServiceTest {
     @MockK(relaxed = true)
     private lateinit var notificationService: NotificationService
 
+    @MockK
+    private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
+
     @InjectMockKs
     private lateinit var reservationService: ReservationService
 
@@ -64,9 +69,10 @@ class ReservationServiceTest {
             durationMinutes = duration, price = servicePrice
         )
 
-        every { userRepository.findById(customerId) } returns Optional.of(mockCustomer)
+        every { userRepository.existsById(customerId) } returns true
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
         // Zakładamy, że termin jest wolny
         every {
             reservationRepository.existsOverlapping(
@@ -104,9 +110,10 @@ class ReservationServiceTest {
             id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 50
         )
 
-        every { userRepository.findById(customerId) } returns Optional.of(mockCustomer)
+        every { userRepository.existsById(customerId) } returns true
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
 
         // SYMULUJEMY ZAJĘTY TERMIN:
         every { reservationRepository.existsOverlapping(employeeId, any(), any()) } returns true
@@ -124,7 +131,7 @@ class ReservationServiceTest {
     @Test
     fun `should throw when service does not exist`() {
         // GIVEN
-        every { userRepository.findById(customerId) } returns Optional.of(mockCustomer)
+        every { userRepository.existsById(customerId) } returns true
         every { serviceRepository.findById(serviceId) } returns Optional.empty()
 
         // WHEN & THEN
@@ -140,7 +147,7 @@ class ReservationServiceTest {
         val mockService = Offering(
             id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 50
         )
-        every { userRepository.findById(customerId) } returns Optional.of(mockCustomer)
+        every { userRepository.existsById(customerId) } returns true
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns true
         every { assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, serviceId) } returns false
@@ -272,9 +279,10 @@ class ReservationServiceTest {
         val mockService = Offering(id = serviceId, companyId = companyId, name = "Paznokcie", durationMinutes = duration, price = 80)
 
         every { userRepository.findByPhoneNumber(existingCustomer.phoneNumber) } returns existingCustomer
-        every { userRepository.findById(customerId) } returns Optional.of(existingCustomer)
+        every { userRepository.existsById(customerId) } returns true
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
         every { reservationRepository.existsOverlapping(employeeId, startTime, startTime.plusMinutes(duration.toLong())) } returns false
         every { reservationRepository.save(any()) } answers { firstArg() }
 
@@ -303,9 +311,10 @@ class ReservationServiceTest {
 
         every { userRepository.findByPhoneNumber(newPhone) } returns null
         every { userRepository.save(any()) } returns newCustomer
-        every { userRepository.findById(500L) } returns Optional.of(newCustomer)
+        every { userRepository.existsById(500L) } returns true
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, 500L) } returns null
         every { reservationRepository.existsOverlapping(employeeId, startTime, startTime.plusMinutes(duration.toLong())) } returns false
         every { reservationRepository.save(any()) } answers { firstArg() }
 
@@ -364,24 +373,55 @@ class ReservationServiceTest {
             endTime = startTime.plusMinutes(30),
             status = ReservationStatus.PENDING
         )
-        val customer = User(id = customerId, phoneNumber = "+48111000111", firstName = "Jan", lastName = "Kowalski", noShowCount = 0)
+        val block = CompanyCustomerBlock(companyId = companyId, customerId = customerId, noShowCount = 0)
         val company = Company(id = companyId, name = "Salon", maxNoShows = 3)
 
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
         every { reservationRepository.save(any()) } answers { firstArg() }
-        every { userRepository.findById(customerId) } returns Optional.of(customer)
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns block
         every { companyRepository.findById(companyId) } returns Optional.of(company)
-        every { userRepository.save(any()) } answers { firstArg() }
+        every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
 
         // WHEN
         reservationService.markNoShow(reservationId)
 
         // THEN
         assertEquals(ReservationStatus.NO_SHOW, reservation.status)
-        assertEquals(1, customer.noShowCount)
-        assertTrue(!customer.blocked)
+        assertEquals(1, block.noShowCount)
+        assertTrue(!block.blocked)
         verify(exactly = 1) { reservationRepository.save(reservation) }
-        verify(exactly = 1) { userRepository.save(customer) }
+        verify(exactly = 1) { companyCustomerBlockRepository.save(block) }
+    }
+
+    @Test
+    fun `markNoShow should create new block record when none exists`() {
+        // GIVEN
+        val reservationId = 1L
+        val reservation = Reservation(
+            id = reservationId,
+            companyId = companyId,
+            customerId = customerId,
+            employeeId = employeeId,
+            serviceId = serviceId,
+            price = 100,
+            startTime = startTime,
+            endTime = startTime.plusMinutes(30),
+            status = ReservationStatus.PENDING
+        )
+        val company = Company(id = companyId, name = "Salon", maxNoShows = 3)
+
+        every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
+        every { reservationRepository.save(any()) } answers { firstArg() }
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
+        every { companyRepository.findById(companyId) } returns Optional.of(company)
+        every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
+
+        // WHEN
+        reservationService.markNoShow(reservationId)
+
+        // THEN
+        assertEquals(ReservationStatus.NO_SHOW, reservation.status)
+        verify(exactly = 1) { companyCustomerBlockRepository.save(any()) }
     }
 
     @Test
@@ -399,21 +439,21 @@ class ReservationServiceTest {
             endTime = startTime.plusMinutes(30),
             status = ReservationStatus.CONFIRMED
         )
-        val customer = User(id = customerId, phoneNumber = "+48111000111", firstName = "Jan", lastName = "Kowalski", noShowCount = 2)
+        val block = CompanyCustomerBlock(companyId = companyId, customerId = customerId, noShowCount = 2)
         val company = Company(id = companyId, name = "Salon", maxNoShows = 3)
 
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
         every { reservationRepository.save(any()) } answers { firstArg() }
-        every { userRepository.findById(customerId) } returns Optional.of(customer)
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns block
         every { companyRepository.findById(companyId) } returns Optional.of(company)
-        every { userRepository.save(any()) } answers { firstArg() }
+        every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
 
         // WHEN
         reservationService.markNoShow(reservationId)
 
         // THEN
-        assertEquals(3, customer.noShowCount)
-        assertTrue(customer.blocked)
+        assertEquals(3, block.noShowCount)
+        assertTrue(block.blocked)
     }
 
     @Test
@@ -431,20 +471,20 @@ class ReservationServiceTest {
             endTime = startTime.plusMinutes(30),
             status = ReservationStatus.PENDING
         )
-        val customer = User(id = customerId, phoneNumber = "+48111000111", firstName = "Jan", lastName = "Kowalski", noShowCount = 99)
+        val block = CompanyCustomerBlock(companyId = companyId, customerId = customerId, noShowCount = 99)
         val company = Company(id = companyId, name = "Salon", maxNoShows = 0)
 
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
         every { reservationRepository.save(any()) } answers { firstArg() }
-        every { userRepository.findById(customerId) } returns Optional.of(customer)
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns block
         every { companyRepository.findById(companyId) } returns Optional.of(company)
-        every { userRepository.save(any()) } answers { firstArg() }
+        every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
 
         // WHEN
         reservationService.markNoShow(reservationId)
 
         // THEN
-        assertTrue(!customer.blocked, "threshold=0 powinno wyłączyć automatyczne blokowanie")
+        assertTrue(!block.blocked, "threshold=0 powinno wyłączyć automatyczne blokowanie")
     }
 
     @Test
@@ -474,17 +514,23 @@ class ReservationServiceTest {
     }
 
     @Test
-    fun `createReservation should throw when customer is blocked`() {
+    fun `createReservation should throw when customer is blocked at company`() {
         // GIVEN
-        val blockedCustomer = User(id = customerId, phoneNumber = "+48111000111", firstName = "Jan", lastName = "Kowalski", blocked = true)
+        val mockService = Offering(
+            id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 50
+        )
+        val block = CompanyCustomerBlock(companyId = companyId, customerId = customerId, blocked = true)
 
-        every { userRepository.findById(customerId) } returns Optional.of(blockedCustomer)
+        every { userRepository.existsById(customerId) } returns true
+        every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns block
 
         // WHEN & THEN
         val exception = assertThrows<IllegalArgumentException> {
             reservationService.createReservation(customerId, employeeId, serviceId, startTime)
         }
-        assertEquals("Klient jest zablokowany i nie może rezerwować online", exception.message)
+        assertEquals("Klient jest zablokowany w tej firmie i nie może rezerwować online", exception.message)
         verify(exactly = 0) { reservationRepository.save(any()) }
     }
 }

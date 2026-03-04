@@ -9,57 +9,65 @@ import pl.kacosmetology.scheduler.user.dto.CustomerStatusResponse
 @Service
 class CustomerService(
     private val userRepository: UserRepository,
-    private val reservationRepository: ReservationRepository
+    private val reservationRepository: ReservationRepository,
+    private val companyCustomerBlockRepository: CompanyCustomerBlockRepository
 ) {
 
     /**
-     * Returns the block/no-show status for a customer visible to staff.
+     * Returns the company-scoped block/no-show status for a customer visible to staff.
      * Throws [NoSuchElementException] if the user is not found.
      */
     @Transactional(readOnly = true)
-    fun getCustomerStatus(customerId: Long): CustomerStatusResponse {
+    fun getCustomerStatus(customerId: Long, companyId: Long): CustomerStatusResponse {
         val customer = userRepository.findById(customerId)
             .orElseThrow { NoSuchElementException("Klient nie istnieje") }
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId)
         return CustomerStatusResponse(
             id = customer.id,
             firstName = customer.firstName,
             lastName = customer.lastName,
-            noShowCount = customer.noShowCount,
-            blocked = customer.blocked
+            noShowCount = block?.noShowCount ?: 0,
+            blocked = block?.blocked ?: false
         )
     }
 
     /**
-     * Blocks a customer from online booking.
+     * Blocks a customer from online booking at the given company.
      * Throws [NoSuchElementException] if the user is not found.
      * Throws [IllegalArgumentException] if the customer has no reservations in the given company
      * (prevents blocking arbitrary users from another company).
      */
     @Transactional
     fun blockCustomer(customerId: Long, companyId: Long) {
-        val customer = userRepository.findById(customerId)
-            .orElseThrow { NoSuchElementException("Klient nie istnieje") }
+        if (!userRepository.existsById(customerId)) {
+            throw NoSuchElementException("Klient nie istnieje")
+        }
         if (!reservationRepository.existsByCustomerIdAndCompanyId(customerId, companyId)) {
             throw IllegalArgumentException("Klient nie ma żadnych rezerwacji w tej firmie")
         }
-        customer.blocked = true
-        userRepository.save(customer)
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId)
+            ?: CompanyCustomerBlock(companyId = companyId, customerId = customerId)
+        block.blocked = true
+        companyCustomerBlockRepository.save(block)
     }
 
     /**
-     * Unblocks a customer and resets their no-show counter to zero.
+     * Unblocks a customer and resets their no-show counter to zero for the given company.
      * Throws [NoSuchElementException] if the user is not found.
      * Throws [IllegalArgumentException] if the customer has no reservations in the given company.
      */
     @Transactional
     fun unblockCustomer(customerId: Long, companyId: Long) {
-        val customer = userRepository.findById(customerId)
-            .orElseThrow { NoSuchElementException("Klient nie istnieje") }
+        if (!userRepository.existsById(customerId)) {
+            throw NoSuchElementException("Klient nie istnieje")
+        }
         if (!reservationRepository.existsByCustomerIdAndCompanyId(customerId, companyId)) {
             throw IllegalArgumentException("Klient nie ma żadnych rezerwacji w tej firmie")
         }
-        customer.blocked = false
-        customer.noShowCount = 0
-        userRepository.save(customer)
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId)
+            ?: return
+        block.blocked = false
+        block.noShowCount = 0
+        companyCustomerBlockRepository.save(block)
     }
 }

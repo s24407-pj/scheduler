@@ -7,6 +7,8 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.notification.NotificationService
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomerBlock
+import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalDateTime
@@ -19,13 +21,14 @@ class ReservationService(
     private val userRepository: UserRepository,
     private val assignmentRepository: EmployeeOfferingAssignmentRepository,
     private val companyRepository: CompanyRepository,
-    private val notificationService: NotificationService
+    private val notificationService: NotificationService,
+    private val companyCustomerBlockRepository: CompanyCustomerBlockRepository
 ) {
     private val logger = LoggerFactory.getLogger(ReservationService::class.java)
 
     /**
      * Creates a new reservation with a price snapshot from the offering catalog.
-     * Validates that the requested time slot is available and the customer is not blocked.
+     * Validates that the requested time slot is available and the customer is not blocked at the offering's company.
      * Throws [IllegalArgumentException] if the customer is blocked or the employee has offering assignments but not for this offering.
      */
     @Transactional
@@ -35,10 +38,8 @@ class ReservationService(
         offeringId: Long,
         startTime: LocalDateTime
     ): Reservation {
-        val customer = userRepository.findById(customerId)
-            .orElseThrow { NoSuchElementException("Klient nie istnieje") }
-        if (customer.blocked) {
-            throw IllegalArgumentException("Klient jest zablokowany i nie może rezerwować online")
+        if (!userRepository.existsById(customerId)) {
+            throw NoSuchElementException("Klient nie istnieje")
         }
 
         val offering = offeringRepository.findById(offeringId)
@@ -52,6 +53,11 @@ class ReservationService(
             !assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId)
         ) {
             throw IllegalArgumentException("Ten pracownik nie wykonuje wybranej usługi")
+        }
+
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(offering.companyId, customerId)
+        if (block?.blocked == true) {
+            throw IllegalArgumentException("Klient jest zablokowany w tej firmie i nie może rezerwować online")
         }
 
         val endTime = startTime.plusMinutes(offering.durationMinutes.toLong())
@@ -126,9 +132,9 @@ class ReservationService(
     }
 
     /**
-     * Marks a reservation as [ReservationStatus.NO_SHOW] and increments the customer's no-show counter.
+     * Marks a reservation as [ReservationStatus.NO_SHOW] and increments the customer's company-scoped no-show counter.
      * If the counter reaches the company's [pl.kacosmetology.scheduler.company.Company.maxNoShows] threshold
-     * (and it is greater than zero), the customer is automatically blocked from online booking.
+     * (and it is greater than zero), the customer is automatically blocked from online booking at that company.
      * Only PENDING or CONFIRMED reservations can be marked as no-show.
      */
     @Transactional
@@ -143,17 +149,18 @@ class ReservationService(
         reservation.status = ReservationStatus.NO_SHOW
         reservationRepository.save(reservation)
 
-        val customer = userRepository.findById(reservation.customerId)
-            .orElseThrow { NoSuchElementException("Klient nie istnieje") }
-        customer.noShowCount++
+        val block = companyCustomerBlockRepository
+            .findByCompanyIdAndCustomerId(reservation.companyId, reservation.customerId)
+            ?: CompanyCustomerBlock(companyId = reservation.companyId, customerId = reservation.customerId)
+        block.noShowCount++
 
         val company = companyRepository.findById(reservation.companyId)
             .orElseThrow { NoSuchElementException("Firma nie istnieje") }
-        if (company.maxNoShows > 0 && customer.noShowCount >= company.maxNoShows) {
-            customer.blocked = true
+        if (company.maxNoShows > 0 && block.noShowCount >= company.maxNoShows) {
+            block.blocked = true
         }
 
-        userRepository.save(customer)
+        companyCustomerBlockRepository.save(block)
     }
 
     /** Returns all reservations for a customer, ordered by start time descending. */

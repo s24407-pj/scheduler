@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.user
 import com.ninjasquad.springmockk.MockkBean
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -45,6 +46,7 @@ class CustomerBlockIntegrationTest {
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
     @Autowired private lateinit var serviceRepository: OfferingRepository
     @Autowired private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
 
     @MockkBean private lateinit var s3Client: S3Client
 
@@ -60,6 +62,7 @@ class CustomerBlockIntegrationTest {
     @BeforeEach
     fun setup() {
         reservationRepository.deleteAll()
+        companyCustomerBlockRepository.deleteAll()
         serviceRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
@@ -116,17 +119,16 @@ class CustomerBlockIntegrationTest {
             status { isNoContent() }
         }
 
-        val blocked = userRepository.findById(customer.id).get()
-        assertTrue(blocked.blocked)
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id)!!
+        assertTrue(block.blocked)
     }
 
     @Test
     fun `PATCH unblock as owner should return 204 and unblock the customer`() {
-        // First block
-        val blockedCustomer = userRepository.findById(customer.id).get()
-        blockedCustomer.blocked = true
-        blockedCustomer.noShowCount = 5
-        userRepository.save(blockedCustomer)
+        // First set up a block record
+        companyCustomerBlockRepository.save(
+            CompanyCustomerBlock(companyId = companyId, customerId = customer.id, noShowCount = 5, blocked = true)
+        )
 
         mockMvc.patch("/api/customers/${customer.id}/unblock") {
             header("Authorization", "Bearer $ownerToken")
@@ -134,9 +136,9 @@ class CustomerBlockIntegrationTest {
             status { isNoContent() }
         }
 
-        val updated = userRepository.findById(customer.id).get()
-        assertFalse(updated.blocked)
-        assertEquals(0, updated.noShowCount)
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id)!!
+        assertFalse(block.blocked)
+        assertEquals(0, block.noShowCount)
     }
 
     @Test
@@ -150,10 +152,10 @@ class CustomerBlockIntegrationTest {
 
     @Test
     fun `blocked customer cannot create a reservation`() {
-        // Block the customer first
-        val blockedCustomer = userRepository.findById(customer.id).get()
-        blockedCustomer.blocked = true
-        userRepository.save(blockedCustomer)
+        // Block the customer at this company
+        companyCustomerBlockRepository.save(
+            CompanyCustomerBlock(companyId = companyId, customerId = customer.id, blocked = true)
+        )
 
         val reservationTime = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
         val request = CreateReservationRequest(
@@ -181,6 +183,18 @@ class CustomerBlockIntegrationTest {
             header("Authorization", "Bearer $ownerToken")
         }.andExpect {
             status { isBadRequest() }
+        }
+    }
+
+    @Test
+    fun `unblock when no block record exists should return 204`() {
+        // Customer has a reservation (from setup) but no block record
+        assertNull(companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id))
+
+        mockMvc.patch("/api/customers/${customer.id}/unblock") {
+            header("Authorization", "Bearer $ownerToken")
+        }.andExpect {
+            status { isNoContent() }
         }
     }
 }

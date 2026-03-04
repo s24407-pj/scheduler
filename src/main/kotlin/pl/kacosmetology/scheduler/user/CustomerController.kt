@@ -15,11 +15,16 @@ class CustomerController(
     private val customerService: CustomerService
 ) {
 
-    /** Returns a customer's block/no-show status. Requires OWNER or EMPLOYEE role. */
+    /** Returns a customer's company-scoped block/no-show status. Requires OWNER or EMPLOYEE role. */
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
-    fun getCustomerStatus(@PathVariable id: Long): CustomerStatusResponse {
-        return customerService.getCustomerStatus(id)
+    fun getCustomerStatus(
+        @PathVariable id: Long,
+        @AuthenticationPrincipal userDetails: CustomUserDetails?
+    ): CustomerStatusResponse {
+        val companyId = userDetails?.companyId
+            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
+        return customerService.getCustomerStatus(id, companyId)
     }
 
     /** Manually blocks a customer from booking online. Requires OWNER role. */

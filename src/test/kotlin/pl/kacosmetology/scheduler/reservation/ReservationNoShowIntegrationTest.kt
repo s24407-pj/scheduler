@@ -21,6 +21,7 @@ import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -38,6 +39,7 @@ class ReservationNoShowIntegrationTest {
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
     @Autowired private lateinit var serviceRepository: OfferingRepository
     @Autowired private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
 
     @MockkBean private lateinit var s3Client: S3Client
 
@@ -50,6 +52,7 @@ class ReservationNoShowIntegrationTest {
     @BeforeEach
     fun setup() {
         reservationRepository.deleteAll()
+        companyCustomerBlockRepository.deleteAll()
         serviceRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
@@ -104,8 +107,8 @@ class ReservationNoShowIntegrationTest {
         val updated = reservationRepository.findById(reservation.id!!).get()
         assertEquals(ReservationStatus.NO_SHOW, updated.status)
 
-        val updatedCustomer = userRepository.findById(customer.id).get()
-        assertEquals(1, updatedCustomer.noShowCount)
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id)!!
+        assertEquals(1, block.noShowCount)
     }
 
     @Test
@@ -150,8 +153,8 @@ class ReservationNoShowIntegrationTest {
             }.andExpect { status { isNoContent() } }
         }
 
-        val updatedCustomer = userRepository.findById(customer.id).get()
-        assertEquals(3, updatedCustomer.noShowCount)
-        assertTrue(updatedCustomer.blocked)
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id)!!
+        assertEquals(3, block.noShowCount)
+        assertTrue(block.blocked)
     }
 }
