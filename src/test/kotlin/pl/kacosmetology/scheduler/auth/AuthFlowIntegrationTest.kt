@@ -76,7 +76,6 @@ class AuthFlowIntegrationTest {
         userRepository.deleteAll()
         companyRepository.deleteAll()
 
-        // MÓWIMY MOCKOWI JAK MA SIĘ ZACHOWAĆ:
         every { smsSender.sendOtp(any(), any()) } just Runs
     }
 
@@ -178,7 +177,7 @@ class AuthFlowIntegrationTest {
             status { isOk() }
         }.andReturn()
 
-        val token = objectMapper.readTree(result.response.contentAsString)["token"].asText()
+        val token = objectMapper.readTree(result.response.contentAsString)["token"].asString()
 
         // THEN
         assertEquals("owner", jwtService.extractRole(token), "Token powinien zawierać rolę owner")

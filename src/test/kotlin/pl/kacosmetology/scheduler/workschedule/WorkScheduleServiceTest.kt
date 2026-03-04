@@ -41,6 +41,7 @@ class WorkScheduleServiceTest {
         )
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
         every { workScheduleRepository.deleteAllByEmployeeId(employeeId) } returns Unit
+        every { workScheduleRepository.flush() } returns Unit
         every { workScheduleRepository.saveAll(any<List<EmployeeWorkSchedule>>()) } answers {
             firstArg<List<EmployeeWorkSchedule>>()
         }
@@ -57,6 +58,7 @@ class WorkScheduleServiceTest {
         val request = SetWeeklyScheduleRequest(entries = emptyList())
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
         every { workScheduleRepository.deleteAllByEmployeeId(employeeId) } returns Unit
+        every { workScheduleRepository.flush() } returns Unit
         every { workScheduleRepository.saveAll(any<List<EmployeeWorkSchedule>>()) } returns emptyList()
 
         val result = workScheduleService.setSchedule(companyId, employeeId, request)
@@ -70,6 +72,7 @@ class WorkScheduleServiceTest {
         val request = SetWeeklyScheduleRequest(entries = null)
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
         every { workScheduleRepository.deleteAllByEmployeeId(employeeId) } returns Unit
+        every { workScheduleRepository.flush() } returns Unit
         every { workScheduleRepository.saveAll(any<List<EmployeeWorkSchedule>>()) } returns emptyList()
 
         val result = workScheduleService.setSchedule(companyId, employeeId, request)
