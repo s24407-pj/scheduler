@@ -7,6 +7,8 @@ interface CompanySettings {
   closingTime: string;
   slotIntervalMinutes: number;
   maxNoShows: number;
+  lastMinuteDiscountPercent: number;
+  lastMinuteDiscountHours: number;
 }
 
 /** Converts "HH:mm:ss" to "HH:mm" for HTML time inputs. */
@@ -30,6 +32,8 @@ export default function CompanySettings() {
   const [closingTime, setClosingTime] = useState('');
   const [slotInterval, setSlotInterval] = useState('30');
   const [maxNoShows, setMaxNoShows] = useState('3');
+  const [discountPercent, setDiscountPercent] = useState('0');
+  const [discountHours, setDiscountHours] = useState('24');
 
   useEffect(() => {
     api.get('/company/settings')
@@ -40,6 +44,8 @@ export default function CompanySettings() {
         setClosingTime(toTimeInput(s.closingTime));
         setSlotInterval(String(s.slotIntervalMinutes));
         setMaxNoShows(String(s.maxNoShows));
+        setDiscountPercent(String(s.lastMinuteDiscountPercent));
+        setDiscountHours(String(s.lastMinuteDiscountHours));
       })
       .catch(() => setError('Nie udało się pobrać ustawień firmy'))
       .finally(() => setLoading(false));
@@ -56,6 +62,8 @@ export default function CompanySettings() {
         closingTime: fromTimeInput(closingTime),
         slotIntervalMinutes: Number(slotInterval),
         maxNoShows: Number(maxNoShows),
+        lastMinuteDiscountPercent: Number(discountPercent),
+        lastMinuteDiscountHours: Number(discountHours),
       });
       setSettings(res.data);
       setSuccess('Ustawienia zapisane!');
@@ -146,6 +154,38 @@ export default function CompanySettings() {
             </p>
           </div>
 
+          <div className="border-t border-gray-100 pt-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Rabat last-minute</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Rabat (%)</label>
+                <input
+                  type="number"
+                  value={discountPercent}
+                  onChange={(e) => setDiscountPercent(e.target.value)}
+                  min="0"
+                  max="100"
+                  required
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+                <p className="text-xs text-gray-500 mt-1">Wpisz 0, aby wyłączyć.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Okno (godziny)</label>
+                <input
+                  type="number"
+                  value={discountHours}
+                  onChange={(e) => setDiscountHours(e.target.value)}
+                  min="1"
+                  max="168"
+                  required
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+                <p className="text-xs text-gray-500 mt-1">Rabat dla slotów w ciągu ilu godzin od teraz.</p>
+              </div>
+            </div>
+          </div>
+
           <button
             type="submit"
             disabled={saving}
@@ -159,7 +199,8 @@ export default function CompanySettings() {
           <div className="mt-5 pt-5 border-t border-gray-100 text-sm text-gray-500">
             Aktualne: {settings.openingTime.slice(0, 5)} – {settings.closingTime.slice(0, 5)},
             interwał {settings.slotIntervalMinutes} min,
-            próg nieobecności: {settings.maxNoShows === 0 ? 'wyłączony' : settings.maxNoShows}
+            próg nieobecności: {settings.maxNoShows === 0 ? 'wyłączony' : settings.maxNoShows},{' '}
+            rabat last-minute: {settings.lastMinuteDiscountPercent === 0 ? 'wyłączony' : `${settings.lastMinuteDiscountPercent}% / ${settings.lastMinuteDiscountHours}h`}
           </div>
         )}
       </div>

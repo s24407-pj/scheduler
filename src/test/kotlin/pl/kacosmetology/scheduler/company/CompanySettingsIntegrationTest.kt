@@ -201,6 +201,63 @@ class CompanySettingsIntegrationTest {
     }
 
     @Test
+    fun `PUT api-company-settings should persist lastMinuteDiscount fields`() {
+        val body = mapOf(
+            "openingTime" to "09:00:00",
+            "closingTime" to "17:00:00",
+            "slotIntervalMinutes" to 30,
+            "lastMinuteDiscountPercent" to 25,
+            "lastMinuteDiscountHours" to 12
+        )
+
+        mockMvc.put("/api/company/settings") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.lastMinuteDiscountPercent") { value(25) }
+            jsonPath("$.lastMinuteDiscountHours") { value(12) }
+        }
+    }
+
+    @Test
+    fun `PUT api-company-settings should return 400 when lastMinuteDiscountPercent exceeds 100`() {
+        val body = mapOf(
+            "openingTime" to "09:00:00",
+            "closingTime" to "17:00:00",
+            "slotIntervalMinutes" to 30,
+            "lastMinuteDiscountPercent" to 101
+        )
+
+        mockMvc.put("/api/company/settings") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isBadRequest() }
+        }
+    }
+
+    @Test
+    fun `PUT api-company-settings should return 400 when lastMinuteDiscountHours is zero`() {
+        val body = mapOf(
+            "openingTime" to "09:00:00",
+            "closingTime" to "17:00:00",
+            "slotIntervalMinutes" to 30,
+            "lastMinuteDiscountHours" to 0
+        )
+
+        mockMvc.put("/api/company/settings") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isBadRequest() }
+        }
+    }
+
+    @Test
     fun `PUT api-company-settings should return 400 when closingTime is before openingTime`() {
         val body = mapOf(
             "openingTime" to "18:00:00",

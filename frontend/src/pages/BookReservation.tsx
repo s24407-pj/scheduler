@@ -10,6 +10,12 @@ interface Offering {
   price: number;
 }
 
+interface AvailableSlot {
+  time: string;
+  price: number;
+  originalPrice: number;
+}
+
 /**
  * Public page — browse offerings and available slots WITHOUT login.
  * Login is triggered only when the user wants to confirm a booking.
@@ -26,8 +32,8 @@ export default function BookReservation() {
     tomorrow.setDate(tomorrow.getDate() + 1);
     return tomorrow.toISOString().split('T')[0];
   });
-  const [slots, setSlots] = useState<string[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+  const [slots, setSlots] = useState<AvailableSlot[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState<AvailableSlot | null>(null);
   const [loading, setLoading] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -50,7 +56,7 @@ export default function BookReservation() {
     setSlots([]);
     setSelectedSlot(null);
     api
-      .get('/availability', {
+      .get<AvailableSlot[]>('/availability', {
         params: { employeeId, serviceId: selectedOffering, date },
       })
       .then((res) => setSlots(res.data))
@@ -67,7 +73,7 @@ export default function BookReservation() {
         employeeId: Number(employeeId),
         serviceId: selectedOffering,
         date,
-        slot: selectedSlot,
+        slot: selectedSlot.time,
       };
       sessionStorage.setItem('pendingBooking', JSON.stringify(bookingData));
       navigate('/login');
@@ -78,7 +84,7 @@ export default function BookReservation() {
     setError('');
     setSuccess('');
     try {
-      const startTime = `${date}T${selectedSlot}`;
+      const startTime = `${date}T${selectedSlot.time}`;
       await api.post('/reservations', {
         employeeId: Number(employeeId),
         serviceId: selectedOffering,
@@ -87,7 +93,7 @@ export default function BookReservation() {
       setSuccess('Wizyta zarezerwowana! 🎉');
       setSelectedSlot(null);
       // Refresh slots
-      const res = await api.get('/availability', {
+      const res = await api.get<AvailableSlot[]>('/availability', {
         params: { employeeId, serviceId: selectedOffering, date },
       });
       setSlots(res.data);
@@ -177,19 +183,28 @@ export default function BookReservation() {
               <div className="text-gray-400">Brak dostępnych terminów na wybrany dzień</div>
             ) : (
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                {slots.map((slot) => (
-                  <button
-                    key={slot}
-                    onClick={() => setSelectedSlot(slot)}
-                    className={`py-2 px-3 rounded-lg text-sm font-medium transition ${
-                      selectedSlot === slot
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-indigo-100'
-                    }`}
-                  >
-                    {slot.substring(0, 5)}
-                  </button>
-                ))}
+                {slots.map((slot) => {
+                  const isDiscounted = slot.price < slot.originalPrice;
+                  const isSelected = selectedSlot?.time === slot.time;
+                  return (
+                    <button
+                      key={slot.time}
+                      onClick={() => setSelectedSlot(slot)}
+                      className={`py-2 px-3 rounded-lg text-sm font-medium transition flex flex-col items-center ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-indigo-100'
+                      }`}
+                    >
+                      <span>{slot.time.substring(0, 5)}</span>
+                      {isDiscounted && (
+                        <span className={`text-xs mt-0.5 ${isSelected ? 'text-indigo-200' : 'text-green-600'}`}>
+                          {slot.price} zł
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -202,9 +217,20 @@ export default function BookReservation() {
             <div className="bg-indigo-50 rounded-xl p-4 mb-4 space-y-1 text-sm">
               <p><span className="text-gray-500">Usługa:</span> <span className="font-medium">{selectedOfferingData.name}</span></p>
               <p><span className="text-gray-500">Data:</span> <span className="font-medium">{new Date(date).toLocaleDateString('pl-PL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span></p>
-              <p><span className="text-gray-500">Godzina:</span> <span className="font-medium">{selectedSlot.substring(0, 5)}</span></p>
+              <p><span className="text-gray-500">Godzina:</span> <span className="font-medium">{selectedSlot.time.substring(0, 5)}</span></p>
               <p><span className="text-gray-500">Czas trwania:</span> <span className="font-medium">{selectedOfferingData.durationMinutes} min</span></p>
-              <p><span className="text-gray-500">Cena:</span> <span className="font-semibold text-indigo-700">{selectedOfferingData.price} zł</span></p>
+              <p>
+                <span className="text-gray-500">Cena:</span>{' '}
+                {selectedSlot.price < selectedSlot.originalPrice ? (
+                  <>
+                    <span className="line-through text-gray-400 mr-1">{selectedSlot.originalPrice} zł</span>
+                    <span className="font-semibold text-green-600">{selectedSlot.price} zł</span>
+                    <span className="ml-1 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">last-minute</span>
+                  </>
+                ) : (
+                  <span className="font-semibold text-indigo-700">{selectedSlot.price} zł</span>
+                )}
+              </p>
             </div>
 
             <button

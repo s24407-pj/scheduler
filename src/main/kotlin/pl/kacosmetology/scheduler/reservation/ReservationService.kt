@@ -4,6 +4,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.company.effectivePrice
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.notification.NotificationService
 import pl.kacosmetology.scheduler.offering.OfferingRepository
@@ -60,11 +61,16 @@ class ReservationService(
             throw IllegalArgumentException("Klient jest zablokowany w tej firmie i nie może rezerwować online")
         }
 
+        val company = companyRepository.findById(offering.companyId)
+            .orElseThrow { NoSuchElementException("Firma nie istnieje") }
+
         val endTime = startTime.plusMinutes(offering.durationMinutes.toLong())
 
         if (reservationRepository.existsOverlapping(employeeId, startTime, endTime)) {
             throw IllegalStateException("Ten termin jest już zajęty")
         }
+
+        val price = company.effectivePrice(offering.price, startTime)
 
         val saved = reservationRepository.save(
             Reservation(
@@ -72,7 +78,7 @@ class ReservationService(
                 customerId = customerId,
                 employeeId = employeeId,
                 serviceId = offeringId,
-                price = offering.price,
+                price = price,
                 startTime = startTime,
                 endTime = endTime,
                 status = ReservationStatus.PENDING

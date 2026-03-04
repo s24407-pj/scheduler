@@ -73,6 +73,7 @@ class ReservationServiceTest {
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
+        every { companyRepository.findById(companyId) } returns Optional.of(Company(id = companyId, name = "Salon"))
         // Zakładamy, że termin jest wolny
         every {
             reservationRepository.existsOverlapping(
@@ -92,7 +93,7 @@ class ReservationServiceTest {
         assertNotNull(result)
         assertEquals(companyId, result.companyId)
         assertEquals(customerId, result.customerId)
-        assertEquals(servicePrice, result.price, "Snapshot ceny powinien zgadzać się z ceną usługi!")
+        assertEquals(servicePrice, result.price, "Snapshot ceny powinien zgadzać się z ceną usługi (brak rabatu)!")
         assertEquals(
             startTime.plusMinutes(duration.toLong()),
             result.endTime,
@@ -114,6 +115,7 @@ class ReservationServiceTest {
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
+        every { companyRepository.findById(companyId) } returns Optional.of(Company(id = companyId, name = "Salon"))
 
         // SYMULUJEMY ZAJĘTY TERMIN:
         every { reservationRepository.existsOverlapping(employeeId, any(), any()) } returns true
@@ -283,6 +285,7 @@ class ReservationServiceTest {
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
+        every { companyRepository.findById(companyId) } returns Optional.of(Company(id = companyId, name = "Salon"))
         every { reservationRepository.existsOverlapping(employeeId, startTime, startTime.plusMinutes(duration.toLong())) } returns false
         every { reservationRepository.save(any()) } answers { firstArg() }
 
@@ -315,6 +318,7 @@ class ReservationServiceTest {
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, 500L) } returns null
+        every { companyRepository.findById(companyId) } returns Optional.of(Company(id = companyId, name = "Salon"))
         every { reservationRepository.existsOverlapping(employeeId, startTime, startTime.plusMinutes(duration.toLong())) } returns false
         every { reservationRepository.save(any()) } answers { firstArg() }
 
@@ -532,5 +536,54 @@ class ReservationServiceTest {
         }
         assertEquals("Klient jest zablokowany w tej firmie i nie może rezerwować online", exception.message)
         verify(exactly = 0) { reservationRepository.save(any()) }
+    }
+
+    // ============================================================
+    // Last-minute discount tests
+    // ============================================================
+
+    @Test
+    fun `should snapshot discounted price when booking is within discount window`() {
+        // GIVEN - 15% discount for slots within 48 hours; startTime is fixed in the future (2024-05-20)
+        // We use a very large window (9999h) so the fixed startTime falls inside it
+        val basePrice = 200
+        val mockService = Offering(id = serviceId, companyId = companyId, name = "Masaż", durationMinutes = 60, price = basePrice)
+        val discountCompany = Company(id = companyId, name = "Salon", lastMinuteDiscountPercent = 15, lastMinuteDiscountHours = 9999)
+
+        every { userRepository.existsById(customerId) } returns true
+        every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
+        every { companyRepository.findById(companyId) } returns Optional.of(discountCompany)
+        every { reservationRepository.existsOverlapping(employeeId, startTime, startTime.plusMinutes(60)) } returns false
+        every { reservationRepository.save(any()) } answers { firstArg() }
+
+        // WHEN
+        val result = reservationService.createReservation(customerId, employeeId, serviceId, startTime)
+
+        // THEN - 200 * (100 - 15) / 100 = 170
+        assertEquals(170, result.price, "Price should be discounted when slot is within the discount window")
+    }
+
+    @Test
+    fun `should snapshot full price when discount percent is zero`() {
+        // GIVEN - no discount configured
+        val basePrice = 150
+        val mockService = Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = basePrice)
+        val noDiscountCompany = Company(id = companyId, name = "Salon", lastMinuteDiscountPercent = 0)
+
+        every { userRepository.existsById(customerId) } returns true
+        every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
+        every { companyRepository.findById(companyId) } returns Optional.of(noDiscountCompany)
+        every { reservationRepository.existsOverlapping(employeeId, startTime, startTime.plusMinutes(30)) } returns false
+        every { reservationRepository.save(any()) } answers { firstArg() }
+
+        // WHEN
+        val result = reservationService.createReservation(customerId, employeeId, serviceId, startTime)
+
+        // THEN
+        assertEquals(basePrice, result.price, "Price should not be discounted when discount is 0")
     }
 }

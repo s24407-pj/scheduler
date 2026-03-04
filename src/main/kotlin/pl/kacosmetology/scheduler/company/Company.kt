@@ -33,6 +33,26 @@ class Company(
     @Column(name = "max_no_shows", nullable = false)
     val maxNoShows: Int = 3,
 
+    /** Percentage discount (0–100) applied to slots starting within [lastMinuteDiscountHours] from now. 0 disables the discount. */
+    @Column(name = "last_minute_discount_percent", nullable = false)
+    val lastMinuteDiscountPercent: Int = 0,
+
+    /** Time window in hours within which the last-minute discount applies. */
+    @Column(name = "last_minute_discount_hours", nullable = false)
+    val lastMinuteDiscountHours: Int = 24,
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     val createdAt: LocalDateTime? = null
 )
+
+/**
+ * Returns the effective price for a slot, applying the last-minute discount if configured and applicable.
+ * If [lastMinuteDiscountPercent] is 0, the base price is returned unchanged.
+ */
+fun Company.effectivePrice(basePrice: Int, slotStart: java.time.LocalDateTime): Int {
+    if (lastMinuteDiscountPercent <= 0) return basePrice
+    val cutoff = java.time.LocalDateTime.now().plusHours(lastMinuteDiscountHours.toLong())
+    return if (slotStart.isBefore(cutoff))
+        basePrice * (100 - lastMinuteDiscountPercent) / 100
+    else basePrice
+}

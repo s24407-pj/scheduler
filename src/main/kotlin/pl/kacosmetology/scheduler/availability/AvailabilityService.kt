@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.availability
 
 import org.springframework.stereotype.Service
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.company.effectivePrice
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
@@ -23,14 +24,15 @@ class AvailabilityService(
 ) {
 
     /**
-     * Returns a list of available time slots for booking.
+     * Returns a list of available booking slots with pricing information.
      *
      * Uses the employee's work schedule for opening/closing hours (returns empty list if no entry for that day).
      * The slot interval is still taken from the company configuration.
      * Throws [IllegalArgumentException] if the employee has offering assignments and the requested offering is not among them.
      * Filters out slots that overlap with existing reservations, schedule blocks, and past times.
+     * Applies the company's last-minute discount to slots starting within the configured time window.
      */
-    fun getAvailableSlots(employeeId: Long, offeringId: Long, date: LocalDate): List<LocalTime> {
+    fun getAvailableSlots(employeeId: Long, offeringId: Long, date: LocalDate): List<AvailableSlotResponse> {
         val offering = offeringRepository.findById(offeringId)
             .orElseThrow { IllegalArgumentException("Usługa nie istnieje") }
 
@@ -56,7 +58,7 @@ class AvailabilityService(
         val existingReservations = reservationRepository.findByEmployeeIdAndDate(employeeId, startOfDay, endOfDay)
         val scheduleBlocks = scheduleBlockRepository.findByEmployeeIdAndStartTimeBetween(employeeId, startOfDay, endOfDay)
 
-        val availableSlots = mutableListOf<LocalTime>()
+        val availableSlots = mutableListOf<AvailableSlotResponse>()
         var currentSlotStart = date.atTime(openingTime)
         val endOfWorkDay = date.atTime(closingTime)
 
@@ -70,7 +72,8 @@ class AvailabilityService(
             }
 
             if (!isOverlapping && currentSlotStart.isAfter(LocalDateTime.now())) {
-                availableSlots.add(currentSlotStart.toLocalTime())
+                val slotPrice = company.effectivePrice(offering.price, currentSlotStart)
+                availableSlots.add(AvailableSlotResponse(currentSlotStart.toLocalTime(), slotPrice, offering.price))
             }
 
             currentSlotStart = currentSlotStart.plusMinutes(slotStep)

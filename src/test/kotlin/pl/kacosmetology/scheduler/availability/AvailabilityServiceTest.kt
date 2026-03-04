@@ -92,10 +92,10 @@ class AvailabilityServiceTest {
 
         // THEN
         assertTrue(availableSlots.isNotEmpty())
-        assertEquals(LocalTime.of(9, 0), availableSlots.first(), "Pierwszy slot o 9:00")
+        assertEquals(LocalTime.of(9, 0), availableSlots.first().time, "Pierwszy slot o 9:00")
         assertEquals(
             LocalTime.of(16, 0),
-            availableSlots.last(),
+            availableSlots.last().time,
             "Ostatni slot o 16:00 (bo usługa trwa godzinę, do 17:00)"
         )
 
@@ -136,19 +136,19 @@ class AvailabilityServiceTest {
 
         // THEN
         // Slot 11:00 (do 12:00) jest OK.
-        assertTrue(availableSlots.contains(LocalTime.of(11, 0)))
+        assertTrue(availableSlots.any { it.time == LocalTime.of(11, 0) })
 
         // Slot 11:30 (do 12:30) NACHODZI na 12:00-13:00 -> Odrzucony!
-        assertFalse(availableSlots.contains(LocalTime.of(11, 30)))
+        assertFalse(availableSlots.any { it.time == LocalTime.of(11, 30) })
 
         // Slot 12:00 (do 13:00) IDEALNIE POKRYWA SIĘ Z ZAJĘTYM -> Odrzucony!
-        assertFalse(availableSlots.contains(LocalTime.of(12, 0)))
+        assertFalse(availableSlots.any { it.time == LocalTime.of(12, 0) })
 
         // Slot 12:30 (do 13:30) NACHODZI na 12:00-13:00 -> Odrzucony!
-        assertFalse(availableSlots.contains(LocalTime.of(12, 30)))
+        assertFalse(availableSlots.any { it.time == LocalTime.of(12, 30) })
 
         // Slot 13:00 (do 14:00) jest już po starej rezerwacji -> OK!
-        assertTrue(availableSlots.contains(LocalTime.of(13, 0)))
+        assertTrue(availableSlots.any { it.time == LocalTime.of(13, 0) })
     }
 
     @Test
@@ -176,16 +176,16 @@ class AvailabilityServiceTest {
 
         // THEN
         // Slot 13:00 do 14:00 jest OK (kończy się dokładnie kiedy zaczyna blokada)
-        assertTrue(availableSlots.contains(LocalTime.of(13, 0)))
+        assertTrue(availableSlots.any { it.time == LocalTime.of(13, 0) })
 
         // Slot 13:30 do 14:30 nachodzi na blokadę 14:00-15:00 -> Odrzucony!
-        assertFalse(availableSlots.contains(LocalTime.of(13, 30)))
+        assertFalse(availableSlots.any { it.time == LocalTime.of(13, 30) })
 
         // Slot 14:00 do 15:00 pokrywa się z blokadą -> Odrzucony!
-        assertFalse(availableSlots.contains(LocalTime.of(14, 0)))
+        assertFalse(availableSlots.any { it.time == LocalTime.of(14, 0) })
 
         // Slot 15:00 do 16:00 jest po blokadzie -> OK!
-        assertTrue(availableSlots.contains(LocalTime.of(15, 0)))
+        assertTrue(availableSlots.any { it.time == LocalTime.of(15, 0) })
     }
 
     @Test
@@ -226,14 +226,88 @@ class AvailabilityServiceTest {
         val slots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
 
         // THEN - tylko 13:00 i 13:30 mieszczą się (usługa 60min, koniec do 15:00)
-        assertFalse(slots.contains(LocalTime.of(9, 0)), "Firma otwarta od 9:00, ale pracownik od 13:00")
-        assertTrue(slots.contains(LocalTime.of(13, 0)))
-        assertTrue(slots.contains(LocalTime.of(13, 30)))
+        assertFalse(slots.any { it.time == LocalTime.of(9, 0) }, "Firma otwarta od 9:00, ale pracownik od 13:00")
+        assertTrue(slots.any { it.time == LocalTime.of(13, 0) })
+        assertTrue(slots.any { it.time == LocalTime.of(13, 30) })
         // Slot 14:00 + 60min = 15:00 (ostatni możliwy, kończy się = end_time) - należy sprawdzić
         // Pętla: !currentSlotStart.plusMinutes(60).isAfter(15:00) -> 14:00 + 60 = 15:00 !isAfter(15:00) → true
-        assertTrue(slots.contains(LocalTime.of(14, 0)))
+        assertTrue(slots.any { it.time == LocalTime.of(14, 0) })
         // 14:30 + 60 = 15:30 > 15:00 → false
-        assertFalse(slots.contains(LocalTime.of(14, 30)), "Slot 14:30 przekraczałby koniec grafiku")
+        assertFalse(slots.any { it.time == LocalTime.of(14, 30) }, "Slot 14:30 przekraczałby koniec grafiku")
+    }
+
+    @Test
+    fun `should apply last-minute discount when slot is within the discount window`() {
+        // GIVEN - 20% discount for slots within 48 hours; testDate is tomorrow so all slots are within window
+        val basePrice = 100
+        val discountCompany = Company(id = companyId, name = "Test Salon", lastMinuteDiscountPercent = 20, lastMinuteDiscountHours = 48)
+        val service = Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = basePrice)
+
+        every { serviceRepository.findById(serviceId) } returns Optional.of(service)
+        every { companyRepository.findById(companyId) } returns Optional.of(discountCompany)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { workScheduleRepository.findByEmployeeIdAndDayOfWeek(employeeId, testDate.dayOfWeek) } returns defaultScheduleEntry
+        every { reservationRepository.findByEmployeeIdAndDate(employeeId, any(), any()) } returns emptyList()
+        every { scheduleBlockRepository.findByEmployeeIdAndStartTimeBetween(employeeId, any(), any()) } returns emptyList()
+
+        // WHEN
+        val slots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+
+        // THEN - all slots are within 48h window so discounted price = 100 * (100 - 20) / 100 = 80
+        assertTrue(slots.isNotEmpty())
+        slots.forEach { slot ->
+            assertEquals(80, slot.price, "Slot ${slot.time} should have discounted price")
+            assertEquals(basePrice, slot.originalPrice, "originalPrice should be catalog price")
+        }
+    }
+
+    @Test
+    fun `should not apply discount when discount percent is zero`() {
+        // GIVEN - no discount configured (default)
+        val basePrice = 100
+        val service = Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = basePrice)
+
+        every { serviceRepository.findById(serviceId) } returns Optional.of(service)
+        every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { workScheduleRepository.findByEmployeeIdAndDayOfWeek(employeeId, testDate.dayOfWeek) } returns defaultScheduleEntry
+        every { reservationRepository.findByEmployeeIdAndDate(employeeId, any(), any()) } returns emptyList()
+        every { scheduleBlockRepository.findByEmployeeIdAndStartTimeBetween(employeeId, any(), any()) } returns emptyList()
+
+        // WHEN
+        val slots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+
+        // THEN - price == originalPrice, no discount
+        assertTrue(slots.isNotEmpty())
+        slots.forEach { slot ->
+            assertEquals(basePrice, slot.price)
+            assertEquals(basePrice, slot.originalPrice)
+        }
+    }
+
+    @Test
+    fun `should not apply discount when slot is beyond the discount window`() {
+        // GIVEN - discount only for slots within 1 hour; testDate is tomorrow so slots are outside window
+        val basePrice = 100
+        val narrowWindowCompany = Company(id = companyId, name = "Test Salon", lastMinuteDiscountPercent = 30, lastMinuteDiscountHours = 1)
+        val service = Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = basePrice)
+
+        every { serviceRepository.findById(serviceId) } returns Optional.of(service)
+        every { companyRepository.findById(companyId) } returns Optional.of(narrowWindowCompany)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { workScheduleRepository.findByEmployeeIdAndDayOfWeek(employeeId, testDate.dayOfWeek) } returns defaultScheduleEntry
+        every { reservationRepository.findByEmployeeIdAndDate(employeeId, any(), any()) } returns emptyList()
+        every { scheduleBlockRepository.findByEmployeeIdAndStartTimeBetween(employeeId, any(), any()) } returns emptyList()
+
+        // WHEN - testDate is LocalDate.now().plusDays(1) so all slots start > 1 hour from now
+        val slots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+
+        // THEN - no discount applied since slots are beyond 1-hour window
+        assertTrue(slots.isNotEmpty())
+        slots.forEach { slot ->
+            assertEquals(basePrice, slot.price, "Slot ${slot.time} should have full price outside discount window")
+            assertEquals(basePrice, slot.originalPrice)
+        }
     }
 
     @Test

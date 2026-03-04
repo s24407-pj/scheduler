@@ -129,7 +129,9 @@ class ConversationHandlerTest {
             employeeOptions = listOf(employeeId)
         )
         every { userRepository.findById(employeeId) } returns Optional.of(user)
-        every { availabilityService.getAvailableSlots(employeeId, serviceId, any()) } returns listOf(LocalTime.of(10, 0))
+        every { availabilityService.getAvailableSlots(employeeId, serviceId, any()) } returns listOf(
+            pl.kacosmetology.scheduler.availability.AvailableSlotResponse(LocalTime.of(10, 0), 100, 100)
+        )
 
         handler.handle(phone, "1")
 
@@ -153,7 +155,8 @@ class ConversationHandlerTest {
             dateOptions = listOf(dateStr)
         )
         every { availabilityService.getAvailableSlots(employeeId, serviceId, today) } returns listOf(
-            LocalTime.of(9, 0), LocalTime.of(9, 30)
+            pl.kacosmetology.scheduler.availability.AvailableSlotResponse(LocalTime.of(9, 0), 100, 100),
+            pl.kacosmetology.scheduler.availability.AvailableSlotResponse(LocalTime.of(9, 30), 100, 100)
         )
 
         handler.handle(phone, "1")

@@ -253,11 +253,11 @@ class ScheduleBlockIntegrationTest {
         }.andExpect {
             status { isOk() }
             // Slot 9:30 do 10:30 nachodzi na blokadę 10:00-11:00 -> nie powinien istnieć
-            jsonPath("$[?(@ == '09:30:00')]") { doesNotExist() }
+            jsonPath("$[?(@.time == '09:30:00')]") { doesNotExist() }
             // Slot 10:00 do 11:00 pokrywa się z blokadą -> nie powinien istnieć
-            jsonPath("$[?(@ == '10:00:00')]") { doesNotExist() }
+            jsonPath("$[?(@.time == '10:00:00')]") { doesNotExist() }
             // Slot 11:00 do 12:00 jest po blokadzie -> powinien istnieć
-            jsonPath("$[?(@ == '11:00:00')]") { exists() }
+            jsonPath("$[?(@.time == '11:00:00')]") { exists() }
         }
     }
 

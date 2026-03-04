@@ -19,7 +19,15 @@ data class UpdateCompanySettingsRequest(
     val slotIntervalMinutes: Int,
 
     @field:Min(value = 0, message = "Próg nieobecności nie może być ujemny")
-    val maxNoShows: Int = 3
+    val maxNoShows: Int = 3,
+
+    @field:Min(value = 0, message = "Rabat nie może być ujemny")
+    @field:Max(value = 100, message = "Rabat nie może przekraczać 100%")
+    val lastMinuteDiscountPercent: Int = 0,
+
+    @field:Min(value = 1, message = "Okno rabatu musi wynosić co najmniej 1 godzinę")
+    @field:Max(value = 168, message = "Okno rabatu nie może przekraczać 168 godzin")
+    val lastMinuteDiscountHours: Int = 24
 ) {
     @AssertTrue(message = "Interwał slotów musi być wielokrotnością 5 minut")
     fun isSlotIntervalDivisibleByFive() = slotIntervalMinutes % 5 == 0

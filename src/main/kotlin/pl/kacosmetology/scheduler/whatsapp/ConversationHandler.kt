@@ -197,13 +197,13 @@ class ConversationHandler(
         }
 
         val sb = StringBuilder("Dostępne godziny:\n")
-        slots.forEachIndexed { i, time ->
-            sb.append("\n${i + 1}. ${time.format(timeFormatter)}")
+        slots.forEachIndexed { i, slot ->
+            sb.append("\n${i + 1}. ${slot.time.format(timeFormatter)}")
         }
         val newState = state.copy(
             step = ConversationStep.SELECTING_TIME,
             date = date,
-            timeOptions = slots.map { it.format(timeFormatter) }
+            timeOptions = slots.map { it.time.format(timeFormatter) }
         )
         store.save(phone, newState)
         sender.sendMessage(phone, sb.toString())

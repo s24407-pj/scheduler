@@ -69,7 +69,9 @@ class CompanyService(
                 openingTime = request.openingTime,
                 closingTime = request.closingTime,
                 slotIntervalMinutes = request.slotIntervalMinutes,
-                maxNoShows = request.maxNoShows
+                maxNoShows = request.maxNoShows,
+                lastMinuteDiscountPercent = request.lastMinuteDiscountPercent,
+                lastMinuteDiscountHours = request.lastMinuteDiscountHours
             )
         )
         return updated.toSettingsResponse()

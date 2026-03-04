@@ -143,22 +143,22 @@ class AvailabilityIntegrationTest {
             param("date", testDate.toString()) // format YYYY-MM-DD
         }.andExpect {
             status { isOk() }
-            // Oczekujemy tablicy JSON z godzinami
+            // Oczekujemy tablicy JSON z obiektami {time, price, originalPrice}
             jsonPath("$") { isArray() }
 
             // Usługa trwa 2 godziny.
             // Przed rezerwacją z 10:00 zmieści się tylko o 9:00 (zakończy o 11:00 -> NACHODZI!)
             // Więc przed 12:00 nie będzie żadnego wolnego terminu dla usługi 2-godzinnej (bo salon otwiera o 9:00).
-            jsonPath("$[?(@ == '09:00:00')]") { doesNotExist() }
-            jsonPath("$[?(@ == '10:00:00')]") { doesNotExist() }
+            jsonPath("$[?(@.time == '09:00:00')]") { doesNotExist() }
+            jsonPath("$[?(@.time == '10:00:00')]") { doesNotExist() }
 
             // Od 12:00 zaczyna się pasmo wolnego czasu (12:00-14:00 to 2h, OK)
-            jsonPath("$[?(@ == '12:00:00')]") { exists() }
-            jsonPath("$[?(@ == '12:30:00')]") { exists() }
-            jsonPath("$[?(@ == '15:00:00')]") { exists() } // 15:00-17:00, ostatni możliwy!
+            jsonPath("$[?(@.time == '12:00:00')]") { exists() }
+            jsonPath("$[?(@.time == '12:30:00')]") { exists() }
+            jsonPath("$[?(@.time == '15:00:00')]") { exists() } // 15:00-17:00, ostatni możliwy!
 
             // Usługa wzięta o 15:30 skończyłaby się o 17:30 (poza godzinami pracy), więc nie ma jej na liście
-            jsonPath("$[?(@ == '15:30:00')]") { doesNotExist() }
+            jsonPath("$[?(@.time == '15:30:00')]") { doesNotExist() }
         }
     }
 
@@ -182,13 +182,13 @@ class AvailabilityIntegrationTest {
             status { isOk() }
 
             // Slot 12:00-14:00 nachodzi na blokadę 13:00-14:00 -> niedostępny
-            jsonPath("$[?(@ == '12:00:00')]") { doesNotExist() }
+            jsonPath("$[?(@.time == '12:00:00')]") { doesNotExist() }
 
             // Slot 13:00-15:00 nachodzi na blokadę 13:00-14:00 -> niedostępny
-            jsonPath("$[?(@ == '13:00:00')]") { doesNotExist() }
+            jsonPath("$[?(@.time == '13:00:00')]") { doesNotExist() }
 
             // Slot 14:00-16:00 zaczyna się po blokadzie -> dostępny
-            jsonPath("$[?(@ == '14:00:00')]") { exists() }
+            jsonPath("$[?(@.time == '14:00:00')]") { exists() }
         }
     }
 
@@ -204,6 +204,63 @@ class AvailabilityIntegrationTest {
         }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(0) }
+        }
+    }
+
+    @Test
+    fun `slots should include price and originalPrice fields`() {
+        mockMvc.get("/api/availability") {
+            param("employeeId", employeeId.toString())
+            param("serviceId", serviceId.toString())
+            param("date", testDate.toString())
+        }.andExpect {
+            status { isOk() }
+            // Each slot object must have time, price and originalPrice; no discount configured so both equal catalog price
+            jsonPath("$[0].time") { exists() }
+            jsonPath("$[0].price") { value(250) }
+            jsonPath("$[0].originalPrice") { value(250) }
+        }
+    }
+
+    @Test
+    fun `slots should have discounted price when last-minute discount is configured and testDate is within window`() {
+        // Re-create company with 20% discount and a huge window so testDate (2 days ahead) is inside
+        companyRepository.deleteAll() // cascade deletes are handled by @BeforeEach ordering; here we rebuild only company
+        val discountCompany = companyRepository.save(
+            Company(
+                name = "Salon Rabatowy",
+                lastMinuteDiscountPercent = 20,
+                lastMinuteDiscountHours = 9999
+            )
+        )
+        val newCompanyId = discountCompany.id!!
+
+        // Re-create employee and offering under the new company
+        val newEmployee = userRepository.save(User(phoneNumber = "+48777666555", firstName = "Fryzjer2", lastName = "Testowy2"))
+        companyEmployeeRepository.save(CompanyEmployee(companyId = newCompanyId, userId = newEmployee.id, role = "EMPLOYEE"))
+        val newService = serviceRepository.save(
+            Offering(companyId = newCompanyId, name = "Koloryzacja", durationMinutes = 60, price = 100)
+        )
+        workScheduleRepository.save(
+            EmployeeWorkSchedule(
+                companyId = newCompanyId,
+                employeeId = newEmployee.id,
+                dayOfWeek = testDate.dayOfWeek,
+                startTime = LocalTime.of(9, 0),
+                endTime = LocalTime.of(11, 0)
+            )
+        )
+
+        mockMvc.get("/api/availability") {
+            param("employeeId", newEmployee.id.toString())
+            param("serviceId", newService.id!!.toString())
+            param("date", testDate.toString())
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$") { isArray() }
+            // price = 100 * (100 - 20) / 100 = 80; originalPrice = 100
+            jsonPath("$[0].price") { value(80) }
+            jsonPath("$[0].originalPrice") { value(100) }
         }
     }
 
@@ -245,13 +302,13 @@ class AvailabilityIntegrationTest {
         }.andExpect {
             status { isOk() }
             // Firma otwarta od 9:00, ale pracownik od 13:00 – slot 9:00 nie powinien istnieć
-            jsonPath("$[?(@ == '09:00:00')]") { doesNotExist() }
+            jsonPath("$[?(@.time == '09:00:00')]") { doesNotExist() }
             // Slot 13:00-15:00 jest dostępny
-            jsonPath("$[?(@ == '13:00:00')]") { exists() }
+            jsonPath("$[?(@.time == '13:00:00')]") { exists() }
             // Slot 15:00-17:00 jest dostępny
-            jsonPath("$[?(@ == '15:00:00')]") { exists() }
+            jsonPath("$[?(@.time == '15:00:00')]") { exists() }
             // Slot 15:30-17:30 przekracza koniec grafiku
-            jsonPath("$[?(@ == '15:30:00')]") { doesNotExist() }
+            jsonPath("$[?(@.time == '15:30:00')]") { doesNotExist() }
         }
     }
 }
