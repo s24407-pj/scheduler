@@ -151,6 +151,55 @@ class OfferingCategoryIntegrationTest {
     }
 
     @Test
+    fun `DELETE api-offering-categories should evict offering cache so public endpoint reflects null categoryId`() {
+        val category = categoryRepository.save(OfferingCategory(companyId = companyId, name = "Do Usunięcia"))
+        offeringRepository.save(
+            Offering(id = offeringId, companyId = companyId, name = "Farbowanie", durationMinutes = 60, price = 150, categoryId = category.id)
+        )
+
+        // Populate the cache
+        mockMvc.get("/api/offerings/public/company/$companyId").andExpect {
+            status { isOk() }
+            jsonPath("$[0].categoryId") { value(category.id) }
+        }
+
+        // Delete the category
+        mockMvc.delete("/api/offering-categories/${category.id}") {
+            header("Authorization", "Bearer $ownerToken")
+        }.andExpect { status { isNoContent() } }
+
+        // Cache must be evicted — public endpoint must return null categoryId
+        mockMvc.get("/api/offerings/public/company/$companyId").andExpect {
+            status { isOk() }
+            jsonPath("$[0].categoryId") { value(null) }
+        }
+    }
+
+    @Test
+    fun `PATCH api-offerings-category should evict offering cache so public endpoint reflects new categoryId`() {
+        val category = categoryRepository.save(OfferingCategory(companyId = companyId, name = "Koloryzacja"))
+
+        // Populate the cache (no category assigned yet)
+        mockMvc.get("/api/offerings/public/company/$companyId").andExpect {
+            status { isOk() }
+            jsonPath("$[0].categoryId") { value(null) }
+        }
+
+        // Assign category
+        mockMvc.patch("/api/offerings/$offeringId/category") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(mapOf("categoryId" to category.id))
+        }.andExpect { status { isNoContent() } }
+
+        // Cache must be evicted — public endpoint must return updated categoryId
+        mockMvc.get("/api/offerings/public/company/$companyId").andExpect {
+            status { isOk() }
+            jsonPath("$[0].categoryId") { value(category.id) }
+        }
+    }
+
+    @Test
     fun `PATCH api-offerings-category should assign category to offering`() {
         val category = categoryRepository.save(OfferingCategory(companyId = companyId, name = "Koloryzacja"))
 

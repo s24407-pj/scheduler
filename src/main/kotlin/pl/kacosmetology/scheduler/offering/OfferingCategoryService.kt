@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.offering
 
+import org.springframework.cache.annotation.CacheEvict
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.offering.dto.OfferingCategoryRequest
@@ -34,6 +35,7 @@ class OfferingCategoryService(
      * Throws [IllegalStateException] if the category belongs to a different company.
      */
     @Transactional
+    @CacheEvict("companyServices", key = "#companyId")
     fun deleteCategory(categoryId: Long, companyId: Long) {
         val category = categoryRepository.findById(categoryId)
             .orElseThrow { NoSuchElementException("Kategoria nie istnieje") }
@@ -49,6 +51,7 @@ class OfferingCategoryService(
      * Validates that both the offering and category belong to [companyId].
      */
     @Transactional
+    @CacheEvict("companyServices", key = "#companyId")
     fun assignCategory(offeringId: Long, companyId: Long, categoryId: Long?) {
         val offering = offeringRepository.findById(offeringId)
             .orElseThrow { NoSuchElementException("Usługa nie istnieje") }

@@ -55,6 +55,7 @@ class WorkScheduleService(
         }
 
         workScheduleRepository.deleteAllByEmployeeId(employeeId)
+        workScheduleRepository.flush()
 
         val saved = workScheduleRepository.saveAll(
             entries.map { entry ->

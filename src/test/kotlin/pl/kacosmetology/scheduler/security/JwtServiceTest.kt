@@ -111,6 +111,26 @@ class JwtServiceTest {
     }
 
     @Test
+    fun `generateToken should contain highest priority role when multiple authorities present`() {
+        // GIVEN - authorities list like loginStaff builds it: CUSTOMER first, then OWNER
+        val user = User(phoneNumber = "+48123456789", firstName = "Jan", lastName = "Kowalski")
+        val userDetails = CustomUserDetails(
+            user = user,
+            companyId = 1L,
+            authorities = listOf(
+                SimpleGrantedAuthority("ROLE_CUSTOMER"),
+                SimpleGrantedAuthority("ROLE_OWNER")
+            )
+        )
+
+        // WHEN
+        val token = jwtService.generateToken(userDetails, 1L)
+
+        // THEN
+        assertEquals("owner", jwtService.extractRole(token), "Token powinien zawierać rolę owner, nie customer")
+    }
+
+    @Test
     fun `generateToken should contain null companyId when not provided`() {
         // GIVEN
         val user = User(phoneNumber = "+48111222333", firstName = "A", lastName = "B")

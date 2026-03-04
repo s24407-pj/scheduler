@@ -5,6 +5,7 @@ import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
 import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -21,6 +22,11 @@ import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
+import pl.kacosmetology.scheduler.company.Company
+import pl.kacosmetology.scheduler.company.CompanyEmployee
+import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -44,6 +50,15 @@ class AuthFlowIntegrationTest {
     private lateinit var userRepository: UserRepository
 
     @Autowired
+    private lateinit var companyRepository: CompanyRepository
+
+    @Autowired
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+
+    @Autowired
+    private lateinit var jwtService: JwtService
+
+    @Autowired
     private lateinit var passwordEncoder: PasswordEncoder
 
     // Zastępujemy prawdziwy serwis sztucznym (żeby nie sypało logami ani nie wysyłało prawdziwych SMS)
@@ -57,7 +72,9 @@ class AuthFlowIntegrationTest {
     fun setup() {
         // Czyścimy Redis i bazę przed każdym testem
         redisTemplate.connectionFactory?.connection?.serverCommands()?.flushAll()
+        companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
+        companyRepository.deleteAll()
 
         // MÓWIMY MOCKOWI JAK MA SIĘ ZACHOWAĆ:
         every { smsSender.sendOtp(any(), any()) } just Runs
@@ -135,6 +152,37 @@ class AuthFlowIntegrationTest {
             status { isOk() }
             jsonPath("$.token") { exists() }
         }
+    }
+
+    @Test
+    fun `staff login as owner should return token with role owner`() {
+        // GIVEN
+        val rawPassword = "securePassword1"
+        val company = companyRepository.save(Company(name = "Test Salon"))
+        val owner = userRepository.save(
+            User(
+                phoneNumber = "+48777666555",
+                firstName = "Właściciel",
+                lastName = "Salonu",
+                email = "owner@salon.pl",
+                passwordHash = passwordEncoder.encode(rawPassword)
+            )
+        )
+        companyEmployeeRepository.save(CompanyEmployee(companyId = company.id!!, userId = owner.id, role = "OWNER"))
+
+        // WHEN
+        val result = mockMvc.post("/api/auth/login-staff") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(StaffLoginRequest(email = "owner@salon.pl", password = rawPassword))
+        }.andExpect {
+            status { isOk() }
+        }.andReturn()
+
+        val token = objectMapper.readTree(result.response.contentAsString)["token"].asText()
+
+        // THEN
+        assertEquals("owner", jwtService.extractRole(token), "Token powinien zawierać rolę owner")
+        assertEquals(company.id, jwtService.extractCompanyId(token))
     }
 
     @Test

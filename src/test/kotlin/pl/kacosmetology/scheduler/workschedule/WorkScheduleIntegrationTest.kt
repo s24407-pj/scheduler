@@ -125,6 +125,32 @@ class WorkScheduleIntegrationTest {
     }
 
     @Test
+    fun `PUT work-schedule should replace same day with updated hours without constraint violation`() {
+        workScheduleRepository.save(
+            EmployeeWorkSchedule(companyId = companyId, employeeId = employeeId, dayOfWeek = DayOfWeek.MONDAY, startTime = java.time.LocalTime.of(9, 0), endTime = java.time.LocalTime.of(17, 0))
+        )
+
+        val body = mapOf(
+            "entries" to listOf(
+                mapOf("dayOfWeek" to "MONDAY", "startTime" to "10:00:00", "endTime" to "18:00:00")
+            )
+        )
+
+        mockMvc.put("/api/employees/$employeeId/work-schedule") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].dayOfWeek") { value("MONDAY") }
+            jsonPath("$[0].startTime") { value("10:00:00") }
+        }
+
+        assertEquals(1, workScheduleRepository.findAllByEmployeeId(employeeId).size)
+    }
+
+    @Test
     fun `PUT work-schedule should return 403 for employee`() {
         val body = mapOf("entries" to emptyList<Any>())
 
