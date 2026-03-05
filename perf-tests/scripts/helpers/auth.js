@@ -12,12 +12,16 @@ export function loginStaff() {
   const res = http.post(
     `${BASE_URL}/api/auth/login-staff`,
     JSON.stringify({ email: STAFF_EMAIL, password: STAFF_PASSWORD }),
-    { headers: { 'Content-Type': 'application/json' } }
+    {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: '10s',
+    }
   );
 
   check(res, {
     'staff login status 200': (r) => r.status === 200,
     'staff login has token': (r) => !!r.json('token'),
+    'staff login response time < 2s': (r) => r.timings.duration < 2000,
   });
 
   return res.json('token');

@@ -1,0 +1,200 @@
+{
+  "id": null,
+  "uid": "spring-boot-spike",
+  "title": "Scheduler - Spike Test",
+  "tags": ["spring-boot", "perf"],
+  "timezone": "browser",
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "title": "Request Rate (req/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "targets": [
+        {
+          "expr": "rate(http_server_requests_seconds_count{application=\"scheduler\"}[30s])",
+          "legendFormat": "{{method}} {{uri}} {{status}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "title": "Response Time (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(http_server_requests_seconds_bucket{application=\"scheduler\"}[30s])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{application=\"scheduler\"}[30s])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{application=\"scheduler\"}[30s])) by (le))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "Error Rate (4xx / 5xx)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{application=\"scheduler\",status=~\"4..\"}[30s]))",
+          "legendFormat": "4xx"
+        },
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{application=\"scheduler\",status=~\"5..\"}[30s]))",
+          "legendFormat": "5xx"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "title": "Response Time by Endpoint (p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{application=\"scheduler\",uri!~\"/actuator.*\"}[30s])) by (le, uri))",
+          "legendFormat": "{{uri}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "HikariCP Connections",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "hikaricp_connections_active{application=\"scheduler\"}",
+          "legendFormat": "active"
+        },
+        {
+          "expr": "hikaricp_connections_idle{application=\"scheduler\"}",
+          "legendFormat": "idle"
+        },
+        {
+          "expr": "hikaricp_connections_pending{application=\"scheduler\"}",
+          "legendFormat": "pending"
+        },
+        {
+          "expr": "hikaricp_connections_max{application=\"scheduler\"}",
+          "legendFormat": "max"
+        }
+      ]
+    },
+    {
+      "title": "HikariCP Acquire Time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "rate(hikaricp_connections_acquire_seconds_sum{application=\"scheduler\"}[30s]) / rate(hikaricp_connections_acquire_seconds_count{application=\"scheduler\"}[30s])",
+          "legendFormat": "avg acquire"
+        },
+        {
+          "expr": "hikaricp_connections_acquire_seconds_max{application=\"scheduler\"}",
+          "legendFormat": "max acquire"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "JVM Heap Memory",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "sum(jvm_memory_used_bytes{application=\"scheduler\",area=\"heap\"}) by (id)",
+          "legendFormat": "{{id}}"
+        },
+        {
+          "expr": "sum(jvm_memory_max_bytes{application=\"scheduler\",area=\"heap\"})",
+          "legendFormat": "max"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "title": "GC Pause Duration",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        {
+          "expr": "rate(jvm_gc_pause_seconds_sum{application=\"scheduler\"}[30s])",
+          "legendFormat": "GC time ratio"
+        },
+        {
+          "expr": "jvm_gc_pause_seconds_max{application=\"scheduler\"}",
+          "legendFormat": "max pause"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "CPU Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "targets": [
+        {
+          "expr": "process_cpu_usage{application=\"scheduler\"}",
+          "legendFormat": "app CPU"
+        },
+        {
+          "expr": "system_cpu_usage{application=\"scheduler\"}",
+          "legendFormat": "system CPU"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1 } }
+    },
+    {
+      "title": "Threads by State",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "targets": [
+        {
+          "expr": "jvm_threads_states_threads{application=\"scheduler\"}",
+          "legendFormat": "{{state}}"
+        }
+      ]
+    },
+    {
+      "title": "Redis (Lettuce) Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "targets": [
+        {
+          "expr": "rate(lettuce_seconds_sum{application=\"scheduler\"}[30s]) / rate(lettuce_seconds_count{application=\"scheduler\"}[30s])",
+          "legendFormat": "avg {{command}}"
+        },
+        {
+          "expr": "lettuce_seconds_max{application=\"scheduler\"}",
+          "legendFormat": "max {{command}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "Spring Data Repository Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "targets": [
+        {
+          "expr": "rate(spring_data_repository_invocations_seconds_sum{application=\"scheduler\"}[30s]) / rate(spring_data_repository_invocations_seconds_count{application=\"scheduler\"}[30s])",
+          "legendFormat": "{{repository}}.{{method}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

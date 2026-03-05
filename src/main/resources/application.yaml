@@ -58,7 +58,19 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,info,metrics,prometheus
   endpoint:
     health:
-      show-details: always
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: scheduler
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.5, 0.75, 0.95, 0.99
+      sla:
+        http.server.requests: 100ms, 250ms, 500ms, 1s, 2s, 5s

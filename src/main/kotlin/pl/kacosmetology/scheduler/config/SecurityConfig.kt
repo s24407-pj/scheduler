@@ -54,7 +54,7 @@ class SecurityConfig(
             .csrf { it.disable() }
             .authorizeHttpRequests { auth ->
                 auth
-                    .requestMatchers("/actuator/health").permitAll()
+                    .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus", "/actuator/metrics", "/actuator/metrics/**", "/actuator/info").permitAll()
                     .requestMatchers("/api/auth/**").permitAll()
                     .requestMatchers("/api/availability").permitAll()
                     .requestMatchers("/api/offerings/public/**").permitAll()

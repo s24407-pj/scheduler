@@ -13,3 +13,12 @@ logging:
 whatsapp:
   sender: dev
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,hikaricp,caches,env,threaddump,loggers
+  endpoint:
+    health:
+      show-details: always
+
