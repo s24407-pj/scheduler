@@ -183,10 +183,39 @@ class ReservationService(
         return reservationRepository.findAllByCustomerIdOrderByStartTimeDesc(customerId)
     }
 
+    /**
+     * Returns reservations for a given employee within a company and date range.
+     * Used by the owner dashboard — the authorization check (OWNER can see any employee,
+     * EMPLOYEE can only see their own) is performed in the controller before calling this method.
+     */
+    @Transactional(readOnly = true)
+    fun getCompanyReservations(
+        companyId: Long,
+        employeeId: Long,
+        start: LocalDateTime,
+        end: LocalDateTime
+    ): List<Reservation> {
+        return reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end)
+    }
+
     /** Returns an employee's schedule within a given time range. */
     @Transactional(readOnly = true)
     fun getEmployeeSchedule(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<Reservation> {
         return reservationRepository.findEmployeeSchedule(employeeId, start, end)
+    }
+
+    /**
+     * Permanently deletes a reservation.
+     * Only the owning company may delete; throws [IllegalStateException] (→409) on mismatch.
+     */
+    @Transactional
+    fun deleteReservation(reservationId: Long, companyId: Long) {
+        val reservation = reservationRepository.findById(reservationId)
+            .orElseThrow { NoSuchElementException("Rezerwacja nie istnieje") }
+        if (reservation.companyId != companyId) {
+            throw IllegalStateException("Brak dostępu do tej rezerwacji")
+        }
+        reservationRepository.delete(reservation)
     }
 
     /**

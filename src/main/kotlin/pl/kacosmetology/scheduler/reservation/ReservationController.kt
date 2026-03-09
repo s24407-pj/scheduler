@@ -94,6 +94,40 @@ class ReservationController(
         return reservationService.getEmployeeSchedule(employeeId, start, end).map { it.toEmployeeResponse() }
     }
 
+    /**
+     * Returns reservations for the given employee filtered by date range.
+     * OWNER can query any employee within their company; EMPLOYEE can only query their own schedule.
+     */
+    @GetMapping
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun getReservations(
+        @RequestParam employeeId: Long,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime,
+        @AuthenticationPrincipal userDetails: CustomUserDetails?
+    ): List<DashboardReservationResponse> {
+        val user = userDetails ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        val companyId = user.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
+        val isOwner = user.authorities.any { it.authority == "ROLE_OWNER" }
+        if (!isOwner && user.id != employeeId) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Możesz przeglądać tylko swoje rezerwacje")
+        }
+        return reservationService.getCompanyReservations(companyId, employeeId, start, end)
+            .map { it.toDashboardResponse() }
+    }
+
+    /** Permanently deletes a reservation. Requires OWNER role. */
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('OWNER')")
+    fun deleteReservation(
+        @PathVariable id: Long,
+        @AuthenticationPrincipal userDetails: CustomUserDetails?
+    ) {
+        val companyId = userDetails?.companyId ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        reservationService.deleteReservation(id, companyId)
+    }
+
     /** Creates a reservation for a client by phone number. Requires OWNER or EMPLOYEE role. */
     @PostMapping("/staff")
     @ResponseStatus(HttpStatus.CREATED)

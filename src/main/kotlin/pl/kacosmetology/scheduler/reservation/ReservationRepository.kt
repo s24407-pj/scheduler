@@ -73,4 +73,25 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
 
     /** Checks if a customer has any reservation in the given company. */
     fun existsByCustomerIdAndCompanyId(customerId: Long, companyId: Long): Boolean
+
+    /**
+     * Returns reservations for a specific employee within a company and date range.
+     * Used by the owner dashboard to display the calendar for any employee.
+     */
+    @Query(
+        """
+        SELECT r FROM Reservation r
+        WHERE r.companyId = :companyId
+        AND r.employeeId = :employeeId
+        AND r.startTime >= :start
+        AND r.startTime <= :end
+        ORDER BY r.startTime ASC
+    """
+    )
+    fun findByCompanyIdAndEmployeeIdAndDateRange(
+        companyId: Long,
+        employeeId: Long,
+        start: LocalDateTime,
+        end: LocalDateTime
+    ): List<Reservation>
 }

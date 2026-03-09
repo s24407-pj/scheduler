@@ -50,15 +50,18 @@ class ScheduleBlockService(
 
     /**
      * Deletes a schedule block.
-     * Only the owning employee may delete their own block.
+     * OWNER may delete any block within their company (verified by [companyId]).
+     * EMPLOYEE may only delete their own block (verified by [requesterId]).
      */
     @Transactional
-    fun deleteBlock(blockId: Long, employeeId: Long) {
+    fun deleteBlock(blockId: Long, requesterId: Long, isOwner: Boolean, companyId: Long?) {
         val block = scheduleBlockRepository.findById(blockId)
             .orElseThrow { NoSuchElementException("Blokada nie istnieje") }
 
-        if (block.employeeId != employeeId) {
-            throw IllegalStateException("Nie możesz usunąć cudzej blokady")
+        if (isOwner) {
+            if (block.companyId != companyId) throw IllegalStateException("Brak dostępu do tej blokady")
+        } else {
+            if (block.employeeId != requesterId) throw IllegalStateException("Nie możesz usunąć cudzej blokady")
         }
 
         scheduleBlockRepository.delete(block)

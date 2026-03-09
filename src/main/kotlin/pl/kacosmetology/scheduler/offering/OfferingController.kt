@@ -29,16 +29,12 @@ class OfferingController(
         return enrichWithImages(offerings)
     }
 
-    /** Returns all offerings (including inactive) for a company. Requires staff membership in the same company. */
-    @GetMapping("/company/{companyId}")
+    /** Returns all offerings (including inactive) for the authenticated user's company. Requires EMPLOYEE or OWNER role. */
+    @GetMapping("")
     fun getCompanyOfferings(
-        @PathVariable companyId: Long,
         @AuthenticationPrincipal userDetails: CustomUserDetails
     ): List<OfferingResponse> {
-        if (userDetails.companyId != companyId) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak dostępu do tej firmy")
-        }
-        val offerings = offeringService.getAllCompanyOfferings(companyId)
+        val offerings = offeringService.getAllCompanyOfferings(requireCompanyId(userDetails))
         return enrichWithImages(offerings)
     }
 

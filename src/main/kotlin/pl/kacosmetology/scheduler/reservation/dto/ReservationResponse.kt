@@ -28,6 +28,19 @@ data class EmployeeReservationResponse(
     val createdAt: LocalDateTime?
 )
 
+/** Dashboard DTO — includes both customerId and employeeId for the owner's cross-employee view. */
+data class DashboardReservationResponse(
+    val id: Long,
+    val customerId: Long,
+    val employeeId: Long,
+    val serviceId: Long,
+    val price: Int,
+    val startTime: LocalDateTime,
+    val endTime: LocalDateTime,
+    val status: ReservationStatus,
+    val createdAt: LocalDateTime?
+)
+
 /** Maps a [Reservation] to the customer-facing [ReservationResponse]. */
 fun Reservation.toResponse() = ReservationResponse(
     id = requireNotNull(id) { "Reservation must be persisted before converting to DTO" },
@@ -44,6 +57,19 @@ fun Reservation.toResponse() = ReservationResponse(
 fun Reservation.toEmployeeResponse() = EmployeeReservationResponse(
     id = requireNotNull(id) { "Reservation must be persisted before converting to DTO" },
     customerId = customerId,
+    serviceId = serviceId,
+    price = price,
+    startTime = startTime,
+    endTime = endTime,
+    status = status,
+    createdAt = createdAt
+)
+
+/** Maps a [Reservation] to the owner dashboard [DashboardReservationResponse] with full employee+customer context. */
+fun Reservation.toDashboardResponse() = DashboardReservationResponse(
+    id = requireNotNull(id) { "Reservation must be persisted before converting to DTO" },
+    customerId = customerId,
+    employeeId = employeeId,
     serviceId = serviceId,
     price = price,
     startTime = startTime,

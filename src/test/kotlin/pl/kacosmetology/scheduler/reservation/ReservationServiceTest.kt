@@ -615,6 +615,47 @@ class ReservationServiceTest {
         assertEquals(170, result.price, "Price should be discounted when slot is within the discount window")
     }
 
+    // ============================================================
+    // getCompanyReservations tests
+    // ============================================================
+
+    @Test
+    fun `getCompanyReservations should return reservations filtered by company and employee and date range`() {
+        // GIVEN
+        val start = LocalDateTime.of(2024, 5, 20, 0, 0)
+        val end = LocalDateTime.of(2024, 5, 20, 23, 59)
+        val expected = listOf(
+            Reservation(
+                id = 1L, companyId = companyId, customerId = customerId,
+                employeeId = employeeId, serviceId = serviceId, price = 100,
+                startTime = startTime, endTime = startTime.plusMinutes(30)
+            )
+        )
+        every { reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end) } returns expected
+
+        // WHEN
+        val result = reservationService.getCompanyReservations(companyId, employeeId, start, end)
+
+        // THEN
+        assertEquals(1, result.size)
+        assertEquals(1L, result[0].id)
+        verify(exactly = 1) { reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end) }
+    }
+
+    @Test
+    fun `getCompanyReservations should return empty list when no reservations in range`() {
+        // GIVEN
+        val start = LocalDateTime.of(2024, 1, 1, 0, 0)
+        val end = LocalDateTime.of(2024, 1, 1, 23, 59)
+        every { reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end) } returns emptyList()
+
+        // WHEN
+        val result = reservationService.getCompanyReservations(companyId, employeeId, start, end)
+
+        // THEN
+        assertTrue(result.isEmpty())
+    }
+
     @Test
     fun `should snapshot full price when discount percent is zero`() {
         // GIVEN - no discount configured

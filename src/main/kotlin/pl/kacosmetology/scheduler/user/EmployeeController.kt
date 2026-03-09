@@ -6,18 +6,34 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.multipart.MultipartFile
 import org.springframework.web.server.ResponseStatusException
+import pl.kacosmetology.scheduler.company.CompanyService
+import pl.kacosmetology.scheduler.company.dto.CompanyEmployeeResponse
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.user.dto.UserProfileResponse
 
 /**
- * REST API for managing employee profile photos.
- * All operations require the OWNER role and operate within the owner's company.
+ * REST API for listing employees and managing employee profile photos.
+ * Listing requires EMPLOYEE or OWNER role; photo mutations require OWNER.
  */
 @RestController
 @RequestMapping("/api/employees")
 class EmployeeController(
-    private val employeePhotoService: EmployeePhotoService
+    private val employeePhotoService: EmployeePhotoService,
+    private val companyService: CompanyService
 ) {
+
+    /**
+     * Returns all employees belonging to the authenticated user's company.
+     * `id` in each entry is the user ID (used as the path parameter in sub-resource routes
+     * such as `/api/employees/{id}/work-schedule` and `/api/employees/{id}/photo`).
+     */
+    @GetMapping("")
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun listEmployees(
+        @AuthenticationPrincipal userDetails: CustomUserDetails
+    ): List<CompanyEmployeeResponse> =
+        companyService.getEmployees(requireCompanyId(userDetails))
+            .map { it.copy(id = it.userId) }
 
     /**
      * Uploads or replaces the profile photo for [id].

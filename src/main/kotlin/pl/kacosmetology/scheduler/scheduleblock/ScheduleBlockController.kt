@@ -23,7 +23,11 @@ class ScheduleBlockController(
     private val scheduleBlockService: ScheduleBlockService
 ) {
 
-    /** Creates a new schedule block for the authenticated employee. */
+    /**
+     * Creates a new schedule block.
+     * OWNER may specify a target employee via [CreateScheduleBlockRequest.employeeId];
+     * EMPLOYEE always creates for themselves (JWT identity).
+     */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
@@ -31,13 +35,15 @@ class ScheduleBlockController(
         @Valid @RequestBody request: CreateScheduleBlockRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails?
     ): ScheduleBlockResponse {
-        val employeeId = userDetails?.id
+        val requesterId = userDetails?.id
             ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
         val companyId = userDetails.companyId
             ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
+        val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
+        val targetEmployeeId = if (isOwner && request.employeeId != null) request.employeeId else requesterId
 
         return scheduleBlockService.createBlock(
-            employeeId = employeeId,
+            employeeId = targetEmployeeId,
             companyId = companyId,
             startTime = request.startTime!!,
             endTime = request.endTime!!,
@@ -45,7 +51,10 @@ class ScheduleBlockController(
         ).toResponse()
     }
 
-    /** Deletes a schedule block owned by the authenticated employee. */
+    /**
+     * Deletes a schedule block.
+     * OWNER may delete any block within their company; EMPLOYEE may only delete their own blocks.
+     */
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
@@ -53,21 +62,30 @@ class ScheduleBlockController(
         @PathVariable id: Long,
         @AuthenticationPrincipal userDetails: CustomUserDetails?
     ) {
-        val employeeId = userDetails?.id
+        val requesterId = userDetails?.id
             ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
-        scheduleBlockService.deleteBlock(id, employeeId)
+        val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
+        val companyId = if (isOwner) userDetails.companyId else null
+        scheduleBlockService.deleteBlock(id, requesterId, isOwner, companyId)
     }
 
-    /** Returns schedule blocks for the authenticated employee within a time range. */
+    /**
+     * Returns schedule blocks within a time range.
+     * OWNER may supply [employeeId] to query any employee's blocks.
+     * EMPLOYEE always receives only their own blocks (the param is ignored).
+     */
     @GetMapping("/employee")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getMyBlocks(
         @AuthenticationPrincipal userDetails: CustomUserDetails?,
+        @RequestParam(required = false) employeeId: Long?,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime
     ): List<ScheduleBlockResponse> {
-        val employeeId = userDetails?.id
+        val requesterId = userDetails?.id
             ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
-        return scheduleBlockService.getEmployeeBlocks(employeeId, start, end).map { it.toResponse() }
+        val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
+        val targetId = if (isOwner && employeeId != null) employeeId else requesterId
+        return scheduleBlockService.getEmployeeBlocks(targetId, start, end).map { it.toResponse() }
     }
 }

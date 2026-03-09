@@ -54,8 +54,10 @@ class ScheduleBlockIntegrationTest {
     @MockkBean private lateinit var s3Client: S3Client
 
     private lateinit var employee: User
+    private lateinit var owner: User
     private var companyId: Long = 0
     private lateinit var employeeToken: String
+    private lateinit var ownerToken: String
     private val testDate = LocalDate.now().plusDays(3)
 
     @BeforeEach
@@ -71,7 +73,9 @@ class ScheduleBlockIntegrationTest {
         val company = companyRepository.save(Company(name = "Salon Testowy"))
         companyId = company.id!!
         employee = userRepository.save(User(phoneNumber = "+48700800900", firstName = "Pracownik", lastName = "Testowy"))
+        owner = userRepository.save(User(phoneNumber = "+48111222333", firstName = "Właściciel", lastName = "Testowy"))
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
+        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER"))
 
         // Grafik pracownika: pracuje cały tydzień 9:00-17:00
         for (day in java.time.DayOfWeek.values()) {
@@ -88,6 +92,10 @@ class ScheduleBlockIntegrationTest {
 
         employeeToken = jwtService.generateToken(
             CustomUserDetails(employee, companyId, listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE"))),
+            companyId
+        )
+        ownerToken = jwtService.generateToken(
+            CustomUserDetails(owner, companyId, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
             companyId
         )
     }
@@ -273,6 +281,68 @@ class ScheduleBlockIntegrationTest {
             content = objectMapper.writeValueAsString(body)
         }.andExpect {
             status { isForbidden() }
+        }
+    }
+
+    @Test
+    fun `POST schedule-blocks owner can create block for another employee by supplying employeeId`() {
+        val body = mapOf(
+            "startTime" to testDate.atTime(12, 0).toString(),
+            "endTime" to testDate.atTime(13, 0).toString(),
+            "reason" to "Przerwa pracownika",
+            "employeeId" to employee.id
+        )
+
+        mockMvc.post("/api/schedule-blocks") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isCreated() }
+        }
+
+        val blocks = scheduleBlockRepository.findAll()
+        assertEquals(1, blocks.size)
+        assertEquals(employee.id, blocks[0].employeeId)
+    }
+
+    @Test
+    fun `DELETE schedule-blocks owner can delete another employee block in their company`() {
+        val block = scheduleBlockRepository.save(
+            ScheduleBlock(
+                companyId = companyId,
+                employeeId = employee.id,
+                startTime = testDate.atTime(14, 0),
+                endTime = testDate.atTime(15, 0)
+            )
+        )
+
+        mockMvc.delete("/api/schedule-blocks/${block.id}") {
+            header("Authorization", "Bearer $ownerToken")
+        }.andExpect {
+            status { isNoContent() }
+        }
+
+        assertTrue(scheduleBlockRepository.findAll().isEmpty())
+    }
+
+    @Test
+    fun `DELETE schedule-blocks owner cannot delete block from another company`() {
+        val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
+        val otherEmployee = userRepository.save(User(phoneNumber = "+48999888777", firstName = "Obcy", lastName = "Pracownik"))
+        val block = scheduleBlockRepository.save(
+            ScheduleBlock(
+                companyId = otherCompany.id!!,
+                employeeId = otherEmployee.id,
+                startTime = testDate.atTime(10, 0),
+                endTime = testDate.atTime(11, 0)
+            )
+        )
+
+        mockMvc.delete("/api/schedule-blocks/${block.id}") {
+            header("Authorization", "Bearer $ownerToken")
+        }.andExpect {
+            status { isConflict() }
         }
     }
 }

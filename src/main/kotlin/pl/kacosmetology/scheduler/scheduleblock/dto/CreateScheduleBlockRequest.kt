@@ -19,5 +19,8 @@ data class CreateScheduleBlockRequest(
     val endTime: LocalDateTime?,
 
     @field:Size(max = 255, message = "Powód nie może być dłuższy niż 255 znaków")
-    val reason: String? = null
+    val reason: String? = null,
+
+    /** OWNER may supply a target employee ID; EMPLOYEE field is ignored (JWT identity is used). */
+    val employeeId: Long? = null
 )

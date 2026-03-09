@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A beauty/barber salon scheduling system with a Spring Boot backend and React frontend. Customers authenticate via SMS OTP; staff authenticate via email/password. Both flows issue JWT tokens.
+A beauty/barber salon scheduling system with a Spring Boot backend. Customers authenticate via SMS OTP; staff authenticate via email/password. Both flows issue JWT tokens.
+
+**Related project:** `~/projects/scheduler-dashboard` — a separate React admin dashboard for owners and employees (see its own CLAUDE.md).
 
 ## Commands
 
@@ -25,24 +27,6 @@ A beauty/barber salon scheduling system with a Spring Boot backend and React fro
 
 # Build without tests
 ./gradlew build -x test
-```
-
-### Frontend (React/Vite)
-
-```bash
-cd frontend
-
-# Install dependencies (uses pnpm)
-pnpm install
-
-# Start dev server (proxies /api to localhost:8080)
-pnpm dev
-
-# Build for production
-pnpm build
-
-# Lint
-pnpm lint
 ```
 
 ### Docker
@@ -98,9 +82,11 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **Employee offering assignments:** Owners assign which offerings each employee can perform via `POST /api/employees/{id}/offerings/{offeringId}`. If an employee has any assignments configured, `AvailabilityService` and `ReservationService` reject requests for unassigned offerings. Employees with no assignments at all can perform any offering (backward-compatible default).
 
-**Schedule blocks:** Employees can block time ranges (breaks, personal unavailability) via `POST /api/schedule-blocks`. Blocks are validated with `@Future` on `startTime` (DTO layer) and checked for overlap with existing reservations and other blocks (service layer). Blocked slots are excluded from availability.
+**Schedule blocks:** Employees can block time ranges (breaks, personal unavailability) via `POST /api/schedule-blocks`. Owners may create a block for another employee by supplying `employeeId` in the request body; employees always create for themselves (JWT identity). `DELETE /api/schedule-blocks/{id}`: owners can delete any block within their company (company isolation checked); employees can only delete their own. `ScheduleBlockService.deleteBlock()` signature: `(blockId, requesterId, isOwner, companyId)`. Blocks are validated with `@Future` on `startTime` (DTO layer) and checked for overlap with existing reservations and other blocks (service layer). Blocked slots are excluded from availability.
 
 **Offering categories:** Owners can group offerings into categories via `POST /api/offering-categories`. Categories are company-scoped; offerings carry an optional `category_id` (set to null on category deletion).
+
+**Dashboard reservation listing:** Owners and employees can fetch reservations filtered by employee and date range via `GET /api/reservations?employeeId={id}&start={iso}&end={iso}`. Returns `DashboardReservationResponse` (includes both `customerId` and `employeeId`). Authorization: EMPLOYEE may only query their own `employeeId`; OWNER may query any employee within their company. Used by `scheduler-dashboard` CalendarPage and ReservationsPage.
 
 **Staff booking:** Staff can create a reservation on behalf of a client via `POST /api/reservations/staff`. If the client's phone number is not found in the database, a new `User` is auto-created — `firstName` and `lastName` are required in that case. Note: staff booking bypasses availability/slot boundary validation (intentional — staff can override business hours). Customer bookings via `POST /api/reservations` currently also skip this validation (known gap).
 
@@ -118,7 +104,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **No-show tracking:** Staff can mark a reservation as `NO_SHOW` via `PATCH /api/reservations/{id}/no-show` (OWNER or EMPLOYEE). This increments the customer's `no_show_count` in `company_customer_blocks` and auto-blocks the customer (`blocked = true`) at that company when the count reaches `companies.max_no_shows` (configured via `PUT /api/company/settings`; `maxNoShows = 0` disables auto-block). Block state is **company-scoped** — a block at Company A does not affect bookings at Company B. A blocked customer who calls `POST /api/reservations` for an offering belonging to the blocking company receives HTTP 400. Owners can manually block/unblock any customer via `PATCH /api/customers/{id}/block` and `PATCH /api/customers/{id}/unblock` (OWNER only, HTTP 204); unblocking resets `noShowCount` to 0. Customer status (name, noShowCount, blocked) is readable by staff at `GET /api/customers/{id}` (requires OWNER or EMPLOYEE; returns company-scoped values). The `blocked` guard runs in `ReservationService.createReservation()` after loading the offering (so `offering.companyId` is available), using `CompanyCustomerBlockRepository.findByCompanyIdAndCustomerId()`.
 
-**JWT role claim:** `JwtService.generateToken()` includes a `role` claim (lowercase: `owner`, `employee`, `customer`) so the frontend can distinguish OWNER from EMPLOYEE without an extra API call.
+**JWT role claim:** `JwtService.generateToken()` includes a `role` claim (lowercase: `owner`, `employee`, `customer`) so clients can distinguish OWNER from EMPLOYEE without an extra API call.
 
 ### Database Schema
 
@@ -134,14 +120,6 @@ PostgreSQL with Flyway migrations in `src/main/resources/db/migration/`. Key tab
 - `schedule_blocks` — employee time blocks; checked by `AvailabilityService` alongside reservations
 - `employee_work_schedules` — per-employee, per-day-of-week working hours
 - `employee_offerings` — which offerings each employee is allowed to perform; column `offering_id`
-
-### Frontend Structure
-
-React 19 + React Router 7 + Tailwind CSS 4 + Axios. Built with Vite, package manager is **pnpm**.
-
-- `src/api.ts` — Axios instance with `/api` base URL; attaches JWT from `localStorage`; redirects to `/login` on 401 (except public endpoints)
-- `src/AuthContext.tsx` — React context holding token, user info, login/logout helpers
-- `src/pages/` — One file per page route; customer and staff flows are separate pages
 
 ### Testing
 
