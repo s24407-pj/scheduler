@@ -51,13 +51,16 @@ class SecurityConfig(
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
+            .cors { }
             .csrf { it.disable() }
             .authorizeHttpRequests { auth ->
                 auth
-                    .requestMatchers("/actuator/health").permitAll()
+                    .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus", "/actuator/metrics", "/actuator/metrics/**", "/actuator/info").permitAll()
                     .requestMatchers("/api/auth/**").permitAll()
                     .requestMatchers("/api/availability").permitAll()
-                    .requestMatchers("/api/services/public/**").permitAll()
+                    .requestMatchers("/api/offerings/public/**").permitAll()
+                    .requestMatchers("/api/whatsapp/webhook").permitAll()
+                    .requestMatchers("/api/whatsapp/simulate", "/api/whatsapp/simulate/**").permitAll()
                     .anyRequest().authenticated()
             }
             .sessionManagement { session ->

@@ -60,8 +60,8 @@ k6 run -e BASE_URL=http://staging:8080 perf-tests/scripts/load-test.js
 |-------------|---------|---------|-----------------------------------------------|
 | Smoke       | 1-2     | 30s     | Walidacja, że środowisko działa               |
 | Load        | 0→50    | 8 min   | Normalny ruch, sprawdzenie p95 < 500ms        |
-| Stress      | 0→300   | 15 min  | Znalezienie punktu złamania                   |
-| Spike       | 10→200  | 4 min   | Zachowanie pod nagłym skokiem                  |
+| Stress      | 0→300   | 22 min  | Znalezienie punktu złamania                   |
+| Spike       | 10→200  | 7 min   | Zachowanie pod nagłym skokiem                  |
 
 ## Progi (thresholds)
 

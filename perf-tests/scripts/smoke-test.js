@@ -1,7 +1,14 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { loginStaff, authHeaders } from './helpers/auth.js';
-import { getPublicServices, getAvailability, futureDate } from './helpers/endpoints.js';
+import {
+  getPublicOfferings,
+  getAvailability,
+  getAuthOfferings,
+  getEmployees,
+  futureDate,
+  loadSetupData,
+  randomFrom,
+} from './helpers/endpoints.js';
 
 /**
  * SMOKE TEST
@@ -20,32 +27,34 @@ export const options = {
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 
-export default function () {
-  // 1. Public services (cached)
-  getPublicServices();
+export function setup() {
+  return loadSetupData();
+}
+
+export default function (data) {
+  if (!data) return;
+
+  // 1. Public offerings
+  getPublicOfferings(1);
   sleep(0.5);
 
   // 2. Availability
   const date = futureDate(2);
-  getAvailability(1, 1, date);
+  getAvailability(randomFrom(data.employeeIds), randomFrom(data.offeringIds), date);
   sleep(0.5);
 
-  // 3. Staff login
-  const token = loginStaff();
+  // 3. Authenticated offerings
+  getAuthOfferings(data.token, 1);
   sleep(0.5);
 
-  // 4. Get services (authenticated)
-  const authRes = http.get(`${BASE_URL}/api/services/company/1`, authHeaders(token));
-  check(authRes, {
-    'auth services status 200': (r) => r.status === 200,
-  });
+  // 4. Employee list
+  getEmployees(data.token);
   sleep(0.5);
 
   // 5. Health endpoint
-  const healthRes = http.get(`${BASE_URL}/actuator/health`);
+  const healthRes = http.get(`${BASE_URL}/actuator/health`, { timeout: '10s' });
   check(healthRes, {
     'health status 200': (r) => r.status === 200,
   });
   sleep(0.5);
 }
-

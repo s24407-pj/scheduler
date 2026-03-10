@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.user
 
+import com.ninjasquad.springmockk.MockkBean
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -13,11 +14,12 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.put
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
+import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.dto.UpdateUserProfileRequest
 import tools.jackson.databind.ObjectMapper
 
@@ -45,7 +47,10 @@ class UserIntegrationTest {
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
     @Autowired
-    private lateinit var treatmentRepository: TreatmentRepository
+    private lateinit var offeringRepository: OfferingRepository
+
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private lateinit var testUser: User
     private lateinit var jwtToken: String
@@ -54,7 +59,7 @@ class UserIntegrationTest {
     fun setup() {
         // Czyszczenie w kolejności odwrotnej do zależności FK
         reservationRepository.deleteAll()
-        treatmentRepository.deleteAll()
+        offeringRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
 

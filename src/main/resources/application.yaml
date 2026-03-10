@@ -36,11 +36,41 @@ otp:
   max-attempts: ${OTP_MAX_ATTEMPTS:3}
   rate-window-minutes: ${OTP_RATE_WINDOW_MINUTES:5}
 
+login:
+  max-attempts: ${LOGIN_MAX_ATTEMPTS:10}
+  rate-window-minutes: ${LOGIN_RATE_WINDOW_MINUTES:1}
+
+r2:
+  endpoint: ${R2_ENDPOINT:https://639e21e02511acaeaf95b06bc9e3450b.r2.cloudflarestorage.com}
+  access-key: ${R2_ACCESS_KEY:}
+  secret-key: ${R2_SECRET_KEY:}
+  bucket-name: ${R2_BUCKET_NAME:scheduler}
+  public-url: ${R2_PUBLIC_URL:https://pub-e2e7a57b5ea74031a70f3c42d58af33f.r2.dev}
+
+whatsapp:
+  verify-token: ${WHATSAPP_VERIFY_TOKEN:dev_verify_token}
+  access-token: ${WHATSAPP_ACCESS_TOKEN:}
+  phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
+  company-id: ${WHATSAPP_COMPANY_ID:1}
+  sender: ${WHATSAPP_SENDER:console}
+
 management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,info,metrics,prometheus
   endpoint:
     health:
-      show-details: always
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: scheduler
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.5, 0.75, 0.95, 0.99
+      sla:
+        http.server.requests: 100ms, 250ms, 500ms, 1s, 2s, 5s

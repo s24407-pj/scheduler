@@ -8,6 +8,8 @@ interface CompanyEmployeeRepository : JpaRepository<CompanyEmployee, Long> {
 
     fun findAllByUserId(userId: Long): List<CompanyEmployee>
 
+    fun findAllByCompanyId(companyId: Long): List<CompanyEmployee>
+
     fun existsByCompanyIdAndUserId(companyId: Long, userId: Long): Boolean
 }
 

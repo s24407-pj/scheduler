@@ -3,7 +3,7 @@ package pl.kacosmetology.scheduler.reservation
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
-enum class ReservationStatus { PENDING, CONFIRMED, CANCELLED, COMPLETED }
+enum class ReservationStatus { PENDING, CONFIRMED, CANCELLED, COMPLETED, NO_SHOW }
 
 @Entity
 @Table(name = "reservations")
@@ -39,6 +39,9 @@ class Reservation(
 
     @Version
     val version: Long = 0,
+
+    @Column(name = "reminder_sent", nullable = false)
+    var reminderSent: Boolean = false,
 
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     val createdAt: LocalDateTime? = null

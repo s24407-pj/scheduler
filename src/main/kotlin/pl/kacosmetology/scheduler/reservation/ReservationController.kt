@@ -34,7 +34,7 @@ class ReservationController(
         return reservationService.createReservation(
             customerId = customerId,
             employeeId = request.employeeId,
-            serviceId = request.serviceId,
+            offeringId = request.serviceId,
             startTime = request.startTime
         ).toResponse()
     }
@@ -55,8 +55,24 @@ class ReservationController(
     @PatchMapping("/{id}/complete")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
-    fun completeReservation(@PathVariable id: Long) {
-        reservationService.completeReservation(id)
+    fun completeReservation(
+        @PathVariable id: Long,
+        @AuthenticationPrincipal userDetails: CustomUserDetails?
+    ) {
+        val companyId = userDetails?.companyId ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        reservationService.completeReservation(id, companyId)
+    }
+
+    /** Marks a reservation as no-show and increments the customer's counter. Requires OWNER or EMPLOYEE role. */
+    @PatchMapping("/{id}/no-show")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun markNoShow(
+        @PathVariable id: Long,
+        @AuthenticationPrincipal userDetails: CustomUserDetails?
+    ) {
+        val companyId = userDetails?.companyId ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        reservationService.markNoShow(id, companyId)
     }
 
     /** Returns the authenticated customer's reservation history. */
@@ -76,5 +92,59 @@ class ReservationController(
     ): List<EmployeeReservationResponse> {
         val employeeId = userDetails?.id ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
         return reservationService.getEmployeeSchedule(employeeId, start, end).map { it.toEmployeeResponse() }
+    }
+
+    /**
+     * Returns reservations for the given employee filtered by date range.
+     * OWNER can query any employee within their company; EMPLOYEE can only query their own schedule.
+     */
+    @GetMapping
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun getReservations(
+        @RequestParam employeeId: Long,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime,
+        @AuthenticationPrincipal userDetails: CustomUserDetails?
+    ): List<DashboardReservationResponse> {
+        val user = userDetails ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        val companyId = user.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
+        val isOwner = user.authorities.any { it.authority == "ROLE_OWNER" }
+        if (!isOwner && user.id != employeeId) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Możesz przeglądać tylko swoje rezerwacje")
+        }
+        return reservationService.getCompanyReservations(companyId, employeeId, start, end)
+            .map { it.toDashboardResponse() }
+    }
+
+    /** Permanently deletes a reservation. Requires OWNER role. */
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('OWNER')")
+    fun deleteReservation(
+        @PathVariable id: Long,
+        @AuthenticationPrincipal userDetails: CustomUserDetails?
+    ) {
+        val companyId = userDetails?.companyId ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        reservationService.deleteReservation(id, companyId)
+    }
+
+    /** Creates a reservation for a client by phone number. Requires OWNER or EMPLOYEE role. */
+    @PostMapping("/staff")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun createReservationByStaff(
+        @Valid @RequestBody request: StaffCreateReservationRequest,
+        @AuthenticationPrincipal userDetails: CustomUserDetails?
+    ): ReservationResponse {
+        if (userDetails == null) throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
+
+        return reservationService.createReservationByStaff(
+            employeeId = request.employeeId!!,
+            serviceId = request.serviceId!!,
+            startTime = request.startTime!!,
+            customerPhone = request.customerPhone!!,
+            customerFirstName = request.customerFirstName,
+            customerLastName = request.customerLastName
+        ).toResponse()
     }
 }

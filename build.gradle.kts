@@ -13,6 +13,7 @@ val postgresqlVersion = "42.7.10"
 val mockkVersion = "1.14.9"
 val springmockkVersion = "5.0.1"
 val testcontainersVersion = "2.0.3"
+val awsSdkVersion = "2.29.26"
 
 group = "pl.kacosmetology"
 version = "0.0.1-SNAPSHOT"
@@ -31,6 +32,7 @@ repositories {
 dependencies {
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     implementation("org.springframework.boot:spring-boot-starter-flyway")
@@ -40,11 +42,14 @@ dependencies {
 
     // Database
     implementation("org.flywaydb:flyway-database-postgresql")
-    runtimeOnly("org.postgresql:postgresql:$postgresqlVersion")
+    runtimeOnly("org.postgresql:postgresql")
 
     // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("tools.jackson.module:jackson-module-kotlin")
+
+    // AWS SDK (for Cloudflare R2 — S3-compatible)
+    implementation("software.amazon.awssdk:s3:$awsSdkVersion")
 
     // JWT
     implementation("io.jsonwebtoken:jjwt-api:$jjwtVersion")

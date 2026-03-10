@@ -1,7 +1,9 @@
 package pl.kacosmetology.scheduler.reservation
 
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
@@ -49,4 +51,47 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
     """
     )
     fun findEmployeeSchedule(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<Reservation>
+
+    /** Returns reservations starting within [windowStart]..[windowEnd] that are active and have not had a reminder sent. */
+    @Query(
+        """
+        SELECT r FROM Reservation r
+        WHERE r.startTime BETWEEN :windowStart AND :windowEnd
+        AND r.status IN ('PENDING', 'CONFIRMED')
+        AND r.reminderSent = false
+    """
+    )
+    fun findPendingReminders(
+        @Param("windowStart") windowStart: LocalDateTime,
+        @Param("windowEnd") windowEnd: LocalDateTime
+    ): List<Reservation>
+
+    /** Bulk-marks the given reservations as having had a reminder sent. */
+    @Modifying
+    @Query("UPDATE Reservation r SET r.reminderSent = true WHERE r.id IN :ids")
+    fun markRemindersAsSent(@Param("ids") ids: List<Long>)
+
+    /** Checks if a customer has any reservation in the given company. */
+    fun existsByCustomerIdAndCompanyId(customerId: Long, companyId: Long): Boolean
+
+    /**
+     * Returns reservations for a specific employee within a company and date range.
+     * Used by the owner dashboard to display the calendar for any employee.
+     */
+    @Query(
+        """
+        SELECT r FROM Reservation r
+        WHERE r.companyId = :companyId
+        AND r.employeeId = :employeeId
+        AND r.startTime >= :start
+        AND r.startTime <= :end
+        ORDER BY r.startTime ASC
+    """
+    )
+    fun findByCompanyIdAndEmployeeIdAndDateRange(
+        companyId: Long,
+        employeeId: Long,
+        start: LocalDateTime,
+        end: LocalDateTime
+    ): List<Reservation>
 }

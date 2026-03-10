@@ -25,5 +25,8 @@ class User(
 
     @JsonIgnore
     @Column(name = "password_hash")
-    val passwordHash: String? = null
+    val passwordHash: String? = null,
+
+    @Column(name = "photo_url")
+    var photoUrl: String? = null
 )

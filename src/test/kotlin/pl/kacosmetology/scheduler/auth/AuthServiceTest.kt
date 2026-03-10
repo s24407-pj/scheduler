@@ -15,6 +15,7 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
+import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
@@ -41,8 +42,13 @@ class AuthServiceTest {
     @MockK
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
+    @MockK
+    private lateinit var loginRateLimiter: LoginRateLimiter
+
     @InjectMockKs
     private lateinit var authService: AuthService
+
+    private val testIp = "127.0.0.1"
 
     private val testPhone = "+48111222333"
 
@@ -124,6 +130,18 @@ class AuthServiceTest {
     }
 
     @Test
+    fun `loginStaff should throw RateLimitExceededException when limit exceeded`() {
+        // GIVEN
+        val request = StaffLoginRequest("pracownik@mail.com", "haslo123")
+        every { loginRateLimiter.checkAndIncrement(testIp) } returns false
+
+        // WHEN & THEN
+        assertThrows<RateLimitExceededException> {
+            authService.loginStaff(request, testIp)
+        }
+    }
+
+    @Test
     fun `loginStaff should throw for customer without password`() {
         // GIVEN
         val request = StaffLoginRequest("klient@mail.com", "haslo123")
@@ -135,11 +153,12 @@ class AuthServiceTest {
             passwordHash = null
         )
 
+        every { loginRateLimiter.checkAndIncrement(testIp) } returns true
         every { userRepository.findByEmail(request.email) } returns customer
 
         // WHEN & THEN
         val exception = assertThrows<IllegalArgumentException> {
-            authService.loginStaff(request)
+            authService.loginStaff(request, testIp)
         }
         assertEquals("To konto obsługuje tylko logowanie SMS", exception.message)
     }
@@ -148,11 +167,12 @@ class AuthServiceTest {
     fun `loginStaff should throw when email does not exist`() {
         // GIVEN
         val request = StaffLoginRequest("nieistnieje@mail.com", "haslo123")
+        every { loginRateLimiter.checkAndIncrement(testIp) } returns true
         every { userRepository.findByEmail(request.email) } returns null
 
         // WHEN & THEN
         val exception = assertThrows<IllegalArgumentException> {
-            authService.loginStaff(request)
+            authService.loginStaff(request, testIp)
         }
         assertEquals("Nieprawidłowy email lub hasło", exception.message)
     }
@@ -169,12 +189,13 @@ class AuthServiceTest {
             passwordHash = "hashed_password"
         )
 
+        every { loginRateLimiter.checkAndIncrement(testIp) } returns true
         every { userRepository.findByEmail(request.email) } returns employee
         every { passwordEncoder.matches("zlehaslo", "hashed_password") } returns false
 
         // WHEN & THEN
         val exception = assertThrows<IllegalArgumentException> {
-            authService.loginStaff(request)
+            authService.loginStaff(request, testIp)
         }
         assertEquals("Nieprawidłowy email lub hasło", exception.message)
     }
@@ -183,6 +204,7 @@ class AuthServiceTest {
     fun `loginStaff should return same error message for non-existent email and wrong password`() {
         // GIVEN - Oba scenariusze powinny zwracać identyczny komunikat (bezpieczeństwo — nie ujawniamy czy email istnieje)
         val requestBadEmail = StaffLoginRequest("nieistnieje@mail.com", "haslo123")
+        every { loginRateLimiter.checkAndIncrement(testIp) } returns true
         every { userRepository.findByEmail("nieistnieje@mail.com") } returns null
 
         val requestBadPassword = StaffLoginRequest("istnieje@mail.com", "zlehaslo")
@@ -194,8 +216,8 @@ class AuthServiceTest {
         every { passwordEncoder.matches("zlehaslo", "hashed") } returns false
 
         // WHEN
-        val exBadEmail = assertThrows<IllegalArgumentException> { authService.loginStaff(requestBadEmail) }
-        val exBadPassword = assertThrows<IllegalArgumentException> { authService.loginStaff(requestBadPassword) }
+        val exBadEmail = assertThrows<IllegalArgumentException> { authService.loginStaff(requestBadEmail, testIp) }
+        val exBadPassword = assertThrows<IllegalArgumentException> { authService.loginStaff(requestBadPassword, testIp) }
 
         // THEN - Komunikaty MUSZĄ być identyczne
         assertEquals(

@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.reservation
 
+import com.ninjasquad.springmockk.MockkBean
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -10,14 +11,15 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
+import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.treatment.ProvidedService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalDateTime
@@ -40,13 +42,16 @@ class ReservationListingIntegrationTest {
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
     @Autowired
-    private lateinit var serviceRepository: TreatmentRepository
+    private lateinit var serviceRepository: OfferingRepository
 
     @Autowired
     private lateinit var reservationRepository: ReservationRepository
 
     @Autowired
     private lateinit var jwtService: JwtService
+
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private lateinit var customerToken: String
     private lateinit var employeeToken: String
@@ -101,7 +106,7 @@ class ReservationListingIntegrationTest {
 
         // 4. Tworzymy usługę
         val service = serviceRepository.save(
-            ProvidedService(
+            Offering(
                 companyId = company.id!!,
                 name = "Strzyżenie",
                 durationMinutes = 60,

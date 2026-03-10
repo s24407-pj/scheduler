@@ -17,7 +17,7 @@ import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import pl.kacosmetology.scheduler.auth.SmsSender
+import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
 import pl.kacosmetology.scheduler.company.Company
@@ -25,10 +25,11 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.dto.CreateReservationRequest
-import pl.kacosmetology.scheduler.treatment.ProvidedService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
+import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 import java.time.LocalDateTime
 
@@ -53,7 +54,7 @@ class CustomerReservationFlowIntegrationTest {
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
     @Autowired
-    private lateinit var serviceRepository: TreatmentRepository
+    private lateinit var serviceRepository: OfferingRepository
 
     @Autowired
     private lateinit var redisTemplate: StringRedisTemplate
@@ -63,6 +64,9 @@ class CustomerReservationFlowIntegrationTest {
 
     @MockkBean
     private lateinit var smsSender: SmsSender
+
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private var employeeId: Long = 0
     private var serviceId: Long = 0
@@ -93,7 +97,7 @@ class CustomerReservationFlowIntegrationTest {
         )
 
         val service = serviceRepository.save(
-            ProvidedService(
+            Offering(
                 companyId = company.id!!, name = "Manicure", durationMinutes = 60, price = 120
             )
         )

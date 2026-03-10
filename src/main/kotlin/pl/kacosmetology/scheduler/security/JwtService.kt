@@ -18,11 +18,18 @@ class JwtService(
 
     private val signingKey: SecretKey by lazy { Keys.hmacShaKeyFor(secret.toByteArray()) }
 
-    /** Generates a JWT token with the user's identity and optional company ID in claims. */
+    /** Generates a JWT token with the user's identity, optional company ID, and role in claims. */
     fun generateToken(userDetails: UserDetails, companyId: Long?): String {
         val claims = mutableMapOf<String, Any>()
         if (companyId != null) {
             claims["companyId"] = companyId
+        }
+        val rolePriority = mapOf("ROLE_OWNER" to 2, "ROLE_EMPLOYEE" to 1, "ROLE_CUSTOMER" to 0)
+        val role = userDetails.authorities
+            .maxByOrNull { rolePriority[it.authority] ?: -1 }
+            ?.authority?.removePrefix("ROLE_")?.lowercase()
+        if (role != null) {
+            claims["role"] = role
         }
 
         return Jwts.builder()
@@ -37,6 +44,11 @@ class JwtService(
     /** Extracts the username (phone number) from the token subject. */
     fun extractUsername(token: String): String {
         return extractAllClaims(token).subject
+    }
+
+    /** Extracts the role claim from the token (e.g. "owner", "employee", "customer"). */
+    fun extractRole(token: String): String? {
+        return extractAllClaims(token)["role"]?.toString()
     }
 
     /** Extracts the company ID from custom JWT claims. */

@@ -10,8 +10,8 @@ import org.springframework.context.annotation.Import
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.treatment.ProvidedService
-import pl.kacosmetology.scheduler.treatment.TreatmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalDateTime
@@ -32,7 +32,7 @@ class ReservationRepositoryTest {
     private lateinit var userRepository: UserRepository
 
     @Autowired
-    private lateinit var serviceRepository: TreatmentRepository
+    private lateinit var serviceRepository: OfferingRepository
 
     private var employeeId: Long = 0
     private val baseTime: LocalDateTime = LocalDateTime.of(2024, 5, 20, 12, 0) // 12:00
@@ -48,7 +48,7 @@ class ReservationRepositoryTest {
         val customer = userRepository.save(User(phoneNumber = "+48222", firstName = "Klient", lastName = "Testowy"))
 
         val service = serviceRepository.save(
-            ProvidedService(
+            Offering(
                 companyId = company.id!!, name = "Strzyżenie", durationMinutes = 60, price = 100
             )
         )
