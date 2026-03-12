@@ -18,9 +18,11 @@ class MetaWhatsAppSender(private val properties: WhatsAppProperties) : WhatsAppS
 
     private val logger = LoggerFactory.getLogger(MetaWhatsAppSender::class.java)
     private val restClient = RestClient.builder()
-        .requestFactory(JdkClientHttpRequestFactory(
-            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
-        ))
+        .requestFactory(
+            JdkClientHttpRequestFactory(
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
+            )
+        )
         .build()
 
     /**

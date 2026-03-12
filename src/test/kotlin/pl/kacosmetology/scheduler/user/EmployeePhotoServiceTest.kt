@@ -1,15 +1,9 @@
 package pl.kacosmetology.scheduler.user
 
-import io.mockk.Runs
-import io.mockk.every
+import io.mockk.*
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
-import io.mockk.just
-import io.mockk.mockkStatic
-import io.mockk.slot
-import io.mockk.unmockkAll
-import io.mockk.verify
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
@@ -26,15 +20,19 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.DeleteObjectResponse
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectResponse
-import java.util.Optional
+import java.util.*
 
 @ExtendWith(MockKExtension::class)
 class EmployeePhotoServiceTest {
 
-    @MockK private lateinit var s3Client: S3Client
-    @MockK private lateinit var r2Props: R2Properties
-    @MockK private lateinit var userRepository: UserRepository
-    @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @MockK
+    private lateinit var s3Client: S3Client
+    @MockK
+    private lateinit var r2Props: R2Properties
+    @MockK
+    private lateinit var userRepository: UserRepository
+    @MockK
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
     @InjectMockKs
     private lateinit var employeePhotoService: EmployeePhotoService
@@ -43,7 +41,9 @@ class EmployeePhotoServiceTest {
     private val employeeId = 10L
 
     @AfterEach
-    fun tearDown() { unmockkAll() }
+    fun tearDown() {
+        unmockkAll()
+    }
 
     private fun stubR2Props() {
         every { r2Props.bucketName } returns "test-bucket"
@@ -59,7 +59,8 @@ class EmployeePhotoServiceTest {
 
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
         every { userRepository.findById(employeeId) } returns Optional.of(user)
-        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder().build()
+        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder()
+            .build()
         every { userRepository.save(any()) } answers { firstArg() }
         mockkStatic(TransactionSynchronizationManager::class)
         every { TransactionSynchronizationManager.registerSynchronization(any()) } just Runs
@@ -86,7 +87,8 @@ class EmployeePhotoServiceTest {
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
         every { userRepository.findById(employeeId) } returns Optional.of(user)
         every { s3Client.deleteObject(any<DeleteObjectRequest>()) } returns DeleteObjectResponse.builder().build()
-        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder().build()
+        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder()
+            .build()
         every { userRepository.save(any()) } answers { firstArg() }
         val syncSlot = slot<TransactionSynchronization>()
         mockkStatic(TransactionSynchronizationManager::class)

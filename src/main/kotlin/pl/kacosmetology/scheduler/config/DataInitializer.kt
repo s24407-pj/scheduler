@@ -84,43 +84,201 @@ class DataInitializer(
     private fun seedOfferings(cid: Long) {
         logger.info("Seeding offerings...")
 
-        val oprawaOka    = offeringCategoryRepository.save(OfferingCategory(companyId = cid, name = "Oprawa oka"))
-        val trychologia  = offeringCategoryRepository.save(OfferingCategory(companyId = cid, name = "Trychologia"))
+        val oprawaOka = offeringCategoryRepository.save(OfferingCategory(companyId = cid, name = "Oprawa oka"))
+        val trychologia = offeringCategoryRepository.save(OfferingCategory(companyId = cid, name = "Trychologia"))
         val kosmetologia = offeringCategoryRepository.save(OfferingCategory(companyId = cid, name = "Kosmetologia"))
-        val online       = offeringCategoryRepository.save(OfferingCategory(companyId = cid, name = "Online"))
+        val online = offeringCategoryRepository.save(OfferingCategory(companyId = cid, name = "Online"))
 
-        offeringRepository.saveAll(listOf(
-            // Oprawa oka
-            Offering(companyId = cid, name = "Henna brwi z regulacją",                           durationMinutes = 40,  price = 60,  categoryId = oprawaOka.id),
-            Offering(companyId = cid, name = "Farbka z regulacją",                                durationMinutes = 40,  price = 80,  categoryId = oprawaOka.id),
-            Offering(companyId = cid, name = "Regulacja brwi",                                    durationMinutes = 20,  price = 30,  categoryId = oprawaOka.id),
-            Offering(companyId = cid, name = "Laminacja brwi + regulacja (bez koloryzacji)",      durationMinutes = 60,  price = 110, categoryId = oprawaOka.id),
-            Offering(companyId = cid, name = "Laminacja brwi + regulacja + koloryzacja",          durationMinutes = 60,  price = 150, categoryId = oprawaOka.id),
-            Offering(companyId = cid, name = "Lifting rzęs + farbka",                             durationMinutes = 90,  price = 150, categoryId = oprawaOka.id),
-            Offering(companyId = cid, name = "Laminacja brwi + lifting rzęs",                     durationMinutes = 120, price = 250, categoryId = oprawaOka.id),
-            // Trychologia
-            Offering(companyId = cid, name = "Pierwsza konsultacja trychologiczna",               durationMinutes = 60,  price = 200, categoryId = trychologia.id),
-            Offering(companyId = cid, name = "Zabieg trychologiczny dobrany indywidualnie",       durationMinutes = 90,  price = 350, categoryId = trychologia.id),
-            Offering(companyId = cid, name = "Rekonstrukcja łodygi włosa – JOICO",                durationMinutes = 90,  price = 200, categoryId = trychologia.id),
-            Offering(companyId = cid, name = "Mezoterapia mikroigłowa skóry głowy",               durationMinutes = 60,  price = 400, categoryId = trychologia.id),
-            Offering(companyId = cid, name = "Mezoterapia igłowa skóry głowy",                    durationMinutes = 60,  price = 550, categoryId = trychologia.id),
-            // Kosmetologia
-            Offering(companyId = cid, name = "Oczyszczanie wodorowe",                             durationMinutes = 60,  price = 250, categoryId = kosmetologia.id),
-            Offering(companyId = cid, name = "Mezoterapia mikroigłowa + ampułka",                 durationMinutes = 120, price = 350, categoryId = kosmetologia.id),
-            Offering(companyId = cid, name = "Pierwsza konsultacja kosmetologiczna z zabiegiem",  durationMinutes = 120, price = 350, categoryId = kosmetologia.id),
-            Offering(companyId = cid, name = "Zabieg kosmetologiczny dobrany indywidualnie",      durationMinutes = 90,  price = 300, categoryId = kosmetologia.id),
-            Offering(companyId = cid, name = "Eksfoliacja kwasami",                               durationMinutes = 90,  price = 300, categoryId = kosmetologia.id),
-            Offering(companyId = cid, name = "Terapia trądziku – kolejny zabieg",                 durationMinutes = 90,  price = 300, categoryId = kosmetologia.id),
-            Offering(companyId = cid, name = "Redukcja przebarwień",                              durationMinutes = 120, price = 300, categoryId = kosmetologia.id),
-            Offering(companyId = cid, name = "Zabieg regeneracyjny",                              durationMinutes = 90,  price = 300, categoryId = kosmetologia.id),
-            Offering(companyId = cid, name = "Zabieg regeneracyjny dla kobiet w ciąży",           durationMinutes = 90,  price = 300, categoryId = kosmetologia.id),
-            Offering(companyId = cid, name = "Działanie przeciwstarzeniowe",                      durationMinutes = 90,  price = 300, categoryId = kosmetologia.id),
-            Offering(companyId = cid, name = "Zabieg nawilżający / odbudowujący",                 durationMinutes = 90,  price = 300, categoryId = kosmetologia.id),
-            Offering(companyId = cid, name = "Zabieg oczyszczający",                              durationMinutes = 90,  price = 300, categoryId = kosmetologia.id),
-            // Online
-            Offering(companyId = cid, name = "Konsultacja trychologiczna online",                 durationMinutes = 60,  price = 160, categoryId = online.id),
-            Offering(companyId = cid, name = "Konsultacja kosmetologiczna online",                durationMinutes = 60,  price = 180, categoryId = online.id),
-        ))
+        offeringRepository.saveAll(
+            listOf(
+                // Oprawa oka
+                Offering(
+                    companyId = cid,
+                    name = "Henna brwi z regulacją",
+                    durationMinutes = 40,
+                    price = 60,
+                    categoryId = oprawaOka.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Farbka z regulacją",
+                    durationMinutes = 40,
+                    price = 80,
+                    categoryId = oprawaOka.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Regulacja brwi",
+                    durationMinutes = 20,
+                    price = 30,
+                    categoryId = oprawaOka.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Laminacja brwi + regulacja (bez koloryzacji)",
+                    durationMinutes = 60,
+                    price = 110,
+                    categoryId = oprawaOka.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Laminacja brwi + regulacja + koloryzacja",
+                    durationMinutes = 60,
+                    price = 150,
+                    categoryId = oprawaOka.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Lifting rzęs + farbka",
+                    durationMinutes = 90,
+                    price = 150,
+                    categoryId = oprawaOka.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Laminacja brwi + lifting rzęs",
+                    durationMinutes = 120,
+                    price = 250,
+                    categoryId = oprawaOka.id
+                ),
+                // Trychologia
+                Offering(
+                    companyId = cid,
+                    name = "Pierwsza konsultacja trychologiczna",
+                    durationMinutes = 60,
+                    price = 200,
+                    categoryId = trychologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Zabieg trychologiczny dobrany indywidualnie",
+                    durationMinutes = 90,
+                    price = 350,
+                    categoryId = trychologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Rekonstrukcja łodygi włosa – JOICO",
+                    durationMinutes = 90,
+                    price = 200,
+                    categoryId = trychologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Mezoterapia mikroigłowa skóry głowy",
+                    durationMinutes = 60,
+                    price = 400,
+                    categoryId = trychologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Mezoterapia igłowa skóry głowy",
+                    durationMinutes = 60,
+                    price = 550,
+                    categoryId = trychologia.id
+                ),
+                // Kosmetologia
+                Offering(
+                    companyId = cid,
+                    name = "Oczyszczanie wodorowe",
+                    durationMinutes = 60,
+                    price = 250,
+                    categoryId = kosmetologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Mezoterapia mikroigłowa + ampułka",
+                    durationMinutes = 120,
+                    price = 350,
+                    categoryId = kosmetologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Pierwsza konsultacja kosmetologiczna z zabiegiem",
+                    durationMinutes = 120,
+                    price = 350,
+                    categoryId = kosmetologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Zabieg kosmetologiczny dobrany indywidualnie",
+                    durationMinutes = 90,
+                    price = 300,
+                    categoryId = kosmetologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Eksfoliacja kwasami",
+                    durationMinutes = 90,
+                    price = 300,
+                    categoryId = kosmetologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Terapia trądziku – kolejny zabieg",
+                    durationMinutes = 90,
+                    price = 300,
+                    categoryId = kosmetologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Redukcja przebarwień",
+                    durationMinutes = 120,
+                    price = 300,
+                    categoryId = kosmetologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Zabieg regeneracyjny",
+                    durationMinutes = 90,
+                    price = 300,
+                    categoryId = kosmetologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Zabieg regeneracyjny dla kobiet w ciąży",
+                    durationMinutes = 90,
+                    price = 300,
+                    categoryId = kosmetologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Działanie przeciwstarzeniowe",
+                    durationMinutes = 90,
+                    price = 300,
+                    categoryId = kosmetologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Zabieg nawilżający / odbudowujący",
+                    durationMinutes = 90,
+                    price = 300,
+                    categoryId = kosmetologia.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Zabieg oczyszczający",
+                    durationMinutes = 90,
+                    price = 300,
+                    categoryId = kosmetologia.id
+                ),
+                // Online
+                Offering(
+                    companyId = cid,
+                    name = "Konsultacja trychologiczna online",
+                    durationMinutes = 60,
+                    price = 160,
+                    categoryId = online.id
+                ),
+                Offering(
+                    companyId = cid,
+                    name = "Konsultacja kosmetologiczna online",
+                    durationMinutes = 60,
+                    price = 180,
+                    categoryId = online.id
+                ),
+            )
+        )
 
         logger.info("26 offerings seeded.")
     }

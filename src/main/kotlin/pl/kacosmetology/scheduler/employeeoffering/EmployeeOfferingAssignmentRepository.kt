@@ -12,6 +12,9 @@ interface EmployeeOfferingAssignmentRepository : JpaRepository<EmployeeOfferingA
     /** Returns true if the employee has any offering assignments. */
     fun existsByEmployeeId(employeeId: Long): Boolean
 
+    /** Returns the assignment for the given employee and offering, or null if not found. */
+    fun findByEmployeeIdAndOfferingId(employeeId: Long, offeringId: Long): EmployeeOfferingAssignment?
+
     /** Returns true if the employee is assigned to the given offering. */
     fun existsByEmployeeIdAndOfferingId(employeeId: Long, offeringId: Long): Boolean
 

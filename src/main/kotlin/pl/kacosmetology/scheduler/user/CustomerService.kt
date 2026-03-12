@@ -5,12 +5,13 @@ import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.user.dto.CustomerStatusResponse
 
-/** Business logic for owner-scoped manual customer block/unblock operations. */
+/** Business logic for owner-scoped manual customer block/unblock operations and customer notes. */
 @Service
 class CustomerService(
     private val userRepository: UserRepository,
     private val reservationRepository: ReservationRepository,
-    private val companyCustomerBlockRepository: CompanyCustomerBlockRepository
+    private val companyCustomerBlockRepository: CompanyCustomerBlockRepository,
+    private val companyCustomerRepository: CompanyCustomerRepository
 ) {
 
     /**
@@ -22,13 +23,31 @@ class CustomerService(
         val customer = userRepository.findById(customerId)
             .orElseThrow { NoSuchElementException("Klient nie istnieje") }
         val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId)
+        val companyCustomer = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
         return CustomerStatusResponse(
             id = customer.id,
             firstName = customer.firstName,
             lastName = customer.lastName,
             noShowCount = block?.noShowCount ?: 0,
-            blocked = block?.blocked ?: false
+            blocked = block?.blocked ?: false,
+            notes = companyCustomer?.notes
         )
+    }
+
+    /**
+     * Creates or updates a free-text note for a customer at the given company.
+     * Blank notes are normalised to null (cleared).
+     * Throws [NoSuchElementException] if the user is not found.
+     */
+    @Transactional
+    fun setCustomerNotes(customerId: Long, companyId: Long, notes: String?) {
+        if (!userRepository.existsById(customerId)) {
+            throw NoSuchElementException("Klient nie istnieje")
+        }
+        val record = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
+            ?: CompanyCustomer(companyId = companyId, userId = customerId)
+        record.notes = notes?.ifBlank { null }
+        companyCustomerRepository.save(record)
     }
 
     /**

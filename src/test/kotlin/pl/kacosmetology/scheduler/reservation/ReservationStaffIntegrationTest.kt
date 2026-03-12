@@ -14,17 +14,17 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
-import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.security.CustomUserDetails
+import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
+import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 import java.time.LocalDateTime
 
@@ -33,22 +33,32 @@ import java.time.LocalDateTime
 @Import(TestcontainersConfiguration::class)
 class ReservationStaffIntegrationTest {
 
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var objectMapper: ObjectMapper
-    @Autowired private lateinit var jwtService: JwtService
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var serviceRepository: OfferingRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+    @Autowired
+    private lateinit var objectMapper: ObjectMapper
+    @Autowired
+    private lateinit var jwtService: JwtService
+    @Autowired
+    private lateinit var userRepository: UserRepository
+    @Autowired
+    private lateinit var companyRepository: CompanyRepository
+    @Autowired
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired
+    private lateinit var serviceRepository: OfferingRepository
+    @Autowired
+    private lateinit var reservationRepository: ReservationRepository
 
-    @MockkBean private lateinit var s3Client: S3Client
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private lateinit var employee: User
     private var companyId: Long = 0
     private var serviceId: Long = 0
     private lateinit var staffToken: String
-    private val reservationTime: LocalDateTime = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
+    private val reservationTime: LocalDateTime =
+        LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
 
     @BeforeEach
     fun setup() {

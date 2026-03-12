@@ -60,8 +60,10 @@ class CompanyServiceTest {
             closingTime = LocalTime.of(18, 0),
             slotIntervalMinutes = 15
         )
-        val updated = Company(id = companyId, name = "Test Salon",
-            openingTime = LocalTime.of(8, 0), closingTime = LocalTime.of(18, 0), slotIntervalMinutes = 15)
+        val updated = Company(
+            id = companyId, name = "Test Salon",
+            openingTime = LocalTime.of(8, 0), closingTime = LocalTime.of(18, 0), slotIntervalMinutes = 15
+        )
 
         every { companyRepository.findById(companyId) } returns Optional.of(company)
         every { companyRepository.save(any()) } returns updated

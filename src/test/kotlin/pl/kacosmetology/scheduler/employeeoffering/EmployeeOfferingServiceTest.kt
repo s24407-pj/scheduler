@@ -34,13 +34,14 @@ class EmployeeOfferingServiceTest {
     private val employeeId = 10L
     private val offeringId = 100L
 
-    private val mockOffering = Offering(id = offeringId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 60)
+    private val mockOffering =
+        Offering(id = offeringId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 60)
 
     @Test
     fun `assignOffering should save new assignment`() {
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
         every { offeringRepository.findById(offeringId) } returns Optional.of(mockOffering)
-        every { assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId) } returns false
+        every { assignmentRepository.findByEmployeeIdAndOfferingId(employeeId, offeringId) } returns null
         every { assignmentRepository.save(any()) } answers { firstArg() }
 
         val result = service.assignOffering(companyId, employeeId, offeringId)
@@ -52,11 +53,11 @@ class EmployeeOfferingServiceTest {
 
     @Test
     fun `assignOffering should be idempotent when already assigned`() {
-        val existing = EmployeeOfferingAssignment(id = 1L, companyId = companyId, employeeId = employeeId, offeringId = offeringId)
+        val existing =
+            EmployeeOfferingAssignment(id = 1L, companyId = companyId, employeeId = employeeId, offeringId = offeringId)
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
         every { offeringRepository.findById(offeringId) } returns Optional.of(mockOffering)
-        every { assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId) } returns true
-        every { assignmentRepository.findAllByEmployeeId(employeeId) } returns listOf(existing)
+        every { assignmentRepository.findByEmployeeIdAndOfferingId(employeeId, offeringId) } returns existing
 
         val result = service.assignOffering(companyId, employeeId, offeringId)
 
@@ -115,7 +116,8 @@ class EmployeeOfferingServiceTest {
 
     @Test
     fun `getOfferingsForEmployee should return active assigned offerings`() {
-        val assignment = EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = offeringId)
+        val assignment =
+            EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = offeringId)
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns true
         every { assignmentRepository.findAllByEmployeeId(employeeId) } returns listOf(assignment)
         every { offeringRepository.findAllById(listOf(offeringId)) } returns listOf(mockOffering)

@@ -7,7 +7,6 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.OfferingService
 import pl.kacosmetology.scheduler.reservation.ReservationService
-import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -103,7 +102,7 @@ class ConversationHandler(
         val eligibleUsers = companyEmployees
             .filter { emp ->
                 !assignmentRepository.existsByEmployeeId(emp.userId) ||
-                    assignmentRepository.existsByEmployeeIdAndOfferingId(emp.userId, offeringId)
+                        assignmentRepository.existsByEmployeeIdAndOfferingId(emp.userId, offeringId)
             }
             .mapNotNull { emp ->
                 userRepository.findById(emp.userId).orElse(null)?.let { user -> Pair(emp.userId, user) }
@@ -146,7 +145,10 @@ class ConversationHandler(
         }
         val availableDates = findAvailableDates(employeeId, offeringId)
         if (availableDates.isEmpty()) {
-            sender.sendMessage(phone, "Brak wolnych terminów w ciągu najbliższych 7 dni dla wybranego pracownika. Wybierz innego pracownika.")
+            sender.sendMessage(
+                phone,
+                "Brak wolnych terminów w ciągu najbliższych 7 dni dla wybranego pracownika. Wybierz innego pracownika."
+            )
             resendEmployeeList(phone, state)
             return
         }
@@ -243,10 +245,12 @@ class ConversationHandler(
                     sender.sendMessage(phone, "Podaj swoje imię:")
                 }
             }
+
             "nie" -> {
                 store.delete(phone)
                 sender.sendMessage(phone, "Rezerwacja anulowana. Wpisz cokolwiek, aby rozpocząć od nowa.")
             }
+
             else -> {
                 sender.sendMessage(phone, "Wpisz \"tak\" aby potwierdzić lub \"nie\" aby anulować.")
             }
@@ -306,16 +310,19 @@ class ConversationHandler(
             sender.sendMessage(
                 phone,
                 "✅ Rezerwacja potwierdzona! Nr: #${reservation.id}\n" +
-                    "Usługa: ${state.serviceName}\n" +
-                    "Pracownik: ${state.employeeName}\n" +
-                    "Termin: ${formatPolishDate(date)}, ${time.format(timeFormatter)}\n\n" +
-                    "Do zobaczenia!"
+                        "Usługa: ${state.serviceName}\n" +
+                        "Pracownik: ${state.employeeName}\n" +
+                        "Termin: ${formatPolishDate(date)}, ${time.format(timeFormatter)}\n\n" +
+                        "Do zobaczenia!"
             )
         } catch (e: IllegalStateException) {
             logger.warn("Slot already taken for phone={}: {}", phone, e.message)
             store.save(phone, state.copy(step = ConversationStep.SELECTING_DATE))
             val dateListMsg = buildDateSelectionMessage(state)
-            sender.sendMessage(phone, "❌ Przepraszamy, ten termin jest już zajęty. Wybierz inny termin.\n\n$dateListMsg")
+            sender.sendMessage(
+                phone,
+                "❌ Przepraszamy, ten termin jest już zajęty. Wybierz inny termin.\n\n$dateListMsg"
+            )
         } catch (e: Exception) {
             logger.error("Unexpected error creating reservation for phone={}", phone, e)
             store.delete(phone)
@@ -342,7 +349,13 @@ class ConversationHandler(
                 val slots = availabilityService.getAvailableSlots(employeeId, offeringId, date)
                 if (slots.isNotEmpty()) date.format(dateFormatter) else null
             } catch (e: Exception) {
-                logger.warn("Error fetching slots for employee={} service={} date={}: {}", employeeId, offeringId, date, e.message)
+                logger.warn(
+                    "Error fetching slots for employee={} service={} date={}: {}",
+                    employeeId,
+                    offeringId,
+                    date,
+                    e.message
+                )
                 null
             }
         }
@@ -380,9 +393,9 @@ class ConversationHandler(
 
     private fun buildSummary(state: ConversationState, date: LocalDate, time: LocalTime): String =
         "Podsumowanie rezerwacji:\n" +
-            "Usługa: ${state.serviceName}\n" +
-            "Pracownik: ${state.employeeName}\n" +
-            "Termin: ${formatPolishDate(date)}, ${time.format(timeFormatter)}"
+                "Usługa: ${state.serviceName}\n" +
+                "Pracownik: ${state.employeeName}\n" +
+                "Termin: ${formatPolishDate(date)}, ${time.format(timeFormatter)}"
 
     private fun buildDateSelectionMessage(state: ConversationState): String {
         val sb = StringBuilder("Wybierz datę:\n")

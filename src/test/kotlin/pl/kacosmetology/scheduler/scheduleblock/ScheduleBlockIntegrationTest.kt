@@ -16,20 +16,20 @@ import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.offering.Offering
-import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
+import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -40,18 +40,29 @@ import java.time.LocalTime
 @Import(TestcontainersConfiguration::class)
 class ScheduleBlockIntegrationTest {
 
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var objectMapper: ObjectMapper
-    @Autowired private lateinit var jwtService: JwtService
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var scheduleBlockRepository: ScheduleBlockRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
-    @Autowired private lateinit var serviceRepository: OfferingRepository
-    @Autowired private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+    @Autowired
+    private lateinit var objectMapper: ObjectMapper
+    @Autowired
+    private lateinit var jwtService: JwtService
+    @Autowired
+    private lateinit var userRepository: UserRepository
+    @Autowired
+    private lateinit var companyRepository: CompanyRepository
+    @Autowired
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired
+    private lateinit var scheduleBlockRepository: ScheduleBlockRepository
+    @Autowired
+    private lateinit var reservationRepository: ReservationRepository
+    @Autowired
+    private lateinit var serviceRepository: OfferingRepository
+    @Autowired
+    private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
 
-    @MockkBean private lateinit var s3Client: S3Client
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private lateinit var employee: User
     private lateinit var owner: User
@@ -72,7 +83,8 @@ class ScheduleBlockIntegrationTest {
 
         val company = companyRepository.save(Company(name = "Salon Testowy"))
         companyId = company.id!!
-        employee = userRepository.save(User(phoneNumber = "+48700800900", firstName = "Pracownik", lastName = "Testowy"))
+        employee =
+            userRepository.save(User(phoneNumber = "+48700800900", firstName = "Pracownik", lastName = "Testowy"))
         owner = userRepository.save(User(phoneNumber = "+48111222333", firstName = "Właściciel", lastName = "Testowy"))
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER"))
@@ -329,7 +341,8 @@ class ScheduleBlockIntegrationTest {
     @Test
     fun `DELETE schedule-blocks owner cannot delete block from another company`() {
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
-        val otherEmployee = userRepository.save(User(phoneNumber = "+48999888777", firstName = "Obcy", lastName = "Pracownik"))
+        val otherEmployee =
+            userRepository.save(User(phoneNumber = "+48999888777", firstName = "Obcy", lastName = "Pracownik"))
         val block = scheduleBlockRepository.save(
             ScheduleBlock(
                 companyId = otherCompany.id!!,

@@ -47,10 +47,8 @@ class EmployeeOfferingService(
         if (offering.companyId != companyId) {
             throw IllegalStateException("Usługa nie należy do tej firmy")
         }
-        if (assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId)) {
-            return assignmentRepository.findAllByEmployeeId(employeeId)
-                .first { it.offeringId == offeringId }.toResponse()
-        }
+        assignmentRepository.findByEmployeeIdAndOfferingId(employeeId, offeringId)
+            ?.let { return it.toResponse() }
         return assignmentRepository.save(
             EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = offeringId)
         ).toResponse()

@@ -5,8 +5,7 @@ import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
@@ -24,6 +23,9 @@ class CustomerServiceTest {
 
     @MockK
     private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
+
+    @MockK
+    private lateinit var companyCustomerRepository: CompanyCustomerRepository
 
     @InjectMockKs
     private lateinit var customerService: CustomerService
@@ -52,7 +54,12 @@ class CustomerServiceTest {
         val existingBlock = CompanyCustomerBlock(companyId = companyId, customerId = customerId, blocked = false)
         every { userRepository.existsById(customerId) } returns true
         every { reservationRepository.existsByCustomerIdAndCompanyId(customerId, companyId) } returns true
-        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns existingBlock
+        every {
+            companyCustomerBlockRepository.findByCompanyIdAndCustomerId(
+                companyId,
+                customerId
+            )
+        } returns existingBlock
         every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
 
         // WHEN
@@ -66,7 +73,8 @@ class CustomerServiceTest {
     @Test
     fun `unblockCustomer should set blocked to false and reset noShowCount`() {
         // GIVEN
-        val block = CompanyCustomerBlock(companyId = companyId, customerId = customerId, noShowCount = 5, blocked = true)
+        val block =
+            CompanyCustomerBlock(companyId = companyId, customerId = customerId, noShowCount = 5, blocked = true)
         every { userRepository.existsById(customerId) } returns true
         every { reservationRepository.existsByCustomerIdAndCompanyId(customerId, companyId) } returns true
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns block
@@ -133,5 +141,94 @@ class CustomerServiceTest {
         }
         assertEquals("Klient nie ma żadnych rezerwacji w tej firmie", exception.message)
         verify(exactly = 0) { companyCustomerBlockRepository.save(any()) }
+    }
+
+    @Test
+    fun `getCustomerStatus includes notes from CompanyCustomer record`() {
+        // GIVEN
+        val customer = User(phoneNumber = "+48123456789", firstName = "Jan", lastName = "Kowalski")
+        every { userRepository.findById(customerId) } returns Optional.of(customer)
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
+        every { companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId) } returns
+                CompanyCustomer(companyId = companyId, userId = customerId, notes = "VIP klient")
+
+        // WHEN
+        val result = customerService.getCustomerStatus(customerId, companyId)
+
+        // THEN
+        assertEquals("VIP klient", result.notes)
+    }
+
+    @Test
+    fun `getCustomerStatus returns null notes when no CompanyCustomer record`() {
+        // GIVEN
+        val customer = User(phoneNumber = "+48123456789", firstName = "Jan", lastName = "Kowalski")
+        every { userRepository.findById(customerId) } returns Optional.of(customer)
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
+        every { companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId) } returns null
+
+        // WHEN
+        val result = customerService.getCustomerStatus(customerId, companyId)
+
+        // THEN
+        assertNull(result.notes)
+    }
+
+    @Test
+    fun `setCustomerNotes creates new record when none exists`() {
+        // GIVEN
+        every { userRepository.existsById(customerId) } returns true
+        every { companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId) } returns null
+        every { companyCustomerRepository.save(any()) } answers { firstArg() }
+
+        // WHEN
+        customerService.setCustomerNotes(customerId, companyId, "Ważny klient")
+
+        // THEN
+        verify(exactly = 1) {
+            companyCustomerRepository.save(match { it.notes == "Ważny klient" && it.companyId == companyId && it.userId == customerId })
+        }
+    }
+
+    @Test
+    fun `setCustomerNotes updates existing record`() {
+        // GIVEN
+        val existing = CompanyCustomer(companyId = companyId, userId = customerId, notes = "Stara notatka")
+        every { userRepository.existsById(customerId) } returns true
+        every { companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId) } returns existing
+        every { companyCustomerRepository.save(any()) } answers { firstArg() }
+
+        // WHEN
+        customerService.setCustomerNotes(customerId, companyId, "Nowa notatka")
+
+        // THEN
+        assertEquals("Nowa notatka", existing.notes)
+        verify(exactly = 1) { companyCustomerRepository.save(existing) }
+    }
+
+    @Test
+    fun `setCustomerNotes normalises blank string to null`() {
+        // GIVEN
+        every { userRepository.existsById(customerId) } returns true
+        every { companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId) } returns null
+        every { companyCustomerRepository.save(any()) } answers { firstArg() }
+
+        // WHEN
+        customerService.setCustomerNotes(customerId, companyId, "   ")
+
+        // THEN
+        verify(exactly = 1) { companyCustomerRepository.save(match { it.notes == null }) }
+    }
+
+    @Test
+    fun `setCustomerNotes throws NoSuchElementException for unknown customer`() {
+        // GIVEN
+        every { userRepository.existsById(customerId) } returns false
+
+        // WHEN & THEN
+        assertThrows<NoSuchElementException> {
+            customerService.setCustomerNotes(customerId, companyId, "Notatka")
+        }
+        verify(exactly = 0) { companyCustomerRepository.save(any()) }
     }
 }

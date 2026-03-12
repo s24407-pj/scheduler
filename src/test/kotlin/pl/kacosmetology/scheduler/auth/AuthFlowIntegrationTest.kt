@@ -117,7 +117,7 @@ class AuthFlowIntegrationTest {
         // 4. Upewniamy się, że użytkownik został stworzony w bazie i zużyty kod zniknął
         val createdUser = userRepository.findByPhoneNumber(phoneNumber)
         Assertions.assertNotNull(createdUser, "Uzytkownik powinien zostac utworzony")
-        Assertions.assertEquals("Jan", createdUser?.firstName)
+        assertEquals("Jan", createdUser?.firstName)
 
         val codeAfterVerification = redisTemplate.opsForValue().get("otp:$phoneNumber")
         Assertions.assertNull(codeAfterVerification, "Zużyty kod powinien zostac usuniety z Redis")
@@ -172,7 +172,8 @@ class AuthFlowIntegrationTest {
         // WHEN
         val result = mockMvc.post("/api/auth/login-staff") {
             contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(StaffLoginRequest(email = "owner@salon.pl", password = rawPassword))
+            content =
+                objectMapper.writeValueAsString(StaffLoginRequest(email = "owner@salon.pl", password = rawPassword))
         }.andExpect {
             status { isOk() }
         }.andReturn()

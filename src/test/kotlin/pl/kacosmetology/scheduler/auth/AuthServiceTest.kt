@@ -217,7 +217,8 @@ class AuthServiceTest {
 
         // WHEN
         val exBadEmail = assertThrows<IllegalArgumentException> { authService.loginStaff(requestBadEmail, testIp) }
-        val exBadPassword = assertThrows<IllegalArgumentException> { authService.loginStaff(requestBadPassword, testIp) }
+        val exBadPassword =
+            assertThrows<IllegalArgumentException> { authService.loginStaff(requestBadPassword, testIp) }
 
         // THEN - Komunikaty MUSZĄ być identyczne
         assertEquals(

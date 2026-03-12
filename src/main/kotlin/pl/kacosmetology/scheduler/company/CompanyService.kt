@@ -71,7 +71,8 @@ class CompanyService(
                 slotIntervalMinutes = request.slotIntervalMinutes,
                 maxNoShows = request.maxNoShows,
                 lastMinuteDiscountPercent = request.lastMinuteDiscountPercent,
-                lastMinuteDiscountHours = request.lastMinuteDiscountHours
+                lastMinuteDiscountHours = request.lastMinuteDiscountHours,
+                minBookingAdvanceMinutes = request.minBookingAdvanceMinutes
             )
         )
         return updated.toSettingsResponse()

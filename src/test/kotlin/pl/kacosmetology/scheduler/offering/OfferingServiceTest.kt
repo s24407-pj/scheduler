@@ -170,7 +170,7 @@ class OfferingServiceTest {
         val file = MockMultipartFile("image", "photo.jpg", "image/jpeg", ByteArray(100))
         every { offeringRepository.findById(1L) } returns Optional.of(offering)
         every { offeringImageService.upload(companyId, 1L, file) } returns
-            OfferingImage(id = 10, offeringId = 1L, imageUrl = "http://cdn/img.jpg")
+                OfferingImage(id = 10, offeringId = 1L, imageUrl = "http://cdn/img.jpg")
 
         // WHEN
         val result = offeringService.uploadImage(1L, companyId, file)

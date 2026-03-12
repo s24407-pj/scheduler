@@ -92,7 +92,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **Company isolation:** `completeReservation` and `markNoShow` both verify `reservation.companyId == userDetails.companyId` before proceeding (throws `IllegalStateException` → 409 if mismatch). Offering mutations check company ownership in the service layer. `OfferingCategoryService.deleteCategory()` and `assignCategory()` both carry `@CacheEvict("companyServices")` to invalidate the offering cache.
 
-**Company settings:** Owners can update business hours, slot interval, and last-minute discount via `PUT /api/company/settings`. `closingTime` must be strictly after `openingTime`. `lastMinuteDiscountPercent` (0–100; 0 disables) and `lastMinuteDiscountHours` (1–168) control the discount window. Both fields default to 0 / 24 and are returned by `GET /api/company/settings`.
+**Company settings:** Owners can update business hours, slot interval, and last-minute discount via `PUT /api/company/settings`. `closingTime` must be strictly after `openingTime`. `lastMinuteDiscountPercent` (0–100; 0 disables) and `lastMinuteDiscountHours` (1–168) control the discount window. Both fields default to 0 / 24 and are returned by `GET /api/company/settings`. `minBookingAdvanceMinutes` (0–10080; 0 disables) sets the minimum number of minutes in advance a customer must book — slots within this window are hidden from `AvailabilityService` and rejected by `ReservationService.createReservation()`. Staff bookings (`createReservationByStaff`) bypass this check via `enforceAdvanceCheck = false`.
 
 **SMS notifications:** `NotificationService` sends booking confirmation and cancellation SMS after `ReservationService` saves. `NotificationScheduler` runs hourly (`0 0 * * * *`) and sends reminders for reservations starting in 23–25 h (`reminder_sent` flag on `Reservation` prevents duplicates). SMS failures are logged but never propagate — they are side-effects of the main transaction. `@EnableScheduling` is on `RedisConfig`.
 
@@ -115,7 +115,7 @@ PostgreSQL with Flyway migrations in `src/main/resources/db/migration/`. Key tab
 - `offerings` — offering catalog (`Offering` entity); has optional `category_id`
 - `offering_categories` — company-scoped groupings for offerings
 - `offering_images` — up to 5 images per offering, references `offerings(id)` ON DELETE CASCADE; column `offering_id`
-- `companies` — has `max_no_shows` column (auto-block threshold), `last_minute_discount_percent` and `last_minute_discount_hours` (V5)
+- `companies` — has `max_no_shows` column (auto-block threshold), `last_minute_discount_percent` and `last_minute_discount_hours`, `min_booking_advance_minutes` (V2)
 - `reservations` — stores price snapshot at booking time, has `@Version` for optimistic locking, `reminder_sent` flag for deduplication; status enum includes `NO_SHOW`
 - `schedule_blocks` — employee time blocks; checked by `AvailabilityService` alongside reservations
 - `employee_work_schedules` — per-employee, per-day-of-week working hours

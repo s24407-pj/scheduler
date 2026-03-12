@@ -37,16 +37,25 @@ import software.amazon.awssdk.services.s3.model.PutObjectResponse
 @Import(TestcontainersConfiguration::class)
 class OfferingImageIntegrationTest {
 
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var offeringRepository: OfferingRepository
-    @Autowired private lateinit var offeringImageRepository: OfferingImageRepository
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+    @Autowired
+    private lateinit var offeringRepository: OfferingRepository
+    @Autowired
+    private lateinit var offeringImageRepository: OfferingImageRepository
+    @Autowired
+    private lateinit var userRepository: UserRepository
+    @Autowired
+    private lateinit var companyRepository: CompanyRepository
+    @Autowired
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired
+    private lateinit var reservationRepository: ReservationRepository
+    @Autowired
+    private lateinit var jwtService: JwtService
 
-    @MockkBean private lateinit var s3Client: S3Client
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private lateinit var owner: User
     private lateinit var employee: User
@@ -70,7 +79,8 @@ class OfferingImageIntegrationTest {
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER"))
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
 
-        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder().build()
+        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder()
+            .build()
         every { s3Client.deleteObject(any<DeleteObjectRequest>()) } returns DeleteObjectResponse.builder().build()
     }
 
@@ -160,7 +170,12 @@ class OfferingImageIntegrationTest {
             Offering(companyId = companyId, name = "Masaż", durationMinutes = 60, price = 120)
         )
         repeat(5) { i ->
-            offeringImageRepository.save(OfferingImage(offeringId = offering.id!!, imageUrl = "http://example.com/img$i.jpg"))
+            offeringImageRepository.save(
+                OfferingImage(
+                    offeringId = offering.id!!,
+                    imageUrl = "http://example.com/img$i.jpg"
+                )
+            )
         }
         val file = MockMultipartFile("image", "extra.jpg", "image/jpeg", ByteArray(100))
 

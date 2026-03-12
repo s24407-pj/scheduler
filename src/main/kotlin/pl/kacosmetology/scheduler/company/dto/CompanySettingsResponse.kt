@@ -12,7 +12,8 @@ data class CompanySettingsResponse(
     val slotIntervalMinutes: Int,
     val maxNoShows: Int,
     val lastMinuteDiscountPercent: Int,
-    val lastMinuteDiscountHours: Int
+    val lastMinuteDiscountHours: Int,
+    val minBookingAdvanceMinutes: Int
 )
 
 /** Maps a [Company] entity to a [CompanySettingsResponse] DTO. */
@@ -24,5 +25,6 @@ fun Company.toSettingsResponse() = CompanySettingsResponse(
     slotIntervalMinutes = slotIntervalMinutes,
     maxNoShows = maxNoShows,
     lastMinuteDiscountPercent = lastMinuteDiscountPercent,
-    lastMinuteDiscountHours = lastMinuteDiscountHours
+    lastMinuteDiscountHours = lastMinuteDiscountHours,
+    minBookingAdvanceMinutes = minBookingAdvanceMinutes
 )

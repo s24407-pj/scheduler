@@ -3,11 +3,12 @@ package pl.kacosmetology.scheduler.offering
 import org.springframework.stereotype.Service
 import org.springframework.web.multipart.MultipartFile
 import pl.kacosmetology.scheduler.config.R2Properties
+import pl.kacosmetology.scheduler.offering.OfferingImageService.Companion.MAX_IMAGES_PER_OFFERING
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
-import java.util.UUID
+import java.util.*
 
 /** Handles uploading and deleting offering images in Cloudflare R2. */
 @Service

@@ -4,7 +4,6 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.stereotype.Component
-import java.time.Duration
 
 /** Redis-backed rate limiter for staff login attempts, keyed by client IP address. */
 @Component
