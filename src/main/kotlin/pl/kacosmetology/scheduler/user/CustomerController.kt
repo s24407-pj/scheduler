@@ -17,6 +17,15 @@ class CustomerController(
     private val customerService: CustomerService
 ) {
 
+    /** Returns all customers who have made at least one reservation at the authenticated user's company. Requires OWNER or EMPLOYEE role. */
+    @GetMapping
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun listCustomers(@AuthenticationPrincipal userDetails: CustomUserDetails): List<CustomerStatusResponse> {
+        val companyId = userDetails.companyId
+            ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
+        return customerService.listCustomers(companyId)
+    }
+
     /** Returns a customer's company-scoped block/no-show status. Requires OWNER or EMPLOYEE role. */
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")

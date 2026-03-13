@@ -15,6 +15,37 @@ class CustomerService(
 ) {
 
     /**
+     * Returns all customers who have at least one reservation at the given company,
+     * enriched with their company-scoped block status and notes. Sorted by last name, then first name.
+     */
+    @Transactional(readOnly = true)
+    fun listCustomers(companyId: Long): List<CustomerStatusResponse> {
+        val customerIds = reservationRepository.findDistinctCustomerIdsByCompanyId(companyId)
+        if (customerIds.isEmpty()) return emptyList()
+        val usersById = userRepository.findAllById(customerIds).associateBy { it.id }
+        val blocksByCustomerId = companyCustomerBlockRepository.findByCompanyId(companyId)
+            .associateBy { it.customerId }
+        val companyCustomersByUserId = companyCustomerRepository.findByCompanyId(companyId)
+            .associateBy { it.userId }
+        return customerIds
+            .mapNotNull { id ->
+                val user = usersById[id] ?: return@mapNotNull null
+                val block = blocksByCustomerId[id]
+                val companyCustomer = companyCustomersByUserId[id]
+                CustomerStatusResponse(
+                    id = user.id,
+                    firstName = user.firstName,
+                    lastName = user.lastName,
+                    phoneNumber = user.phoneNumber,
+                    noShowCount = block?.noShowCount ?: 0,
+                    blocked = block?.blocked ?: false,
+                    notes = companyCustomer?.notes
+                )
+            }
+            .sortedWith(compareBy({ it.lastName }, { it.firstName }))
+    }
+
+    /**
      * Returns the company-scoped block/no-show status for a customer visible to staff.
      * Throws [NoSuchElementException] if the user is not found.
      */
@@ -28,6 +59,7 @@ class CustomerService(
             id = customer.id,
             firstName = customer.firstName,
             lastName = customer.lastName,
+            phoneNumber = customer.phoneNumber,
             noShowCount = block?.noShowCount ?: 0,
             blocked = block?.blocked ?: false,
             notes = companyCustomer?.notes

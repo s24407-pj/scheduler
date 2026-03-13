@@ -34,6 +34,59 @@ class CustomerServiceTest {
     private val customerId = 100L
 
     @Test
+    fun `listCustomers returns customers with phone number sorted by last name`() {
+        // GIVEN
+        val alice = User(id = 1L, phoneNumber = "+48100000001", firstName = "Alice", lastName = "Zielińska")
+        val bob = User(id = 2L, phoneNumber = "+48100000002", firstName = "Bob", lastName = "Adamski")
+        every { reservationRepository.findDistinctCustomerIdsByCompanyId(companyId) } returns listOf(1L, 2L)
+        every { userRepository.findAllById(listOf(1L, 2L)) } returns listOf(alice, bob)
+        every { companyCustomerBlockRepository.findByCompanyId(companyId) } returns emptyList()
+        every { companyCustomerRepository.findByCompanyId(companyId) } returns emptyList()
+
+        // WHEN
+        val result = customerService.listCustomers(companyId)
+
+        // THEN
+        assertEquals(2, result.size)
+        assertEquals("Adamski", result[0].lastName)
+        assertEquals("Zielińska", result[1].lastName)
+        assertEquals("+48100000001", result.first { it.firstName == "Alice" }.phoneNumber)
+    }
+
+    @Test
+    fun `listCustomers returns empty list when no reservations`() {
+        // GIVEN
+        every { reservationRepository.findDistinctCustomerIdsByCompanyId(companyId) } returns emptyList()
+
+        // WHEN
+        val result = customerService.listCustomers(companyId)
+
+        // THEN
+        assertEquals(emptyList<Any>(), result)
+    }
+
+    @Test
+    fun `listCustomers includes block status and notes`() {
+        // GIVEN
+        val customer = User(id = customerId, phoneNumber = "+48111111111", firstName = "Jan", lastName = "Kowalski")
+        val block = CompanyCustomerBlock(companyId = companyId, customerId = customerId, noShowCount = 3, blocked = true)
+        val companyCustomer = CompanyCustomer(companyId = companyId, userId = customerId, notes = "VIP")
+        every { reservationRepository.findDistinctCustomerIdsByCompanyId(companyId) } returns listOf(customerId)
+        every { userRepository.findAllById(listOf(customerId)) } returns listOf(customer)
+        every { companyCustomerBlockRepository.findByCompanyId(companyId) } returns listOf(block)
+        every { companyCustomerRepository.findByCompanyId(companyId) } returns listOf(companyCustomer)
+
+        // WHEN
+        val result = customerService.listCustomers(companyId)
+
+        // THEN
+        assertEquals(1, result.size)
+        assertEquals(true, result[0].blocked)
+        assertEquals(3, result[0].noShowCount)
+        assertEquals("VIP", result[0].notes)
+    }
+
+    @Test
     fun `blockCustomer should set blocked to true`() {
         // GIVEN
         every { userRepository.existsById(customerId) } returns true

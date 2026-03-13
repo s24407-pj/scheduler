@@ -32,6 +32,8 @@ data class EmployeeReservationResponse(
 data class DashboardReservationResponse(
     val id: Long,
     val customerId: Long,
+    val customerFirstName: String,
+    val customerLastName: String,
     val employeeId: Long,
     val serviceId: Long,
     val price: Int,
@@ -66,9 +68,11 @@ fun Reservation.toEmployeeResponse() = EmployeeReservationResponse(
 )
 
 /** Maps a [Reservation] to the owner dashboard [DashboardReservationResponse] with full employee+customer context. */
-fun Reservation.toDashboardResponse() = DashboardReservationResponse(
+fun Reservation.toDashboardResponse(customerFirstName: String, customerLastName: String) = DashboardReservationResponse(
     id = requireNotNull(id) { "Reservation must be persisted before converting to DTO" },
     customerId = customerId,
+    customerFirstName = customerFirstName,
+    customerLastName = customerLastName,
     employeeId = employeeId,
     serviceId = serviceId,
     price = price,

@@ -7,6 +7,8 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.company.effectivePrice
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.reservation.dto.DashboardReservationResponse
+import pl.kacosmetology.scheduler.reservation.dto.toDashboardResponse
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlock
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.User
@@ -197,7 +199,7 @@ class ReservationService(
     }
 
     /**
-     * Returns reservations for a given employee within a company and date range.
+     * Returns reservations for a given employee within a company and date range, enriched with customer names.
      * Used by the owner dashboard — the authorization check (OWNER can see any employee,
      * EMPLOYEE can only see their own) is performed in the controller before calling this method.
      */
@@ -207,8 +209,17 @@ class ReservationService(
         employeeId: Long,
         start: LocalDateTime,
         end: LocalDateTime
-    ): List<Reservation> {
-        return reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end)
+    ): List<DashboardReservationResponse> {
+        val reservations = reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end)
+        val customerIds = reservations.map { it.customerId }.distinct()
+        val usersById = userRepository.findAllById(customerIds).associateBy { it.id }
+        return reservations.map { r ->
+            val customer = usersById[r.customerId]
+            r.toDashboardResponse(
+                customerFirstName = customer?.firstName ?: "",
+                customerLastName = customer?.lastName ?: ""
+            )
+        }
     }
 
     /** Returns an employee's schedule within a given time range. */

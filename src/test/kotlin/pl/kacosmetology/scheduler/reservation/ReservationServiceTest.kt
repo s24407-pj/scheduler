@@ -780,6 +780,11 @@ class ReservationServiceTest {
                 end
             )
         } returns expected
+        every { userRepository.findAllById(listOf(customerId)) } returns listOf(
+            pl.kacosmetology.scheduler.user.User(
+                id = customerId, phoneNumber = "+48100000001", firstName = "Jan", lastName = "Kowalski"
+            )
+        )
 
         // WHEN
         val result = reservationService.getCompanyReservations(companyId, employeeId, start, end)
@@ -787,6 +792,8 @@ class ReservationServiceTest {
         // THEN
         assertEquals(1, result.size)
         assertEquals(1L, result[0].id)
+        assertEquals("Jan", result[0].customerFirstName)
+        assertEquals("Kowalski", result[0].customerLastName)
         verify(exactly = 1) {
             reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(
                 companyId,
@@ -810,6 +817,7 @@ class ReservationServiceTest {
                 end
             )
         } returns emptyList()
+        every { userRepository.findAllById(emptyList()) } returns emptyList()
 
         // WHEN
         val result = reservationService.getCompanyReservations(companyId, employeeId, start, end)

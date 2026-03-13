@@ -105,7 +105,6 @@ class ReservationController(
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Możesz przeglądać tylko swoje rezerwacje")
         }
         return reservationService.getCompanyReservations(companyId, employeeId, start, end)
-            .map { it.toDashboardResponse() }
     }
 
     /** Permanently deletes a reservation. Requires OWNER role. */

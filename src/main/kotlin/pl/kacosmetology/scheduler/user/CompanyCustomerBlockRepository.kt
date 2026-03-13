@@ -6,4 +6,5 @@ import org.springframework.data.jpa.repository.JpaRepository
 interface CompanyCustomerBlockRepository : JpaRepository<CompanyCustomerBlock, Long> {
     /** Returns the block record for the given company/customer pair, or null if none exists. */
     fun findByCompanyIdAndCustomerId(companyId: Long, customerId: Long): CompanyCustomerBlock?
+    fun findByCompanyId(companyId: Long): List<CompanyCustomerBlock>
 }
