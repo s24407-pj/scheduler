@@ -20,6 +20,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
+import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.JwtService
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
@@ -45,6 +46,8 @@ class CustomerNotesIntegrationTest {
     private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
     @Autowired
     private lateinit var companyCustomerRepository: CompanyCustomerRepository
+    @Autowired
+    private lateinit var reservationRepository: ReservationRepository
 
     @MockkBean
     private lateinit var s3Client: S3Client
@@ -59,6 +62,7 @@ class CustomerNotesIntegrationTest {
 
     @BeforeEach
     fun setup() {
+        reservationRepository.deleteAll()
         companyCustomerRepository.deleteAll()
         companyCustomerBlockRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
