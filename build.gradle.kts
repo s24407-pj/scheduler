@@ -2,7 +2,7 @@
 plugins {
     kotlin("jvm") version "2.3.20"
     kotlin("plugin.spring") version "2.3.20"
-    id("org.springframework.boot") version "4.0.4"
+    id("org.springframework.boot") version "4.0.5"
     id("io.spring.dependency-management") version "1.1.7"
     kotlin("plugin.jpa") version "2.3.20"
 }
@@ -13,7 +13,7 @@ val postgresqlVersion = "42.7.10"
 val mockkVersion = "1.14.9"
 val springmockkVersion = "5.0.1"
 val testcontainersVersion = "2.0.4"
-val awsSdkVersion = "2.42.18"
+val awsSdkVersion = "2.42.23"
 
 group = "pl.kacosmetology"
 version = "0.0.1-SNAPSHOT"
