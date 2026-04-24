@@ -5,29 +5,30 @@ import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
 
 @Repository
 interface ReservationRepository : JpaRepository<Reservation, Long> {
 
-    /** Checks if an employee has any non-cancelled reservation overlapping the given time range. */
+    /** Checks if an employee has any active (non-cancelled, non-no-show) reservation overlapping the given time range. */
     @Query(
         """
-        SELECT COUNT(r) > 0 FROM Reservation r 
-        WHERE r.employeeId = :employeeId 
-        AND r.status != 'CANCELLED'
+        SELECT COUNT(r) > 0 FROM Reservation r
+        WHERE r.employeeId = :employeeId
+        AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
         AND (:start < r.endTime AND :end > r.startTime)
     """
     )
     fun existsOverlapping(employeeId: Long, start: LocalDateTime, end: LocalDateTime): Boolean
 
-    /** Returns all non-cancelled reservations for an employee on a given day (used by availability check). */
+    /** Returns all active (non-cancelled, non-no-show) reservations for an employee on a given day (used by availability check). */
     @Query(
         """
-        SELECT r FROM Reservation r 
-        WHERE r.employeeId = :employeeId 
-        AND r.status != 'CANCELLED'
-        AND r.startTime >= :startOfDay 
+        SELECT r FROM Reservation r
+        WHERE r.employeeId = :employeeId
+        AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
+        AND r.startTime >= :startOfDay
         AND r.startTime < :endOfDay
         ORDER BY r.startTime ASC
     """
@@ -67,12 +68,32 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
     ): List<Reservation>
 
     /** Bulk-marks the given reservations as having had a reminder sent. */
+    @Transactional
     @Modifying
     @Query("UPDATE Reservation r SET r.reminderSent = true WHERE r.id IN :ids")
     fun markRemindersAsSent(@Param("ids") ids: List<Long>)
 
+    /**
+     * Bulk-completes all PENDING/CONFIRMED reservations whose end time is at or before [now].
+     * Returns the number of updated rows.
+     */
+    @Modifying
+    @Transactional
+    @Query(
+        """
+        UPDATE Reservation r SET r.status = 'COMPLETED'
+        WHERE r.status IN ('PENDING', 'CONFIRMED')
+        AND r.endTime <= :now
+    """
+    )
+    fun autoCompleteElapsed(@Param("now") now: LocalDateTime): Int
+
     /** Checks if a customer has any reservation in the given company. */
     fun existsByCustomerIdAndCompanyId(customerId: Long, companyId: Long): Boolean
+
+    /** Returns distinct customer IDs that have at least one reservation in the given company. */
+    @Query("SELECT DISTINCT r.customerId FROM Reservation r WHERE r.companyId = :companyId")
+    fun findDistinctCustomerIdsByCompanyId(@Param("companyId") companyId: Long): List<Long>
 
     /**
      * Returns reservations for a specific employee within a company and date range.

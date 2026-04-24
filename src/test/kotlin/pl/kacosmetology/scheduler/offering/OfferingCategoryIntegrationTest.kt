@@ -11,13 +11,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.security.core.authority.SimpleGrantedAuthority
-import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.delete
-import org.springframework.test.web.servlet.get
-import org.springframework.test.web.servlet.patch
-import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.*
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
@@ -27,6 +22,7 @@ import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
+import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
 @SpringBootTest
@@ -34,17 +30,27 @@ import tools.jackson.databind.ObjectMapper
 @Import(TestcontainersConfiguration::class)
 class OfferingCategoryIntegrationTest {
 
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var objectMapper: ObjectMapper
-    @Autowired private lateinit var jwtService: JwtService
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var categoryRepository: OfferingCategoryRepository
-    @Autowired private lateinit var offeringRepository: OfferingRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+    @Autowired
+    private lateinit var objectMapper: ObjectMapper
+    @Autowired
+    private lateinit var jwtService: JwtService
+    @Autowired
+    private lateinit var userRepository: UserRepository
+    @Autowired
+    private lateinit var companyRepository: CompanyRepository
+    @Autowired
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired
+    private lateinit var categoryRepository: OfferingCategoryRepository
+    @Autowired
+    private lateinit var offeringRepository: OfferingRepository
+    @Autowired
+    private lateinit var reservationRepository: ReservationRepository
 
-    @MockkBean private lateinit var s3Client: S3Client
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private var companyId: Long = 0
     private var offeringId: Long = 0
@@ -154,7 +160,14 @@ class OfferingCategoryIntegrationTest {
     fun `DELETE api-offering-categories should evict offering cache so public endpoint reflects null categoryId`() {
         val category = categoryRepository.save(OfferingCategory(companyId = companyId, name = "Do Usunięcia"))
         offeringRepository.save(
-            Offering(id = offeringId, companyId = companyId, name = "Farbowanie", durationMinutes = 60, price = 150, categoryId = category.id)
+            Offering(
+                id = offeringId,
+                companyId = companyId,
+                name = "Farbowanie",
+                durationMinutes = 60,
+                price = 150,
+                categoryId = category.id
+            )
         )
 
         // Populate the cache
@@ -221,7 +234,14 @@ class OfferingCategoryIntegrationTest {
     fun `PATCH api-offerings-category with null should clear category`() {
         val category = categoryRepository.save(OfferingCategory(companyId = companyId, name = "Koloryzacja"))
         offeringRepository.save(
-            Offering(id = offeringId, companyId = companyId, name = "Farbowanie", durationMinutes = 60, price = 150, categoryId = category.id)
+            Offering(
+                id = offeringId,
+                companyId = companyId,
+                name = "Farbowanie",
+                durationMinutes = 60,
+                price = 150,
+                categoryId = category.id
+            )
         )
 
         val body = mapOf("categoryId" to null)

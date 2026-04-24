@@ -15,7 +15,6 @@ import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
@@ -27,6 +26,7 @@ import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
+import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 import java.time.LocalDateTime
 
@@ -35,17 +35,27 @@ import java.time.LocalDateTime
 @Import(TestcontainersConfiguration::class)
 class EmployeeOfferingIntegrationTest {
 
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var objectMapper: ObjectMapper
-    @Autowired private lateinit var jwtService: JwtService
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var offeringRepository: OfferingRepository
-    @Autowired private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+    @Autowired
+    private lateinit var objectMapper: ObjectMapper
+    @Autowired
+    private lateinit var jwtService: JwtService
+    @Autowired
+    private lateinit var userRepository: UserRepository
+    @Autowired
+    private lateinit var companyRepository: CompanyRepository
+    @Autowired
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired
+    private lateinit var offeringRepository: OfferingRepository
+    @Autowired
+    private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
+    @Autowired
+    private lateinit var reservationRepository: ReservationRepository
 
-    @MockkBean private lateinit var s3Client: S3Client
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private var companyId: Long = 0
     private var employeeId: Long = 0
@@ -101,7 +111,13 @@ class EmployeeOfferingIntegrationTest {
 
     @Test
     fun `POST assign offering should be idempotent`() {
-        assignmentRepository.save(EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = offeringId))
+        assignmentRepository.save(
+            EmployeeOfferingAssignment(
+                companyId = companyId,
+                employeeId = employeeId,
+                offeringId = offeringId
+            )
+        )
 
         mockMvc.post("/api/employees/$employeeId/offerings/$offeringId") {
             header("Authorization", "Bearer $ownerToken")
@@ -114,7 +130,13 @@ class EmployeeOfferingIntegrationTest {
 
     @Test
     fun `DELETE remove assignment should return 204`() {
-        assignmentRepository.save(EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = offeringId))
+        assignmentRepository.save(
+            EmployeeOfferingAssignment(
+                companyId = companyId,
+                employeeId = employeeId,
+                offeringId = offeringId
+            )
+        )
 
         mockMvc.delete("/api/employees/$employeeId/offerings/$offeringId") {
             header("Authorization", "Bearer $ownerToken")
@@ -136,7 +158,13 @@ class EmployeeOfferingIntegrationTest {
 
     @Test
     fun `GET public employee offerings should return assigned active offerings`() {
-        assignmentRepository.save(EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = offeringId))
+        assignmentRepository.save(
+            EmployeeOfferingAssignment(
+                companyId = companyId,
+                employeeId = employeeId,
+                offeringId = offeringId
+            )
+        )
 
         mockMvc.get("/api/offerings/public/employee/$employeeId").andExpect {
             status { isOk() }
@@ -158,14 +186,21 @@ class EmployeeOfferingIntegrationTest {
         val otherOffering = offeringRepository.save(
             Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 60, price = 150)
         )
-        assignmentRepository.save(EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = offeringId))
+        assignmentRepository.save(
+            EmployeeOfferingAssignment(
+                companyId = companyId,
+                employeeId = employeeId,
+                offeringId = offeringId
+            )
+        )
 
         val customer = userRepository.save(User(phoneNumber = "+48999888777", firstName = "Klient", lastName = "Test"))
 
         val body = mapOf(
             "employeeId" to employeeId,
             "serviceId" to otherOffering.id,
-            "startTime" to LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0).toString(),
+            "startTime" to LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
+                .toString(),
             "customerPhone" to customer.phoneNumber
         )
 

@@ -22,10 +22,13 @@ import software.amazon.awssdk.services.s3.S3Client
 @Import(TestcontainersConfiguration::class)
 class WhatsAppWebhookIntegrationTest {
 
-    @Autowired private lateinit var mockMvc: MockMvc
+    @Autowired
+    private lateinit var mockMvc: MockMvc
 
-    @MockkBean private lateinit var s3Client: S3Client
-    @MockkBean private lateinit var whatsAppSender: WhatsAppSender
+    @MockkBean
+    private lateinit var s3Client: S3Client
+    @MockkBean
+    private lateinit var whatsAppSender: WhatsAppSender
 
     @Test
     fun `GET webhook should return challenge when token matches`() {

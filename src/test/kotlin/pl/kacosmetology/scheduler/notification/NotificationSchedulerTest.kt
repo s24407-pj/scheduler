@@ -71,4 +71,22 @@ class NotificationSchedulerTest {
 
         verify(exactly = 0) { reservationRepository.markRemindersAsSent(any()) }
     }
+
+    @Test
+    fun `autoCompleteElapsedReservations should call autoCompleteElapsed with current time`() {
+        every { reservationRepository.autoCompleteElapsed(any()) } returns 3
+
+        notificationScheduler.autoCompleteElapsedReservations()
+
+        verify { reservationRepository.autoCompleteElapsed(any()) }
+    }
+
+    @Test
+    fun `autoCompleteElapsedReservations should not log when no reservations completed`() {
+        every { reservationRepository.autoCompleteElapsed(any()) } returns 0
+
+        notificationScheduler.autoCompleteElapsedReservations()
+
+        verify { reservationRepository.autoCompleteElapsed(any()) }
+    }
 }

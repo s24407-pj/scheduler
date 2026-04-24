@@ -10,24 +10,24 @@ import org.springframework.context.annotation.Import
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignment
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
-import pl.kacosmetology.scheduler.offering.Offering
-import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
+import software.amazon.awssdk.services.s3.S3Client
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -236,8 +236,15 @@ class AvailabilityIntegrationTest {
         val newCompanyId = discountCompany.id!!
 
         // Re-create employee and offering under the new company
-        val newEmployee = userRepository.save(User(phoneNumber = "+48777666555", firstName = "Fryzjer2", lastName = "Testowy2"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = newCompanyId, userId = newEmployee.id, role = "EMPLOYEE"))
+        val newEmployee =
+            userRepository.save(User(phoneNumber = "+48777666555", firstName = "Fryzjer2", lastName = "Testowy2"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(
+                companyId = newCompanyId,
+                userId = newEmployee.id,
+                role = "EMPLOYEE"
+            )
+        )
         val newService = serviceRepository.save(
             Offering(companyId = newCompanyId, name = "Koloryzacja", durationMinutes = 60, price = 100)
         )
@@ -270,7 +277,13 @@ class AvailabilityIntegrationTest {
             Offering(companyId = companyId, name = "Inny Serwis", durationMinutes = 30, price = 50)
         )
         // Pracownik ma przypisanie tylko do innej usługi
-        assignmentRepository.save(EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = otherService.id!!))
+        assignmentRepository.save(
+            EmployeeOfferingAssignment(
+                companyId = companyId,
+                employeeId = employeeId,
+                offeringId = otherService.id!!
+            )
+        )
 
         mockMvc.get("/api/availability") {
             param("employeeId", employeeId.toString())

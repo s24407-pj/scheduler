@@ -26,13 +26,10 @@ class ReservationController(
     @ResponseStatus(HttpStatus.CREATED)
     fun createReservation(
         @Valid @RequestBody request: CreateReservationRequest,
-        @AuthenticationPrincipal userDetails: CustomUserDetails?
+        @AuthenticationPrincipal userDetails: CustomUserDetails
     ): ReservationResponse {
-        val customerId = userDetails?.id
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Musisz być zalogowany, aby zarezerwować termin")
-
         return reservationService.createReservation(
-            customerId = customerId,
+            customerId = userDetails.id,
             employeeId = request.employeeId,
             offeringId = request.serviceId,
             startTime = request.startTime
@@ -44,11 +41,9 @@ class ReservationController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun cancelReservation(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails?
+        @AuthenticationPrincipal userDetails: CustomUserDetails
     ) {
-        val customerId = userDetails?.id
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
-        reservationService.cancelReservation(id, customerId)
+        reservationService.cancelReservation(id, userDetails.id)
     }
 
     /** Marks a reservation as completed. Requires OWNER or EMPLOYEE role. */
@@ -57,9 +52,9 @@ class ReservationController(
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun completeReservation(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails?
+        @AuthenticationPrincipal userDetails: CustomUserDetails
     ) {
-        val companyId = userDetails?.companyId ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
         reservationService.completeReservation(id, companyId)
     }
 
@@ -69,29 +64,27 @@ class ReservationController(
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun markNoShow(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails?
+        @AuthenticationPrincipal userDetails: CustomUserDetails
     ) {
-        val companyId = userDetails?.companyId ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
         reservationService.markNoShow(id, companyId)
     }
 
     /** Returns the authenticated customer's reservation history. */
     @GetMapping("/me")
-    fun getMyReservations(@AuthenticationPrincipal userDetails: CustomUserDetails?): List<ReservationResponse> {
-        val customerId = userDetails?.id ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
-        return reservationService.getCustomerReservations(customerId).map { it.toResponse() }
+    fun getMyReservations(@AuthenticationPrincipal userDetails: CustomUserDetails): List<ReservationResponse> {
+        return reservationService.getCustomerReservations(userDetails.id).map { it.toResponse() }
     }
 
     /** Returns the authenticated employee's schedule within a time range. Requires OWNER or EMPLOYEE role. */
     @GetMapping("/employee")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getEmployeeSchedule(
-        @AuthenticationPrincipal userDetails: CustomUserDetails?,
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime
     ): List<EmployeeReservationResponse> {
-        val employeeId = userDetails?.id ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
-        return reservationService.getEmployeeSchedule(employeeId, start, end).map { it.toEmployeeResponse() }
+        return reservationService.getEmployeeSchedule(userDetails.id, start, end).map { it.toEmployeeResponse() }
     }
 
     /**
@@ -104,16 +97,14 @@ class ReservationController(
         @RequestParam employeeId: Long,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime,
-        @AuthenticationPrincipal userDetails: CustomUserDetails?
+        @AuthenticationPrincipal userDetails: CustomUserDetails
     ): List<DashboardReservationResponse> {
-        val user = userDetails ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
-        val companyId = user.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
-        val isOwner = user.authorities.any { it.authority == "ROLE_OWNER" }
-        if (!isOwner && user.id != employeeId) {
+        val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
+        val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
+        if (!isOwner && userDetails.id != employeeId) {
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Możesz przeglądać tylko swoje rezerwacje")
         }
         return reservationService.getCompanyReservations(companyId, employeeId, start, end)
-            .map { it.toDashboardResponse() }
     }
 
     /** Permanently deletes a reservation. Requires OWNER role. */
@@ -122,9 +113,9 @@ class ReservationController(
     @PreAuthorize("hasRole('OWNER')")
     fun deleteReservation(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails?
+        @AuthenticationPrincipal userDetails: CustomUserDetails
     ) {
-        val companyId = userDetails?.companyId ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
         reservationService.deleteReservation(id, companyId)
     }
 
@@ -134,10 +125,8 @@ class ReservationController(
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun createReservationByStaff(
         @Valid @RequestBody request: StaffCreateReservationRequest,
-        @AuthenticationPrincipal userDetails: CustomUserDetails?
+        @AuthenticationPrincipal userDetails: CustomUserDetails
     ): ReservationResponse {
-        if (userDetails == null) throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
-
         return reservationService.createReservationByStaff(
             employeeId = request.employeeId!!,
             serviceId = request.serviceId!!,

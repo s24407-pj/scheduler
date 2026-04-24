@@ -33,15 +33,23 @@ import java.time.LocalDateTime
 @Import(TestcontainersConfiguration::class)
 class ReservationDashboardIntegrationTest {
 
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var jwtService: JwtService
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var offeringRepository: OfferingRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+    @Autowired
+    private lateinit var jwtService: JwtService
+    @Autowired
+    private lateinit var userRepository: UserRepository
+    @Autowired
+    private lateinit var companyRepository: CompanyRepository
+    @Autowired
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired
+    private lateinit var offeringRepository: OfferingRepository
+    @Autowired
+    private lateinit var reservationRepository: ReservationRepository
 
-    @MockkBean private lateinit var s3Client: S3Client
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private lateinit var owner: User
     private lateinit var employee: User
@@ -135,7 +143,13 @@ class ReservationDashboardIntegrationTest {
         val otherEmployee = userRepository.save(
             User(phoneNumber = "+48199999999", firstName = "Other", lastName = "Employee")
         )
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = otherEmployee.id, role = "EMPLOYEE"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(
+                companyId = companyId,
+                userId = otherEmployee.id,
+                role = "EMPLOYEE"
+            )
+        )
 
         mockMvc.get("/api/reservations") {
             header("Authorization", "Bearer $employeeToken")

@@ -91,7 +91,8 @@ class OfferingCategoryServiceTest {
 
     @Test
     fun `assignCategory should set categoryId on offering`() {
-        val offering = Offering(id = offeringId, companyId = companyId, name = "Farbowanie", durationMinutes = 60, price = 150)
+        val offering =
+            Offering(id = offeringId, companyId = companyId, name = "Farbowanie", durationMinutes = 60, price = 150)
         val category = OfferingCategory(id = categoryId, companyId = companyId, name = "Koloryzacja")
 
         every { offeringRepository.findById(offeringId) } returns Optional.of(offering)
@@ -105,7 +106,14 @@ class OfferingCategoryServiceTest {
 
     @Test
     fun `assignCategory with null categoryId should clear category`() {
-        val offering = Offering(id = offeringId, companyId = companyId, name = "Farbowanie", durationMinutes = 60, price = 150, categoryId = categoryId)
+        val offering = Offering(
+            id = offeringId,
+            companyId = companyId,
+            name = "Farbowanie",
+            durationMinutes = 60,
+            price = 150,
+            categoryId = categoryId
+        )
 
         every { offeringRepository.findById(offeringId) } returns Optional.of(offering)
         every { offeringRepository.save(any()) } answers { firstArg() }
@@ -118,7 +126,8 @@ class OfferingCategoryServiceTest {
     @Test
     fun `assignCategory should throw when category belongs to different company`() {
         val otherCompanyId = 99L
-        val offering = Offering(id = offeringId, companyId = companyId, name = "Farbowanie", durationMinutes = 60, price = 150)
+        val offering =
+            Offering(id = offeringId, companyId = companyId, name = "Farbowanie", durationMinutes = 60, price = 150)
         val category = OfferingCategory(id = categoryId, companyId = otherCompanyId, name = "Obca kategoria")
 
         every { offeringRepository.findById(offeringId) } returns Optional.of(offering)

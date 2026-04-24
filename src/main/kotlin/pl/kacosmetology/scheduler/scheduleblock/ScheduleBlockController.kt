@@ -33,10 +33,9 @@ class ScheduleBlockController(
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun createBlock(
         @Valid @RequestBody request: CreateScheduleBlockRequest,
-        @AuthenticationPrincipal userDetails: CustomUserDetails?
+        @AuthenticationPrincipal userDetails: CustomUserDetails
     ): ScheduleBlockResponse {
-        val requesterId = userDetails?.id
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
+        val requesterId = userDetails.id
         val companyId = userDetails.companyId
             ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
         val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
@@ -60,10 +59,9 @@ class ScheduleBlockController(
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun deleteBlock(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails?
+        @AuthenticationPrincipal userDetails: CustomUserDetails
     ) {
-        val requesterId = userDetails?.id
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
+        val requesterId = userDetails.id
         val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
         val companyId = if (isOwner) userDetails.companyId else null
         scheduleBlockService.deleteBlock(id, requesterId, isOwner, companyId)
@@ -77,13 +75,12 @@ class ScheduleBlockController(
     @GetMapping("/employee")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getMyBlocks(
-        @AuthenticationPrincipal userDetails: CustomUserDetails?,
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
         @RequestParam(required = false) employeeId: Long?,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime
     ): List<ScheduleBlockResponse> {
-        val requesterId = userDetails?.id
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
+        val requesterId = userDetails.id
         val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
         val targetId = if (isOwner && employeeId != null) employeeId else requesterId
         return scheduleBlockService.getEmployeeBlocks(targetId, start, end).map { it.toResponse() }

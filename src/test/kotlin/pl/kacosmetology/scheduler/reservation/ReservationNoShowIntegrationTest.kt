@@ -32,16 +32,25 @@ import java.time.LocalDateTime
 @Import(TestcontainersConfiguration::class)
 class ReservationNoShowIntegrationTest {
 
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var jwtService: JwtService
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var serviceRepository: OfferingRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
-    @Autowired private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+    @Autowired
+    private lateinit var jwtService: JwtService
+    @Autowired
+    private lateinit var userRepository: UserRepository
+    @Autowired
+    private lateinit var companyRepository: CompanyRepository
+    @Autowired
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired
+    private lateinit var serviceRepository: OfferingRepository
+    @Autowired
+    private lateinit var reservationRepository: ReservationRepository
+    @Autowired
+    private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
 
-    @MockkBean private lateinit var s3Client: S3Client
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private lateinit var employee: User
     private lateinit var customer: User
@@ -61,7 +70,8 @@ class ReservationNoShowIntegrationTest {
         val company = companyRepository.save(Company(name = "Test Salon", maxNoShows = 3))
         companyId = company.id!!
 
-        employee = userRepository.save(User(phoneNumber = "+48700111001", firstName = "Pracownik", lastName = "Testowy"))
+        employee =
+            userRepository.save(User(phoneNumber = "+48700111001", firstName = "Pracownik", lastName = "Testowy"))
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
 
         customer = userRepository.save(User(phoneNumber = "+48600222001", firstName = "Klient", lastName = "Testowy"))
@@ -151,7 +161,13 @@ class ReservationNoShowIntegrationTest {
         // Staff from a different company
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
         val otherOwner = userRepository.save(User(phoneNumber = "+48900000099", firstName = "Obcy", lastName = "Owner"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = otherCompany.id!!, userId = otherOwner.id, role = "OWNER"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(
+                companyId = otherCompany.id!!,
+                userId = otherOwner.id,
+                role = "OWNER"
+            )
+        )
         val otherToken = jwtService.generateToken(
             CustomUserDetails(otherOwner, otherCompany.id, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
             otherCompany.id
@@ -173,8 +189,15 @@ class ReservationNoShowIntegrationTest {
         val reservation = saveReservation()
 
         val otherCompany = companyRepository.save(Company(name = "Inny Salon B"))
-        val otherOwner = userRepository.save(User(phoneNumber = "+48900000098", firstName = "Obcy2", lastName = "Owner2"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = otherCompany.id!!, userId = otherOwner.id, role = "OWNER"))
+        val otherOwner =
+            userRepository.save(User(phoneNumber = "+48900000098", firstName = "Obcy2", lastName = "Owner2"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(
+                companyId = otherCompany.id!!,
+                userId = otherOwner.id,
+                role = "OWNER"
+            )
+        )
         val otherToken = jwtService.generateToken(
             CustomUserDetails(otherOwner, otherCompany.id, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
             otherCompany.id

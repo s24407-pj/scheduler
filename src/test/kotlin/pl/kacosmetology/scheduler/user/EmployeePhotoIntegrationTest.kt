@@ -36,14 +36,21 @@ import software.amazon.awssdk.services.s3.model.PutObjectResponse
 @Import(TestcontainersConfiguration::class)
 class EmployeePhotoIntegrationTest {
 
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+    @Autowired
+    private lateinit var userRepository: UserRepository
+    @Autowired
+    private lateinit var companyRepository: CompanyRepository
+    @Autowired
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired
+    private lateinit var reservationRepository: ReservationRepository
+    @Autowired
+    private lateinit var jwtService: JwtService
 
-    @MockkBean private lateinit var s3Client: S3Client
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private lateinit var owner: User
     private lateinit var employee: User
@@ -65,7 +72,8 @@ class EmployeePhotoIntegrationTest {
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER"))
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
 
-        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder().build()
+        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder()
+            .build()
         every { s3Client.deleteObject(any<DeleteObjectRequest>()) } returns DeleteObjectResponse.builder().build()
     }
 
@@ -139,7 +147,8 @@ class EmployeePhotoIntegrationTest {
 
     @Test
     fun `POST photo - employee not in company returns 404`() {
-        val outsider = userRepository.save(User(phoneNumber = "+48199999999", firstName = "Outside", lastName = "Person"))
+        val outsider =
+            userRepository.save(User(phoneNumber = "+48199999999", firstName = "Outside", lastName = "Person"))
         val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
 
         mockMvc.perform(

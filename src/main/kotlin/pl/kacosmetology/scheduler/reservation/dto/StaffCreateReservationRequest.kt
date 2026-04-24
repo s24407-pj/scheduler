@@ -1,11 +1,6 @@
 package pl.kacosmetology.scheduler.reservation.dto
 
-import jakarta.validation.constraints.Future
-import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.NotNull
-import jakarta.validation.constraints.Pattern
-import jakarta.validation.constraints.Positive
-import jakarta.validation.constraints.Size
+import jakarta.validation.constraints.*
 import java.time.LocalDateTime
 
 private const val PHONE_REGEXP = "^\\+?[0-9]{9,15}$"

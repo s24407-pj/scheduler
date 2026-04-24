@@ -1,45 +1,51 @@
 package pl.kacosmetology.scheduler.whatsapp
 
-import io.mockk.every
+import io.mockk.*
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
-import io.mockk.just
-import io.mockk.runs
-import io.mockk.slot
-import io.mockk.verify
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.availability.AvailabilityService
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingService
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationService
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
-import pl.kacosmetology.scheduler.offering.Offering
-import pl.kacosmetology.scheduler.offering.OfferingService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.util.Optional
+import java.util.*
 
 @ExtendWith(MockKExtension::class)
 class ConversationHandlerTest {
 
-    @MockK private lateinit var sender: WhatsAppSender
-    @MockK private lateinit var store: ConversationStore
-    @MockK private lateinit var properties: WhatsAppProperties
-    @MockK private lateinit var offeringService: OfferingService
-    @MockK private lateinit var availabilityService: AvailabilityService
-    @MockK private lateinit var reservationService: ReservationService
-    @MockK private lateinit var userRepository: UserRepository
-    @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @MockK private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
+    @MockK
+    private lateinit var sender: WhatsAppSender
+    @MockK
+    private lateinit var store: ConversationStore
+    @MockK
+    private lateinit var properties: WhatsAppProperties
+    @MockK
+    private lateinit var offeringService: OfferingService
+    @MockK
+    private lateinit var availabilityService: AvailabilityService
+    @MockK
+    private lateinit var reservationService: ReservationService
+    @MockK
+    private lateinit var userRepository: UserRepository
+    @MockK
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @MockK
+    private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
-    @InjectMockKs private lateinit var handler: ConversationHandler
+    @InjectMockKs
+    private lateinit var handler: ConversationHandler
 
     private val companyId = 1L
     private val serviceId = 10L
@@ -58,7 +64,8 @@ class ConversationHandlerTest {
     @Test
     fun `IDLE state should send greeting and service list`() {
         setupCommonMocks()
-        val service = Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80)
+        val service =
+            Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80)
         every { store.get(normalizedPhone) } returns ConversationState(step = ConversationStep.IDLE)
         every { offeringService.getCompanyOfferings(companyId) } returns listOf(service)
 
@@ -75,7 +82,8 @@ class ConversationHandlerTest {
     @Test
     fun `SELECTING_SERVICE with valid number should transition to SELECTING_EMPLOYEE`() {
         setupCommonMocks()
-        val service = Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80)
+        val service =
+            Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80)
         val employee = CompanyEmployee(companyId = companyId, userId = employeeId, role = "EMPLOYEE")
         val user = User(id = employeeId, phoneNumber = "+48999000111", firstName = "Anna", lastName = "Kowalska")
 
@@ -120,7 +128,7 @@ class ConversationHandlerTest {
     fun `SELECTING_EMPLOYEE with valid number should transition to SELECTING_DATE`() {
         setupCommonMocks()
         val user = User(id = employeeId, phoneNumber = "+48999000111", firstName = "Anna", lastName = "Kowalska")
-        val today = LocalDate.now()
+        LocalDate.now()
 
         every { store.get(normalizedPhone) } returns ConversationState(
             step = ConversationStep.SELECTING_EMPLOYEE,
@@ -219,7 +227,16 @@ class ConversationHandlerTest {
             time = LocalTime.of(9, 0)
         )
         every { userRepository.findByPhoneNumber(normalizedPhone) } returns existingUser
-        every { reservationService.createReservationByStaff(employeeId, serviceId, any(), normalizedPhone, "Jan", "Kowalski") } returns reservation
+        every {
+            reservationService.createReservationByStaff(
+                employeeId,
+                serviceId,
+                any(),
+                normalizedPhone,
+                "Jan",
+                "Kowalski"
+            )
+        } returns reservation
 
         handler.handle(phone, "tak")
 
@@ -297,7 +314,16 @@ class ConversationHandlerTest {
             time = LocalTime.of(10, 0),
             pendingFirstName = "Jan"
         )
-        every { reservationService.createReservationByStaff(employeeId, serviceId, any(), normalizedPhone, "Jan", "Nowak") } returns reservation
+        every {
+            reservationService.createReservationByStaff(
+                employeeId,
+                serviceId,
+                any(),
+                normalizedPhone,
+                "Jan",
+                "Nowak"
+            )
+        } returns reservation
 
         handler.handle(phone, "Nowak")
 
@@ -337,7 +363,14 @@ class ConversationHandlerTest {
         )
         every { userRepository.findByPhoneNumber(normalizedPhone) } returns existingUser
         every {
-            reservationService.createReservationByStaff(employeeId, serviceId, any(), normalizedPhone, "Jan", "Kowalski")
+            reservationService.createReservationByStaff(
+                employeeId,
+                serviceId,
+                any(),
+                normalizedPhone,
+                "Jan",
+                "Kowalski"
+            )
         } throws IllegalStateException("Ten termin jest już zajęty")
 
         handler.handle(phone, "tak")

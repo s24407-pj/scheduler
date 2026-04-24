@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.company
 import jakarta.persistence.*
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.ZoneId
 
 /** Represents a salon/company. Defines business hours and the slot interval used for availability calculation. */
 @Entity
@@ -41,6 +42,10 @@ class Company(
     @Column(name = "last_minute_discount_hours", nullable = false)
     val lastMinuteDiscountHours: Int = 24,
 
+    /** Minimum number of minutes in advance a customer must book. 0 disables this restriction. */
+    @Column(name = "min_booking_advance_minutes", nullable = false)
+    val minBookingAdvanceMinutes: Int = 0,
+
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     val createdAt: LocalDateTime? = null
 )
@@ -49,9 +54,13 @@ class Company(
  * Returns the effective price for a slot, applying the last-minute discount if configured and applicable.
  * If [lastMinuteDiscountPercent] is 0, the base price is returned unchanged.
  */
-fun Company.effectivePrice(basePrice: Int, slotStart: java.time.LocalDateTime): Int {
+fun Company.effectivePrice(
+    basePrice: Int,
+    slotStart: LocalDateTime,
+    now: LocalDateTime = LocalDateTime.now(ZoneId.of("Europe/Warsaw"))
+): Int {
     if (lastMinuteDiscountPercent <= 0) return basePrice
-    val cutoff = java.time.LocalDateTime.now().plusHours(lastMinuteDiscountHours.toLong())
+    val cutoff = now.plusHours(lastMinuteDiscountHours.toLong())
     return if (slotStart.isBefore(cutoff))
         basePrice * (100 - lastMinuteDiscountPercent) / 100
     else basePrice

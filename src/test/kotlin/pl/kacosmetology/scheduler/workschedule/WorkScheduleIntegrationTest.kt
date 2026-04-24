@@ -14,17 +14,17 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.put
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
+import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 import java.time.DayOfWeek
 
@@ -33,17 +33,27 @@ import java.time.DayOfWeek
 @Import(TestcontainersConfiguration::class)
 class WorkScheduleIntegrationTest {
 
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var objectMapper: ObjectMapper
-    @Autowired private lateinit var jwtService: JwtService
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
-    @Autowired private lateinit var serviceRepository: OfferingRepository
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+    @Autowired
+    private lateinit var objectMapper: ObjectMapper
+    @Autowired
+    private lateinit var jwtService: JwtService
+    @Autowired
+    private lateinit var userRepository: UserRepository
+    @Autowired
+    private lateinit var companyRepository: CompanyRepository
+    @Autowired
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired
+    private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
+    @Autowired
+    private lateinit var reservationRepository: ReservationRepository
+    @Autowired
+    private lateinit var serviceRepository: OfferingRepository
 
-    @MockkBean private lateinit var s3Client: S3Client
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private var companyId: Long = 0
     private var employeeId: Long = 0
@@ -102,7 +112,13 @@ class WorkScheduleIntegrationTest {
     @Test
     fun `PUT work-schedule should replace existing schedule idempotently`() {
         workScheduleRepository.save(
-            EmployeeWorkSchedule(companyId = companyId, employeeId = employeeId, dayOfWeek = DayOfWeek.MONDAY, startTime = java.time.LocalTime.of(9, 0), endTime = java.time.LocalTime.of(17, 0))
+            EmployeeWorkSchedule(
+                companyId = companyId,
+                employeeId = employeeId,
+                dayOfWeek = DayOfWeek.MONDAY,
+                startTime = java.time.LocalTime.of(9, 0),
+                endTime = java.time.LocalTime.of(17, 0)
+            )
         )
 
         val body = mapOf(
@@ -127,7 +143,13 @@ class WorkScheduleIntegrationTest {
     @Test
     fun `PUT work-schedule should replace same day with updated hours without constraint violation`() {
         workScheduleRepository.save(
-            EmployeeWorkSchedule(companyId = companyId, employeeId = employeeId, dayOfWeek = DayOfWeek.MONDAY, startTime = java.time.LocalTime.of(9, 0), endTime = java.time.LocalTime.of(17, 0))
+            EmployeeWorkSchedule(
+                companyId = companyId,
+                employeeId = employeeId,
+                dayOfWeek = DayOfWeek.MONDAY,
+                startTime = java.time.LocalTime.of(9, 0),
+                endTime = java.time.LocalTime.of(17, 0)
+            )
         )
 
         val body = mapOf(
@@ -201,7 +223,13 @@ class WorkScheduleIntegrationTest {
     @Test
     fun `GET work-schedule should return 200 with current schedule`() {
         workScheduleRepository.save(
-            EmployeeWorkSchedule(companyId = companyId, employeeId = employeeId, dayOfWeek = DayOfWeek.THURSDAY, startTime = java.time.LocalTime.of(9, 0), endTime = java.time.LocalTime.of(17, 0))
+            EmployeeWorkSchedule(
+                companyId = companyId,
+                employeeId = employeeId,
+                dayOfWeek = DayOfWeek.THURSDAY,
+                startTime = java.time.LocalTime.of(9, 0),
+                endTime = java.time.LocalTime.of(17, 0)
+            )
         )
 
         mockMvc.get("/api/employees/$employeeId/work-schedule") {

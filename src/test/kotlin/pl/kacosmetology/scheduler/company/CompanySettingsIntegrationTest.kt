@@ -13,13 +13,13 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.put
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import software.amazon.awssdk.services.s3.S3Client
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
+import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
 @SpringBootTest
@@ -27,16 +27,25 @@ import tools.jackson.databind.ObjectMapper
 @Import(TestcontainersConfiguration::class)
 class CompanySettingsIntegrationTest {
 
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var objectMapper: ObjectMapper
-    @Autowired private lateinit var jwtService: JwtService
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
-    @Autowired private lateinit var serviceRepository: OfferingRepository
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+    @Autowired
+    private lateinit var objectMapper: ObjectMapper
+    @Autowired
+    private lateinit var jwtService: JwtService
+    @Autowired
+    private lateinit var userRepository: UserRepository
+    @Autowired
+    private lateinit var companyRepository: CompanyRepository
+    @Autowired
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired
+    private lateinit var reservationRepository: ReservationRepository
+    @Autowired
+    private lateinit var serviceRepository: OfferingRepository
 
-    @MockkBean private lateinit var s3Client: S3Client
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private var companyId: Long = 0
     private lateinit var ownerToken: String
@@ -60,7 +69,8 @@ class CompanySettingsIntegrationTest {
             companyId
         )
 
-        val employee = userRepository.save(User(phoneNumber = "+48300200100", firstName = "Employee", lastName = "Test"))
+        val employee =
+            userRepository.save(User(phoneNumber = "+48300200100", firstName = "Employee", lastName = "Test"))
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
         employeeToken = jwtService.generateToken(
             CustomUserDetails(employee, companyId, listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE"))),
@@ -246,6 +256,61 @@ class CompanySettingsIntegrationTest {
             "closingTime" to "17:00:00",
             "slotIntervalMinutes" to 30,
             "lastMinuteDiscountHours" to 0
+        )
+
+        mockMvc.put("/api/company/settings") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isBadRequest() }
+        }
+    }
+
+    @Test
+    fun `PUT api-company-settings should persist minBookingAdvanceMinutes`() {
+        val body = mapOf(
+            "openingTime" to "09:00:00",
+            "closingTime" to "17:00:00",
+            "slotIntervalMinutes" to 30,
+            "minBookingAdvanceMinutes" to 120
+        )
+
+        mockMvc.put("/api/company/settings") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.minBookingAdvanceMinutes") { value(120) }
+        }
+    }
+
+    @Test
+    fun `PUT api-company-settings should return 400 when minBookingAdvanceMinutes is negative`() {
+        val body = mapOf(
+            "openingTime" to "09:00:00",
+            "closingTime" to "17:00:00",
+            "slotIntervalMinutes" to 30,
+            "minBookingAdvanceMinutes" to -1
+        )
+
+        mockMvc.put("/api/company/settings") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isBadRequest() }
+        }
+    }
+
+    @Test
+    fun `PUT api-company-settings should return 400 when minBookingAdvanceMinutes exceeds 10080`() {
+        val body = mapOf(
+            "openingTime" to "09:00:00",
+            "closingTime" to "17:00:00",
+            "slotIntervalMinutes" to 30,
+            "minBookingAdvanceMinutes" to 10081
         )
 
         mockMvc.put("/api/company/settings") {

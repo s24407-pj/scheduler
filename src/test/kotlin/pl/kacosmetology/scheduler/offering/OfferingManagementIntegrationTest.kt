@@ -11,24 +11,19 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.security.core.authority.SimpleGrantedAuthority
-import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.delete
-import org.springframework.test.web.servlet.get
-import org.springframework.test.web.servlet.patch
-import org.springframework.test.web.servlet.post
-import org.springframework.test.web.servlet.put
+import org.springframework.test.web.servlet.*
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import software.amazon.awssdk.services.s3.S3Client
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
+import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
 @SpringBootTest
@@ -141,7 +136,15 @@ class OfferingManagementIntegrationTest {
     @Test
     fun `should return only active offerings on public endpoint (200)`() {
         offeringRepository.save(Offering(companyId = companyA_Id, name = "Aktywna", durationMinutes = 30, price = 100))
-        offeringRepository.save(Offering(companyId = companyA_Id, name = "Nieaktywna", durationMinutes = 30, price = 100, active = false))
+        offeringRepository.save(
+            Offering(
+                companyId = companyA_Id,
+                name = "Nieaktywna",
+                durationMinutes = 30,
+                price = 100,
+                active = false
+            )
+        )
 
         mockMvc.get("/api/offerings/public/company/$companyA_Id")
             .andExpect {

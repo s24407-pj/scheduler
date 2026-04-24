@@ -93,7 +93,13 @@ class ScheduleBlockServiceTest {
     fun `deleteBlock should delete when employee owns the block`() {
         // GIVEN
         val blockId = 99L
-        val block = ScheduleBlock(id = blockId, companyId = companyId, employeeId = employeeId, startTime = startTime, endTime = endTime)
+        val block = ScheduleBlock(
+            id = blockId,
+            companyId = companyId,
+            employeeId = employeeId,
+            startTime = startTime,
+            endTime = endTime
+        )
         every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
         every { scheduleBlockRepository.delete(block) } returns Unit
 
@@ -121,7 +127,13 @@ class ScheduleBlockServiceTest {
         // GIVEN
         val blockId = 99L
         val otherEmployeeId = 999L
-        val block = ScheduleBlock(id = blockId, companyId = companyId, employeeId = otherEmployeeId, startTime = startTime, endTime = endTime)
+        val block = ScheduleBlock(
+            id = blockId,
+            companyId = companyId,
+            employeeId = otherEmployeeId,
+            startTime = startTime,
+            endTime = endTime
+        )
         every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
 
         // WHEN & THEN
@@ -137,7 +149,13 @@ class ScheduleBlockServiceTest {
         // GIVEN
         val blockId = 99L
         val otherEmployeeId = 999L
-        val block = ScheduleBlock(id = blockId, companyId = companyId, employeeId = otherEmployeeId, startTime = startTime, endTime = endTime)
+        val block = ScheduleBlock(
+            id = blockId,
+            companyId = companyId,
+            employeeId = otherEmployeeId,
+            startTime = startTime,
+            endTime = endTime
+        )
         every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
         every { scheduleBlockRepository.delete(block) } returns Unit
 
@@ -153,7 +171,13 @@ class ScheduleBlockServiceTest {
         // GIVEN
         val blockId = 99L
         val otherCompanyId = 999L
-        val block = ScheduleBlock(id = blockId, companyId = otherCompanyId, employeeId = 5L, startTime = startTime, endTime = endTime)
+        val block = ScheduleBlock(
+            id = blockId,
+            companyId = otherCompanyId,
+            employeeId = 5L,
+            startTime = startTime,
+            endTime = endTime
+        )
         every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
 
         // WHEN & THEN

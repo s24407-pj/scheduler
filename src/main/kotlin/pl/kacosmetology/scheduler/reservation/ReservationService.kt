@@ -1,18 +1,20 @@
 package pl.kacosmetology.scheduler.reservation
 
-import org.slf4j.LoggerFactory
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.company.effectivePrice
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
-import pl.kacosmetology.scheduler.notification.NotificationService
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.reservation.dto.DashboardReservationResponse
+import pl.kacosmetology.scheduler.reservation.dto.toDashboardResponse
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlock
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalDateTime
+import java.time.ZoneId
 
 /** Core business logic for reservation lifecycle: create, cancel, complete, and no-show marking. */
 @Service
@@ -22,22 +24,25 @@ class ReservationService(
     private val userRepository: UserRepository,
     private val assignmentRepository: EmployeeOfferingAssignmentRepository,
     private val companyRepository: CompanyRepository,
-    private val notificationService: NotificationService,
+    private val applicationEventPublisher: ApplicationEventPublisher,
     private val companyCustomerBlockRepository: CompanyCustomerBlockRepository
 ) {
-    private val logger = LoggerFactory.getLogger(ReservationService::class.java)
-
     /**
      * Creates a new reservation with a price snapshot from the offering catalog.
      * Validates that the requested time slot is available and the customer is not blocked at the offering's company.
-     * Throws [IllegalArgumentException] if the customer is blocked or the employee has offering assignments but not for this offering.
+     * Throws [IllegalArgumentException] if the customer is blocked, the employee has offering assignments but not for
+     * this offering, or [enforceAdvanceCheck] is true and the slot starts sooner than the company's
+     * [pl.kacosmetology.scheduler.company.Company.minBookingAdvanceMinutes] setting.
+     *
+     * @param enforceAdvanceCheck when false (staff bookings) the minimum-advance-time check is skipped.
      */
     @Transactional
     fun createReservation(
         customerId: Long,
         employeeId: Long,
         offeringId: Long,
-        startTime: LocalDateTime
+        startTime: LocalDateTime,
+        enforceAdvanceCheck: Boolean = true
     ): Reservation {
         if (!userRepository.existsById(customerId)) {
             throw NoSuchElementException("Klient nie istnieje")
@@ -64,6 +69,16 @@ class ReservationService(
         val company = companyRepository.findById(offering.companyId)
             .orElseThrow { NoSuchElementException("Firma nie istnieje") }
 
+        if (enforceAdvanceCheck && company.minBookingAdvanceMinutes > 0) {
+            val earliestAllowed =
+                LocalDateTime.now(ZoneId.of("Europe/Warsaw")).plusMinutes(company.minBookingAdvanceMinutes.toLong())
+            if (!startTime.isAfter(earliestAllowed)) {
+                throw IllegalArgumentException(
+                    "Rezerwację można złożyć co najmniej ${company.minBookingAdvanceMinutes} minut przed wizytą"
+                )
+            }
+        }
+
         val endTime = startTime.plusMinutes(offering.durationMinutes.toLong())
 
         if (reservationRepository.existsOverlapping(employeeId, startTime, endTime)) {
@@ -84,11 +99,7 @@ class ReservationService(
                 status = ReservationStatus.PENDING
             )
         )
-        try {
-            notificationService.sendBookingConfirmation(saved)
-        } catch (e: Exception) {
-            logger.warn("Failed to send booking confirmation for reservation ${saved.id}", e)
-        }
+        applicationEventPublisher.publishEvent(ReservationCreatedEvent(saved))
         return saved
     }
 
@@ -110,13 +121,13 @@ class ReservationService(
             throw IllegalStateException("Nie można anulować wizyty, która już się odbyła")
         }
 
+        if (reservation.status == ReservationStatus.NO_SHOW) {
+            throw IllegalStateException("Nie można anulować rezerwacji oznaczonej jako nieobecność")
+        }
+
         reservation.status = ReservationStatus.CANCELLED
         reservationRepository.save(reservation)
-        try {
-            notificationService.sendCancellationNotification(reservation)
-        } catch (e: Exception) {
-            logger.warn("Failed to send cancellation notification for reservation ${reservation.id}", e)
-        }
+        applicationEventPublisher.publishEvent(ReservationCancelledEvent(reservation))
     }
 
     /** Marks a reservation as completed. Called by staff members. */
@@ -135,6 +146,10 @@ class ReservationService(
 
         if (reservation.status == ReservationStatus.COMPLETED) {
             throw IllegalStateException("Wizyta jest już zakończona")
+        }
+
+        if (reservation.status == ReservationStatus.NO_SHOW) {
+            throw IllegalStateException("Nie można zakończyć wizyty oznaczonej jako nieobecność")
         }
 
         reservation.status = ReservationStatus.COMPLETED
@@ -184,7 +199,7 @@ class ReservationService(
     }
 
     /**
-     * Returns reservations for a given employee within a company and date range.
+     * Returns reservations for a given employee within a company and date range, enriched with customer names.
      * Used by the owner dashboard — the authorization check (OWNER can see any employee,
      * EMPLOYEE can only see their own) is performed in the controller before calling this method.
      */
@@ -194,8 +209,17 @@ class ReservationService(
         employeeId: Long,
         start: LocalDateTime,
         end: LocalDateTime
-    ): List<Reservation> {
-        return reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end)
+    ): List<DashboardReservationResponse> {
+        val reservations = reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end)
+        val customerIds = reservations.map { it.customerId }.distinct()
+        val usersById = userRepository.findAllById(customerIds).associateBy { it.id }
+        return reservations.map { r ->
+            val customer = usersById[r.customerId]
+            r.toDashboardResponse(
+                customerFirstName = customer?.firstName ?: "",
+                customerLastName = customer?.lastName ?: ""
+            )
+        }
     }
 
     /** Returns an employee's schedule within a given time range. */
@@ -252,7 +276,8 @@ class ReservationService(
             customerId = customer.id,
             employeeId = employeeId,
             offeringId = serviceId,
-            startTime = startTime
+            startTime = startTime,
+            enforceAdvanceCheck = false
         )
     }
 }

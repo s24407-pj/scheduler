@@ -11,7 +11,7 @@ import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
-import java.util.UUID
+import java.util.*
 
 /** Handles uploading and deleting employee profile photos in Cloudflare R2. */
 @Service
