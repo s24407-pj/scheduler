@@ -13,7 +13,7 @@ val postgresqlVersion = "42.7.10"
 val mockkVersion = "1.14.9"
 val springmockkVersion = "5.0.1"
 val testcontainersVersion = "2.0.5"
-val awsSdkVersion = "2.44.0"
+val awsSdkVersion = "2.44.12"
 
 group = "pl.kacosmetology"
 version = "0.0.1-SNAPSHOT"
