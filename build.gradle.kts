@@ -10,10 +10,10 @@ plugins {
 // Zmienne dla dependencies
 val jjwtVersion = "0.13.0"
 val postgresqlVersion = "42.7.10"
-val mockkVersion = "1.14.9"
+val mockkVersion = "1.14.11"
 val springmockkVersion = "5.0.1"
 val testcontainersVersion = "2.0.5"
-val awsSdkVersion = "2.44.0"
+val awsSdkVersion = "2.45.1"
 
 group = "pl.kacosmetology"
 version = "0.0.1-SNAPSHOT"
