@@ -1,0 +1,18 @@
+---
+description: Core conventions for scheduler backend
+alwaysApply: true
+---
+
+# Project Baseline
+
+Spring Boot backend for a beauty/barber salon scheduling system (Kotlin, PostgreSQL, Redis, JWT).
+
+- **Layering:** Controller → Service → Repository; no cross-module service calls
+- **Tests required:** unit test (`*ServiceTest`) + integration test (`*IntegrationTest`) for new features
+- **Flyway:** never edit existing migration files; add new versioned migrations only
+- Test names may use backtick strings in English or Polish
+- Keep diffs minimal; reuse existing patterns
+- Do not commit unless the user explicitly asks
+- Before finishing: run `./gradlew test` (or relevant subset)
+- Point to canonical files with `@path` instead of pasting large code blocks
+- Full architecture and commands: see `AGENTS.md`
