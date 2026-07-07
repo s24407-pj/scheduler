@@ -14,10 +14,17 @@ class WorkScheduleService(
     private val companyEmployeeRepository: CompanyEmployeeRepository
 ) {
 
-    /** Returns the full weekly schedule for the given employee. */
+    /**
+     * Returns the full weekly schedule for the given employee.
+     * Throws [NoSuchElementException] if the employee does not belong to [companyId].
+     */
     @Transactional(readOnly = true)
-    fun getSchedule(employeeId: Long): List<WorkScheduleEntryResponse> =
-        workScheduleRepository.findAllByEmployeeId(employeeId).map { it.toResponse() }
+    fun getSchedule(companyId: Long, employeeId: Long): List<WorkScheduleEntryResponse> {
+        if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
+            throw NoSuchElementException("Pracownik nie należy do tej firmy")
+        }
+        return workScheduleRepository.findAllByEmployeeId(employeeId).map { it.toResponse() }
+    }
 
     /**
      * Atomically replaces the employee's weekly schedule.

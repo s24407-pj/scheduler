@@ -165,6 +165,56 @@ class EmployeeOfferingIntegrationTest {
     }
 
     @Test
+    fun `GET assignments should return assignments for employee in owner company`() {
+        assignmentRepository.save(
+            EmployeeOfferingAssignment(
+                companyId = companyId,
+                employeeId = employeeId,
+                offeringId = offeringId
+            )
+        )
+
+        mockMvc.get("/api/employees/$employeeId/offerings") {
+            header("Authorization", "Bearer $ownerToken")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].offeringId") { value(offeringId) }
+            jsonPath("$[0].employeeId") { value(employeeId) }
+        }
+    }
+
+    @Test
+    fun `GET assignments should return 403 for customer`() {
+        val customer = userRepository.save(User(phoneNumber = "+48300300300", firstName = "Customer", lastName = "Test"))
+        val customerToken = jwtService.generateToken(
+            CustomUserDetails(customer, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER"))),
+            null
+        )
+
+        mockMvc.get("/api/employees/$employeeId/offerings") {
+            header("Authorization", "Bearer $customerToken")
+        }.andExpect {
+            status { isForbidden() }
+        }
+    }
+
+    @Test
+    fun `GET assignments should return 404 for employee outside owner company`() {
+        val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
+        val otherEmployee = userRepository.save(User(phoneNumber = "+48400400400", firstName = "Other", lastName = "Employee"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id, role = "EMPLOYEE")
+        )
+
+        mockMvc.get("/api/employees/${otherEmployee.id}/offerings") {
+            header("Authorization", "Bearer $ownerToken")
+        }.andExpect {
+            status { isNotFound() }
+        }
+    }
+
+    @Test
     fun `GET public employee offerings should return assigned active offerings`() {
         assignmentRepository.save(
             EmployeeOfferingAssignment(

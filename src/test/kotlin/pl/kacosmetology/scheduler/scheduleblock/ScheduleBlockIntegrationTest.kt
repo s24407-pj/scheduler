@@ -31,6 +31,7 @@ import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -42,31 +43,22 @@ class ScheduleBlockIntegrationTest {
 
     @Autowired
     private lateinit var mockMvc: MockMvc
-
     @Autowired
     private lateinit var objectMapper: ObjectMapper
-
     @Autowired
     private lateinit var jwtService: JwtService
-
     @Autowired
     private lateinit var userRepository: UserRepository
-
     @Autowired
     private lateinit var companyRepository: CompanyRepository
-
     @Autowired
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-
     @Autowired
     private lateinit var scheduleBlockRepository: ScheduleBlockRepository
-
     @Autowired
     private lateinit var reservationRepository: ReservationRepository
-
     @Autowired
     private lateinit var serviceRepository: OfferingRepository
-
     @Autowired
     private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
 
@@ -99,7 +91,7 @@ class ScheduleBlockIntegrationTest {
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER"))
 
         // Grafik pracownika: pracuje cały tydzień 9:00-17:00
-        for (day in java.time.DayOfWeek.values()) {
+        for (day in DayOfWeek.entries) {
             workScheduleRepository.save(
                 EmployeeWorkSchedule(
                     companyId = companyId,

@@ -22,12 +22,14 @@ class EmployeeOfferingController(
     fun getPublicEmployeeOfferings(@PathVariable employeeId: Long): List<Offering> =
         employeeOfferingService.getOfferingsForEmployee(employeeId)
 
-    /** Returns all offering assignments for the given employee. Requires authentication. */
+    /** Returns all offering assignments for the given employee. Requires staff authentication. */
     @GetMapping("/api/employees/{employeeId}/offerings")
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getAssignments(
         @PathVariable employeeId: Long,
         @AuthenticationPrincipal userDetails: CustomUserDetails
-    ): List<EmployeeOfferingAssignmentResponse> = employeeOfferingService.getAssignments(employeeId)
+    ): List<EmployeeOfferingAssignmentResponse> =
+        employeeOfferingService.getAssignments(userDetails.companyId!!, employeeId)
 
     /** Assigns an offering to an employee. Requires OWNER role. */
     @PostMapping("/api/employees/{employeeId}/offerings/{offeringId}")

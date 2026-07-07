@@ -28,22 +28,16 @@ class AutoCompleteIntegrationTest {
 
     @Autowired
     private lateinit var notificationScheduler: NotificationScheduler
-
     @Autowired
     private lateinit var reservationRepository: ReservationRepository
-
     @Autowired
     private lateinit var userRepository: UserRepository
-
     @Autowired
     private lateinit var companyRepository: CompanyRepository
-
     @Autowired
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-
     @Autowired
     private lateinit var offeringRepository: OfferingRepository
-
     @Autowired
     private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
 
