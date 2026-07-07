@@ -87,14 +87,6 @@ class ReservationServiceTest {
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
         every { companyRepository.findById(companyId) } returns Optional.of(Company(id = companyId, name = "Salon"))
-        // Zakładamy, że termin jest wolny
-        every {
-            reservationRepository.existsOverlapping(
-                employeeId,
-                startTime,
-                startTime.plusMinutes(duration.toLong())
-            )
-        } returns false
 
         // Mockujemy zapis (zwracamy to, co dostaliśmy)
         every { reservationRepository.save(any()) } answers { firstArg() }
@@ -422,13 +414,6 @@ class ReservationServiceTest {
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
         every { companyRepository.findById(companyId) } returns Optional.of(Company(id = companyId, name = "Salon"))
-        every {
-            reservationRepository.existsOverlapping(
-                employeeId,
-                startTime,
-                startTime.plusMinutes(duration.toLong())
-            )
-        } returns false
         every { reservationRepository.save(any()) } answers { firstArg() }
 
         // WHEN
@@ -463,13 +448,6 @@ class ReservationServiceTest {
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, 500L) } returns null
         every { companyRepository.findById(companyId) } returns Optional.of(Company(id = companyId, name = "Salon"))
-        every {
-            reservationRepository.existsOverlapping(
-                employeeId,
-                startTime,
-                startTime.plusMinutes(duration.toLong())
-            )
-        } returns false
         every { reservationRepository.save(any()) } answers { firstArg() }
 
         // WHEN
@@ -739,13 +717,6 @@ class ReservationServiceTest {
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
         every { companyRepository.findById(companyId) } returns Optional.of(discountCompany)
-        every {
-            reservationRepository.existsOverlapping(
-                employeeId,
-                nearFutureStart,
-                nearFutureStart.plusMinutes(60)
-            )
-        } returns false
         every { reservationRepository.save(any()) } answers { firstArg() }
 
         // WHEN
@@ -798,13 +769,6 @@ class ReservationServiceTest {
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
         every { companyRepository.findById(companyId) } returns Optional.of(advanceCompany)
-        every {
-            reservationRepository.existsOverlapping(
-                employeeId,
-                nearFutureStart,
-                nearFutureStart.plusMinutes(duration.toLong())
-            )
-        } returns false
         every { reservationRepository.save(any()) } answers { firstArg() }
 
         // WHEN - staff booking should succeed despite advance requirement
@@ -911,13 +875,6 @@ class ReservationServiceTest {
         every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
         every { companyRepository.findById(companyId) } returns Optional.of(noDiscountCompany)
-        every {
-            reservationRepository.existsOverlapping(
-                employeeId,
-                startTime,
-                startTime.plusMinutes(30)
-            )
-        } returns false
         every { reservationRepository.save(any()) } answers { firstArg() }
 
         // WHEN
