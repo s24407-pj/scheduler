@@ -120,19 +120,7 @@ class ReservationService(
             throw IllegalStateException("Nie możesz anulować nie swojej rezerwacji")
         }
 
-        if (reservation.status == ReservationStatus.CANCELLED) {
-            throw IllegalStateException("Rezerwacja jest już anulowana")
-        }
-
-        if (reservation.status == ReservationStatus.COMPLETED) {
-            throw IllegalStateException("Nie można anulować wizyty, która już się odbyła")
-        }
-
-        if (reservation.status == ReservationStatus.NO_SHOW) {
-            throw IllegalStateException("Nie można anulować rezerwacji oznaczonej jako nieobecność")
-        }
-
-        reservation.status = ReservationStatus.CANCELLED
+        reservation.cancel()
         reservationRepository.save(reservation)
         applicationEventPublisher.publishEvent(ReservationCancelledEvent(reservation))
     }
@@ -147,19 +135,7 @@ class ReservationService(
             throw IllegalStateException("Brak dostępu do tej rezerwacji")
         }
 
-        if (reservation.status == ReservationStatus.CANCELLED) {
-            throw IllegalStateException("Nie można zakończyć odwołanej wizyty")
-        }
-
-        if (reservation.status == ReservationStatus.COMPLETED) {
-            throw IllegalStateException("Wizyta jest już zakończona")
-        }
-
-        if (reservation.status == ReservationStatus.NO_SHOW) {
-            throw IllegalStateException("Nie można zakończyć wizyty oznaczonej jako nieobecność")
-        }
-
-        reservation.status = ReservationStatus.COMPLETED
+        reservation.complete()
         reservationRepository.save(reservation)
     }
 
@@ -178,11 +154,7 @@ class ReservationService(
             throw IllegalStateException("Brak dostępu do tej rezerwacji")
         }
 
-        if (reservation.status != ReservationStatus.PENDING && reservation.status != ReservationStatus.CONFIRMED) {
-            throw IllegalStateException("Tylko aktywna rezerwacja może być oznaczona jako nieobecność")
-        }
-
-        reservation.status = ReservationStatus.NO_SHOW
+        reservation.markNoShow()
         reservationRepository.save(reservation)
 
         val block = companyCustomerBlockRepository
@@ -298,5 +270,30 @@ class ReservationService(
             startTime = startTime,
             enforceAdvanceCheck = false
         )
+    }
+}
+
+private fun Reservation.cancel() {
+    when (status) {
+        ReservationStatus.CANCELLED -> error("Rezerwacja jest już anulowana")
+        ReservationStatus.COMPLETED -> error("Nie można anulować wizyty, która już się odbyła")
+        ReservationStatus.NO_SHOW -> error("Nie można anulować rezerwacji oznaczonej jako nieobecność")
+        else -> status = ReservationStatus.CANCELLED
+    }
+}
+
+private fun Reservation.complete() {
+    when (status) {
+        ReservationStatus.CANCELLED -> error("Nie można zakończyć odwołanej wizyty")
+        ReservationStatus.COMPLETED -> error("Wizyta jest już zakończona")
+        ReservationStatus.NO_SHOW -> error("Nie można zakończyć wizyty oznaczonej jako nieobecność")
+        else -> status = ReservationStatus.COMPLETED
+    }
+}
+
+private fun Reservation.markNoShow() {
+    when (status) {
+        ReservationStatus.PENDING, ReservationStatus.CONFIRMED -> status = ReservationStatus.NO_SHOW
+        else -> error("Tylko aktywna rezerwacja może być oznaczona jako nieobecność")
     }
 }
