@@ -34,23 +34,6 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
     )
     fun findOverlapping(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<Reservation>
 
-    /** Returns all active (non-cancelled, non-no-show) reservations for an employee on a given day (used by availability check). */
-    @Query(
-        """
-        SELECT r FROM Reservation r
-        WHERE r.employeeId = :employeeId
-        AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
-        AND r.startTime >= :startOfDay
-        AND r.startTime < :endOfDay
-        ORDER BY r.startTime ASC
-    """
-    )
-    fun findByEmployeeIdAndDate(
-        employeeId: Long,
-        startOfDay: LocalDateTime,
-        endOfDay: LocalDateTime
-    ): List<Reservation>
-
     fun findAllByCustomerIdOrderByStartTimeDesc(customerId: Long): List<Reservation>
 
     /** Returns an employee's schedule overlapping a given time range (for the staff dashboard). */
