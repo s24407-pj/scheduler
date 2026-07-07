@@ -15,6 +15,7 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlock
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.User
@@ -45,6 +46,9 @@ class ReservationServiceTest {
 
     @MockK
     private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
+
+    @MockK(relaxed = true)
+    private lateinit var scheduleBlockRepository: ScheduleBlockRepository
 
     @InjectMockKs
     private lateinit var reservationService: ReservationService
@@ -126,6 +130,32 @@ class ReservationServiceTest {
         assertEquals("Ten termin jest już zajęty", exception.message)
 
         // Upewniamy się, że repozytorium nigdy nie próbowało zapisać tej rezerwacji!
+        verify(exactly = 0) { reservationRepository.save(any()) }
+    }
+
+    @Test
+    fun `createReservation should throw when slot overlaps schedule block`() {
+        // GIVEN
+        val duration = 30
+        val mockService = Offering(
+            id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = duration, price = 50
+        )
+        val endTime = startTime.plusMinutes(duration.toLong())
+
+        every { userRepository.existsById(customerId) } returns true
+        every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
+        every { companyRepository.findById(companyId) } returns Optional.of(Company(id = companyId, name = "Salon"))
+        every { reservationRepository.existsOverlapping(employeeId, startTime, endTime) } returns false
+        every { scheduleBlockRepository.existsOverlapping(employeeId, startTime, endTime) } returns true
+        every { reservationRepository.save(any()) } answers { firstArg() }
+
+        // WHEN & THEN
+        val exception = assertThrows<IllegalStateException> {
+            reservationService.createReservation(customerId, employeeId, serviceId, startTime)
+        }
+        assertEquals("Ten termin jest zablokowany", exception.message)
         verify(exactly = 0) { reservationRepository.save(any()) }
     }
 

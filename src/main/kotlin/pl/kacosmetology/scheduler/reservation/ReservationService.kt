@@ -9,6 +9,7 @@ import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRep
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.dto.DashboardReservationResponse
 import pl.kacosmetology.scheduler.reservation.dto.toDashboardResponse
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlock
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.User
@@ -25,7 +26,8 @@ class ReservationService(
     private val assignmentRepository: EmployeeOfferingAssignmentRepository,
     private val companyRepository: CompanyRepository,
     private val applicationEventPublisher: ApplicationEventPublisher,
-    private val companyCustomerBlockRepository: CompanyCustomerBlockRepository
+    private val companyCustomerBlockRepository: CompanyCustomerBlockRepository,
+    private val scheduleBlockRepository: ScheduleBlockRepository
 ) {
     /**
      * Creates a new reservation with a price snapshot from the offering catalog.
@@ -81,9 +83,7 @@ class ReservationService(
 
         val endTime = startTime.plusMinutes(offering.durationMinutes.toLong())
 
-        if (reservationRepository.existsOverlapping(employeeId, startTime, endTime)) {
-            throw IllegalStateException("Ten termin jest już zajęty")
-        }
+        requireSlotAvailable(employeeId, startTime, endTime)
 
         val price = company.effectivePrice(offering.price, startTime)
 
@@ -101,6 +101,17 @@ class ReservationService(
         )
         applicationEventPublisher.publishEvent(ReservationCreatedEvent(saved))
         return saved
+    }
+
+    /** Ensures the requested employee time range does not conflict with reservations or schedule blocks. */
+    private fun requireSlotAvailable(employeeId: Long, startTime: LocalDateTime, endTime: LocalDateTime) {
+        if (reservationRepository.existsOverlapping(employeeId, startTime, endTime)) {
+            throw IllegalStateException("Ten termin jest już zajęty")
+        }
+
+        if (scheduleBlockRepository.existsOverlapping(employeeId, startTime, endTime)) {
+            throw IllegalStateException("Ten termin jest zablokowany")
+        }
     }
 
     /** Cancels a reservation. Only the owning customer can cancel, and only if not already completed. */
