@@ -234,7 +234,8 @@ class ConversationHandlerTest {
                 any(),
                 normalizedPhone,
                 "Jan",
-                "Kowalski"
+                "Kowalski",
+                companyId
             )
         } returns reservation
 
@@ -321,7 +322,8 @@ class ConversationHandlerTest {
                 any(),
                 normalizedPhone,
                 "Jan",
-                "Nowak"
+                "Nowak",
+                companyId
             )
         } returns reservation
 
@@ -369,7 +371,8 @@ class ConversationHandlerTest {
                 any(),
                 normalizedPhone,
                 "Jan",
-                "Kowalski"
+                "Kowalski",
+                companyId
             )
         } throws IllegalStateException("Ten termin jest już zajęty")
 

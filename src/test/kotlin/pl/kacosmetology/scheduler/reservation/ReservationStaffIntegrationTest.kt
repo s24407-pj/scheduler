@@ -178,6 +178,41 @@ class ReservationStaffIntegrationTest {
     }
 
     @Test
+    fun `POST reservations-staff should return 400 when service belongs to another company`() {
+        val otherCompany = companyRepository.save(Company(name = "Obcy Salon"))
+        val otherEmployee = userRepository.save(
+            User(phoneNumber = "+48777111222", firstName = "Obcy", lastName = "Pracownik")
+        )
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id, role = "EMPLOYEE")
+        )
+        val otherService = serviceRepository.save(
+            Offering(companyId = otherCompany.id!!, name = "Obca usługa", durationMinutes = 30, price = 90)
+        )
+        val unknownPhone = "+48123999888"
+
+        val body = mapOf(
+            "employeeId" to otherEmployee.id,
+            "serviceId" to otherService.id,
+            "startTime" to reservationTime.toString(),
+            "customerPhone" to unknownPhone,
+            "customerFirstName" to "Nowy",
+            "customerLastName" to "Klient"
+        )
+
+        mockMvc.post("/api/reservations/staff") {
+            header("Authorization", "Bearer $staffToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isBadRequest() }
+        }
+
+        assertEquals(0, reservationRepository.findAll().size)
+        assertEquals(null, userRepository.findByPhoneNumber(unknownPhone))
+    }
+
+    @Test
     fun `POST reservations-staff should return 403 without token`() {
         val body = mapOf(
             "employeeId" to employee.id,

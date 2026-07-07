@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.company.Company
+import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering
@@ -37,6 +38,9 @@ class AvailabilityServiceTest {
     private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
     @MockK
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+
+    @MockK
     private lateinit var employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
 
     @InjectMockKs
@@ -59,6 +63,7 @@ class AvailabilityServiceTest {
 
     @BeforeEach
     fun setupAvailabilityPolicy() {
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(any(), any()) } returns true
         every { employeeAvailabilityPolicy.findConflicts(employeeId, any(), any()) } returns emptyList()
         every { employeeAvailabilityPolicy.overlapsAny(any(), any(), any()) } answers {
             val start = firstArg<LocalDateTime>()
@@ -415,5 +420,21 @@ class AvailabilityServiceTest {
             availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
         }
         assertEquals("Ten pracownik nie wykonuje wybranej usługi", ex.message)
+    }
+
+    @Test
+    fun `should throw when employee does not belong to offering company`() {
+        // GIVEN
+        val service =
+            Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
+        every { serviceRepository.findById(serviceId) } returns Optional.of(service)
+        every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
+
+        // WHEN & THEN
+        val ex = assertThrows<IllegalArgumentException> {
+            availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+        }
+        assertEquals("Pracownik nie należy do firmy wybranej usługi", ex.message)
     }
 }

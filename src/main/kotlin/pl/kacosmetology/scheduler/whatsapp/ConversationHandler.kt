@@ -304,7 +304,8 @@ class ConversationHandler(
                 startTime = startTime,
                 customerPhone = phone,
                 customerFirstName = firstName,
-                customerLastName = lastName
+                customerLastName = lastName,
+                requesterCompanyId = properties.companyId
             )
             store.delete(phone)
             sender.sendMessage(

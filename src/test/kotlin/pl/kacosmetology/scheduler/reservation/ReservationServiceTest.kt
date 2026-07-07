@@ -6,12 +6,14 @@ import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
 import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.context.ApplicationEventPublisher
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
 import pl.kacosmetology.scheduler.company.Company
+import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering
@@ -39,6 +41,9 @@ class ReservationServiceTest {
     private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
     @MockK
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+
+    @MockK
     private lateinit var companyRepository: CompanyRepository
 
     @MockK(relaxed = true)
@@ -61,6 +66,11 @@ class ReservationServiceTest {
 
     private val mockCustomer =
         User(id = customerId, phoneNumber = "+48111000111", firstName = "Jan", lastName = "Kowalski")
+
+    @BeforeEach
+    fun setupCompanyEmployeeMembership() {
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(any(), any()) } returns true
+    }
 
     @Test
     fun `should create reservation with price snapshot and calculated end time`() {
@@ -163,6 +173,24 @@ class ReservationServiceTest {
             reservationService.createReservation(customerId, employeeId, serviceId, startTime)
         }
         assertEquals("Ten pracownik nie wykonuje wybranej usługi", exception.message)
+        verify(exactly = 0) { reservationRepository.save(any()) }
+    }
+
+    @Test
+    fun `should throw when employee does not belong to offering company`() {
+        // GIVEN
+        val mockService = Offering(
+            id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 50
+        )
+        every { userRepository.existsById(customerId) } returns true
+        every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
+
+        // WHEN & THEN
+        val exception = assertThrows<IllegalArgumentException> {
+            reservationService.createReservation(customerId, employeeId, serviceId, startTime)
+        }
+        assertEquals("Pracownik nie należy do firmy wybranej usługi", exception.message)
         verify(exactly = 0) { reservationRepository.save(any()) }
     }
 
@@ -476,6 +504,33 @@ class ReservationServiceTest {
             )
         }
         assertEquals("Imię i nazwisko klienta są wymagane przy tworzeniu nowego konta", exception.message)
+        verify(exactly = 0) { reservationRepository.save(any()) }
+    }
+
+    @Test
+    fun `createReservationByStaff should throw before creating customer when service belongs to another company`() {
+        // GIVEN
+        val requesterCompanyId = 10L
+        val offeringCompanyId = 20L
+        val unknownPhone = "+48000999888"
+        val mockService =
+            Offering(id = serviceId, companyId = offeringCompanyId, name = "Masaż", durationMinutes = 45, price = 120)
+        every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
+
+        // WHEN & THEN
+        val exception = assertThrows<IllegalArgumentException> {
+            reservationService.createReservationByStaff(
+                employeeId = employeeId,
+                serviceId = serviceId,
+                startTime = startTime,
+                customerPhone = unknownPhone,
+                customerFirstName = "Nowy",
+                customerLastName = "Klient",
+                requesterCompanyId = requesterCompanyId
+            )
+        }
+        assertEquals("Usługa nie należy do firmy pracownika", exception.message)
+        verify(exactly = 0) { userRepository.save(any()) }
         verify(exactly = 0) { reservationRepository.save(any()) }
     }
 

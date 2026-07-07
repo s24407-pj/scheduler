@@ -249,4 +249,63 @@ class CustomerReservationFlowIntegrationTest {
 
         assertEquals(0, reservationRepository.findAll().size)
     }
+
+    @Test
+    fun `customer reservation should return 400 when employee belongs to another company`() {
+        val customerPhone = "+48555111999"
+        val requestCodeReq = RequestCodeRequest(phoneNumber = customerPhone)
+
+        mockMvc.post("/api/auth/request-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(requestCodeReq)
+        }.andExpect {
+            status { isOk() }
+        }
+
+        val generatedCode = redisTemplate.opsForValue().get("otp:$customerPhone")
+        assertNotNull(generatedCode)
+
+        val verifyResponse = mockMvc.post("/api/auth/verify-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                VerifyCodeRequest(
+                    phoneNumber = customerPhone,
+                    code = generatedCode!!,
+                    firstName = "Ewa",
+                    lastName = "Testowa"
+                )
+            )
+        }.andExpect {
+            status { isOk() }
+        }.andReturn()
+
+        val jwtToken = objectMapper.readTree(verifyResponse.response.contentAsString).get("token").stringValue()
+        val otherCompany = companyRepository.save(Company(name = "Obcy Salon"))
+        val otherEmployee =
+            userRepository.save(User(phoneNumber = "+48999123123", firstName = "Obcy", lastName = "Pracownik"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(
+                companyId = otherCompany.id!!,
+                userId = otherEmployee.id,
+                role = "EMPLOYEE"
+            )
+        )
+        val reservationTime = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
+
+        val createReservationReq = CreateReservationRequest(
+            employeeId = otherEmployee.id,
+            serviceId = serviceId,
+            startTime = reservationTime
+        )
+
+        mockMvc.post("/api/reservations") {
+            header("Authorization", "Bearer $jwtToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(createReservationReq)
+        }.andExpect {
+            status { isBadRequest() }
+        }
+
+        assertEquals(0, reservationRepository.findAll().size)
+    }
 }

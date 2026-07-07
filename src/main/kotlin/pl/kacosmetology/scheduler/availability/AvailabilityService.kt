@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.availability
 
 import org.springframework.stereotype.Service
+import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.company.effectivePrice
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
@@ -17,6 +18,7 @@ class AvailabilityService(
     private val companyRepository: CompanyRepository,
     private val workScheduleRepository: EmployeeWorkScheduleRepository,
     private val assignmentRepository: EmployeeOfferingAssignmentRepository,
+    private val companyEmployeeRepository: CompanyEmployeeRepository,
     private val employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
 ) {
 
@@ -25,7 +27,8 @@ class AvailabilityService(
      *
      * Uses the employee's work schedule for opening/closing hours (returns empty list if no entry for that day).
      * The slot interval is still taken from the company configuration.
-     * Throws [IllegalArgumentException] if the employee has offering assignments and the requested offering is not among them.
+     * Throws [IllegalArgumentException] if the employee is not part of the offering's company, or has offering
+     * assignments and the requested offering is not among them.
      * Filters out slots that overlap with existing reservations, schedule blocks, and past times.
      * Applies the company's last-minute discount to slots starting within the configured time window.
      */
@@ -35,6 +38,10 @@ class AvailabilityService(
 
         val company = companyRepository.findById(offering.companyId)
             .orElseThrow { IllegalArgumentException("Firma nie istnieje") }
+
+        if (!companyEmployeeRepository.existsByCompanyIdAndUserId(offering.companyId, employeeId)) {
+            throw IllegalArgumentException("Pracownik nie należy do firmy wybranej usługi")
+        }
 
         if (assignmentRepository.existsByEmployeeId(employeeId) &&
             !assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId)
