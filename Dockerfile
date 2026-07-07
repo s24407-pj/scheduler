@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM gradle:9.6.0-jdk25 AS build
+FROM gradle:9.6.1-jdk25 AS build
 WORKDIR /app
 
 COPY build.gradle.kts settings.gradle.kts gradle.properties ./
