@@ -251,6 +251,29 @@ class ScheduleBlockIntegrationTest {
     }
 
     @Test
+    fun `GET schedule-blocks employee should include blocks overlapping range start`() {
+        scheduleBlockRepository.save(
+            ScheduleBlock(
+                companyId = companyId,
+                employeeId = employee.id,
+                startTime = testDate.atStartOfDay().minusMinutes(30),
+                endTime = testDate.atStartOfDay().plusMinutes(30),
+                reason = "Dyżur"
+            )
+        )
+
+        mockMvc.get("/api/schedule-blocks/employee") {
+            header("Authorization", "Bearer $employeeToken")
+            param("start", testDate.atStartOfDay().toString())
+            param("end", testDate.atTime(1, 0).toString())
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].reason") { value("Dyżur") }
+        }
+    }
+
+    @Test
     fun `schedule block should make slot unavailable in availability endpoint`() {
         // Blokujemy pracownika od 10:00 do 11:00
         scheduleBlockRepository.save(

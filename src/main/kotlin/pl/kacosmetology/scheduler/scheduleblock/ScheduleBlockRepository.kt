@@ -9,8 +9,16 @@ import java.time.LocalDateTime
 @Repository
 interface ScheduleBlockRepository : JpaRepository<ScheduleBlock, Long> {
 
-    /** Returns all blocks for an employee whose start time falls within [start, end). */
-    fun findByEmployeeIdAndStartTimeBetween(
+    /** Returns all blocks for an employee that overlap [start, end). */
+    @Query(
+        """
+        SELECT b FROM ScheduleBlock b
+        WHERE b.employeeId = :employeeId
+        AND (:start < b.endTime AND :end > b.startTime)
+        ORDER BY b.startTime ASC
+        """
+    )
+    fun findByEmployeeIdAndOverlappingRange(
         employeeId: Long,
         start: LocalDateTime,
         end: LocalDateTime

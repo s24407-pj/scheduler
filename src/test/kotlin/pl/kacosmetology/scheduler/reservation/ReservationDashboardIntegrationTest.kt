@@ -190,6 +190,39 @@ class ReservationDashboardIntegrationTest {
     }
 
     @Test
+    fun `dashboard results should include reservations overlapping range start`() {
+        reservationRepository.save(
+            Reservation(
+                companyId = companyId,
+                customerId = customer.id,
+                employeeId = employee.id,
+                serviceId = offeringId,
+                price = 80,
+                startTime = rangeStart.minusMinutes(30),
+                endTime = rangeStart.plusMinutes(30),
+                status = ReservationStatus.CONFIRMED
+            )
+        )
+
+        mockMvc.get("/api/reservations") {
+            header("Authorization", "Bearer $ownerToken")
+            param("employeeId", employee.id.toString())
+            param("start", rangeStart.toString())
+            param("end", rangeStart.plusHours(1).toString())
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].startTime") {
+                value(
+                    org.hamcrest.Matchers.startsWith(
+                        rangeStart.minusMinutes(30).toString().substring(0, 16)
+                    )
+                )
+            }
+        }
+    }
+
+    @Test
     fun `unauthenticated request should be rejected`() {
         mockMvc.get("/api/reservations") {
             param("employeeId", employee.id.toString())

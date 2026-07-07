@@ -200,4 +200,16 @@ class ReservationRepositoryTest {
         // Druga na liście powinna być bazowa o 12:00
         assertEquals(baseTime, reservations[1].startTime)
     }
+
+    @Test
+    fun `findEmployeeSchedule should return reservations overlapping range start`() {
+        val reservations = reservationRepository.findEmployeeSchedule(
+            employeeId,
+            baseTime.plusMinutes(30),
+            baseTime.plusHours(2)
+        )
+
+        assertEquals(1, reservations.size)
+        assertEquals(baseTime, reservations.first().startTime)
+    }
 }

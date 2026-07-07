@@ -69,9 +69,9 @@ class ScheduleBlockService(
         scheduleBlockRepository.delete(block)
     }
 
-    /** Returns all schedule blocks for an employee whose start time falls within [start, end). */
+    /** Returns all schedule blocks for an employee that overlap [start, end). */
     @Transactional(readOnly = true)
     fun getEmployeeBlocks(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<ScheduleBlock> {
-        return scheduleBlockRepository.findByEmployeeIdAndStartTimeBetween(employeeId, start, end)
+        return scheduleBlockRepository.findByEmployeeIdAndOverlappingRange(employeeId, start, end)
     }
 }
