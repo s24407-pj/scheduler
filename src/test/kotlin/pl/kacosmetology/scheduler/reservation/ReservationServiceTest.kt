@@ -438,7 +438,8 @@ class ReservationServiceTest {
             startTime = startTime,
             customerPhone = existingCustomer.phoneNumber,
             customerFirstName = null,
-            customerLastName = null
+            customerLastName = null,
+            requesterCompanyId = companyId
         )
 
         // THEN
@@ -478,7 +479,8 @@ class ReservationServiceTest {
             startTime = startTime,
             customerPhone = newPhone,
             customerFirstName = "Nowy",
-            customerLastName = "Klient"
+            customerLastName = "Klient",
+            requesterCompanyId = companyId
         )
 
         // THEN
@@ -490,6 +492,9 @@ class ReservationServiceTest {
     fun `createReservationByStaff should throw when new customer has no name provided`() {
         // GIVEN
         val unknownPhone = "+48000111222"
+        val mockService =
+            Offering(id = serviceId, companyId = companyId, name = "Masaż", durationMinutes = 45, price = 120)
+        every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
         every { userRepository.findByPhoneNumber(unknownPhone) } returns null
 
         // WHEN & THEN
@@ -500,7 +505,8 @@ class ReservationServiceTest {
                 startTime = startTime,
                 customerPhone = unknownPhone,
                 customerFirstName = null,
-                customerLastName = null
+                customerLastName = null,
+                requesterCompanyId = companyId
             )
         }
         assertEquals("Imię i nazwisko klienta są wymagane przy tworzeniu nowego konta", exception.message)
@@ -808,7 +814,8 @@ class ReservationServiceTest {
             startTime = nearFutureStart,
             customerPhone = existingCustomer.phoneNumber,
             customerFirstName = null,
-            customerLastName = null
+            customerLastName = null,
+            requesterCompanyId = companyId
         )
 
         // THEN

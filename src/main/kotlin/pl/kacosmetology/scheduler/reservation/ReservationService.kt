@@ -226,8 +226,8 @@ class ReservationService(
      * If no user with [customerPhone] exists, a new account is created using [customerFirstName] and [customerLastName].
      * Both name fields are required when the client does not exist yet.
      *
-     * @param requesterCompanyId when present, the selected offering must belong to that company before any customer
-     * account is created.
+     * @param requesterCompanyId authenticated staff member's company; the selected offering must belong to that
+     * company before any customer account is created.
      */
     @Transactional
     fun createReservationByStaff(
@@ -237,14 +237,12 @@ class ReservationService(
         customerPhone: String,
         customerFirstName: String?,
         customerLastName: String?,
-        requesterCompanyId: Long? = null
+        requesterCompanyId: Long
     ): Reservation {
-        if (requesterCompanyId != null) {
-            val offering = offeringRepository.findById(serviceId)
-                .orElseThrow { IllegalArgumentException("Usługa nie istnieje") }
-            if (offering.companyId != requesterCompanyId) {
-                throw IllegalArgumentException("Usługa nie należy do firmy pracownika")
-            }
+        val offering = offeringRepository.findById(serviceId)
+            .orElseThrow { IllegalArgumentException("Usługa nie istnieje") }
+        if (offering.companyId != requesterCompanyId) {
+            throw IllegalArgumentException("Usługa nie należy do firmy pracownika")
         }
 
         val customer = userRepository.findByPhoneNumber(customerPhone)
