@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.availability
 
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.company.effectivePrice
@@ -32,6 +33,7 @@ class AvailabilityService(
      * Filters out slots that overlap with existing reservations, schedule blocks, and past times.
      * Applies the company's last-minute discount to slots starting within the configured time window.
      */
+    @Transactional(readOnly = true)
     fun getAvailableSlots(employeeId: Long, offeringId: Long, date: LocalDate): List<AvailableSlotResponse> {
         val offering = offeringRepository.findById(offeringId)
             .orElseThrow { IllegalArgumentException("Usługa nie istnieje") }
