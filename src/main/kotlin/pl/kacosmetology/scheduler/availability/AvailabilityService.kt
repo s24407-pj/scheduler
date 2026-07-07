@@ -5,8 +5,6 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.company.effectivePrice
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -15,12 +13,11 @@ import java.time.ZoneId
 /** Calculates available time slots for a given employee and offering on a specific date. */
 @Service
 class AvailabilityService(
-    private val reservationRepository: ReservationRepository,
     private val offeringRepository: OfferingRepository,
     private val companyRepository: CompanyRepository,
-    private val scheduleBlockRepository: ScheduleBlockRepository,
     private val workScheduleRepository: EmployeeWorkScheduleRepository,
-    private val assignmentRepository: EmployeeOfferingAssignmentRepository
+    private val assignmentRepository: EmployeeOfferingAssignmentRepository,
+    private val employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
 ) {
 
     /**
@@ -53,26 +50,16 @@ class AvailabilityService(
         val closingTime = scheduleEntry.endTime
         val slotStep = company.slotIntervalMinutes.toLong()
 
-        val startOfDay = date.atStartOfDay()
-        val endOfDay = date.plusDays(1).atStartOfDay()
-        val existingReservations = reservationRepository.findByEmployeeIdAndDate(employeeId, startOfDay, endOfDay)
-        val scheduleBlocks =
-            scheduleBlockRepository.findByEmployeeIdAndStartTimeBetween(employeeId, startOfDay, endOfDay)
-
         val availableSlots = mutableListOf<AvailableSlotResponse>()
         var currentSlotStart = date.atTime(openingTime)
         val endOfWorkDay = date.atTime(closingTime)
+        val conflicts = employeeAvailabilityPolicy.findConflicts(employeeId, currentSlotStart, endOfWorkDay)
         val earliestBookableTime =
             LocalDateTime.now(ZoneId.of("Europe/Warsaw")).plusMinutes(company.minBookingAdvanceMinutes.toLong())
 
         while (!currentSlotStart.plusMinutes(requiredDuration).isAfter(endOfWorkDay)) {
             val currentSlotEnd = currentSlotStart.plusMinutes(requiredDuration)
-
-            val isOverlapping = existingReservations.any { reservation ->
-                currentSlotStart.isBefore(reservation.endTime) && currentSlotEnd.isAfter(reservation.startTime)
-            } || scheduleBlocks.any { block ->
-                currentSlotStart.isBefore(block.endTime) && currentSlotEnd.isAfter(block.startTime)
-            }
+            val isOverlapping = employeeAvailabilityPolicy.overlapsAny(currentSlotStart, currentSlotEnd, conflicts)
 
             if (!isOverlapping && currentSlotStart.isAfter(earliestBookableTime)) {
                 val slotPrice = company.effectivePrice(offering.price, currentSlotStart)

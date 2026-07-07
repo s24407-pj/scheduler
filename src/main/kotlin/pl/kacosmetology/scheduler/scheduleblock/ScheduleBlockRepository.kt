@@ -28,4 +28,18 @@ interface ScheduleBlockRepository : JpaRepository<ScheduleBlock, Long> {
         """
     )
     fun existsOverlapping(employeeId: Long, start: LocalDateTime, end: LocalDateTime): Boolean
+
+    /**
+     * Returns schedule blocks for an employee that overlap the given time range.
+     * Uses the standard half-open interval overlap condition: start < blockEnd AND end > blockStart.
+     */
+    @Query(
+        """
+        SELECT b FROM ScheduleBlock b
+        WHERE b.employeeId = :employeeId
+        AND (:start < b.endTime AND :end > b.startTime)
+        ORDER BY b.startTime ASC
+        """
+    )
+    fun findOverlapping(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<ScheduleBlock>
 }

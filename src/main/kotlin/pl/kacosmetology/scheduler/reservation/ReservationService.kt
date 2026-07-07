@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.reservation
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.company.effectivePrice
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
@@ -25,7 +26,8 @@ class ReservationService(
     private val assignmentRepository: EmployeeOfferingAssignmentRepository,
     private val companyRepository: CompanyRepository,
     private val applicationEventPublisher: ApplicationEventPublisher,
-    private val companyCustomerBlockRepository: CompanyCustomerBlockRepository
+    private val companyCustomerBlockRepository: CompanyCustomerBlockRepository,
+    private val employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
 ) {
     /**
      * Creates a new reservation with a price snapshot from the offering catalog.
@@ -81,9 +83,7 @@ class ReservationService(
 
         val endTime = startTime.plusMinutes(offering.durationMinutes.toLong())
 
-        if (reservationRepository.existsOverlapping(employeeId, startTime, endTime)) {
-            throw IllegalStateException("Ten termin jest już zajęty")
-        }
+        employeeAvailabilityPolicy.assertAvailable(employeeId, startTime, endTime)
 
         val price = company.effectivePrice(offering.price, startTime)
 

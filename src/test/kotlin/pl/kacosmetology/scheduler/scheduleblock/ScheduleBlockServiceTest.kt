@@ -10,7 +10,9 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
-import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityConflict
+import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityConflictSource
+import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
 import java.time.LocalDateTime
 import java.util.*
 
@@ -21,7 +23,7 @@ class ScheduleBlockServiceTest {
     private lateinit var scheduleBlockRepository: ScheduleBlockRepository
 
     @MockK
-    private lateinit var reservationRepository: ReservationRepository
+    private lateinit var employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
 
     @InjectMockKs
     private lateinit var scheduleBlockService: ScheduleBlockService
@@ -34,8 +36,7 @@ class ScheduleBlockServiceTest {
     @Test
     fun `createBlock should save and return block when no overlaps exist`() {
         // GIVEN
-        every { reservationRepository.existsOverlapping(employeeId, startTime, endTime) } returns false
-        every { scheduleBlockRepository.existsOverlapping(employeeId, startTime, endTime) } returns false
+        every { employeeAvailabilityPolicy.findFirstConflict(employeeId, startTime, endTime) } returns null
         every { scheduleBlockRepository.save(any()) } answers { firstArg() }
 
         // WHEN
@@ -65,7 +66,13 @@ class ScheduleBlockServiceTest {
     @Test
     fun `createBlock should throw when existing reservation overlaps`() {
         // GIVEN
-        every { reservationRepository.existsOverlapping(employeeId, startTime, endTime) } returns true
+        every {
+            employeeAvailabilityPolicy.findFirstConflict(employeeId, startTime, endTime)
+        } returns EmployeeAvailabilityConflict(
+            source = EmployeeAvailabilityConflictSource.RESERVATION,
+            startTime = startTime,
+            endTime = endTime
+        )
 
         // WHEN & THEN
         val exception = assertThrows<IllegalStateException> {
@@ -78,8 +85,13 @@ class ScheduleBlockServiceTest {
     @Test
     fun `createBlock should throw when another block overlaps`() {
         // GIVEN
-        every { reservationRepository.existsOverlapping(employeeId, startTime, endTime) } returns false
-        every { scheduleBlockRepository.existsOverlapping(employeeId, startTime, endTime) } returns true
+        every {
+            employeeAvailabilityPolicy.findFirstConflict(employeeId, startTime, endTime)
+        } returns EmployeeAvailabilityConflict(
+            source = EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK,
+            startTime = startTime,
+            endTime = endTime
+        )
 
         // WHEN & THEN
         val exception = assertThrows<IllegalStateException> {

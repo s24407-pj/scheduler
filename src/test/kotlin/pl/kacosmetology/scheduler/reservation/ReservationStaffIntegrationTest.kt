@@ -20,6 +20,8 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
@@ -49,6 +51,8 @@ class ReservationStaffIntegrationTest {
     private lateinit var serviceRepository: OfferingRepository
     @Autowired
     private lateinit var reservationRepository: ReservationRepository
+    @Autowired
+    private lateinit var scheduleBlockRepository: ScheduleBlockRepository
 
     @MockkBean
     private lateinit var s3Client: S3Client
@@ -63,6 +67,7 @@ class ReservationStaffIntegrationTest {
     @BeforeEach
     fun setup() {
         reservationRepository.deleteAll()
+        scheduleBlockRepository.deleteAll()
         serviceRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
@@ -187,5 +192,36 @@ class ReservationStaffIntegrationTest {
         }.andExpect {
             status { isForbidden() }
         }
+    }
+
+    @Test
+    fun `POST reservations-staff should return 409 when requested time overlaps schedule block`() {
+        val existingClient = userRepository.save(
+            User(phoneNumber = "+48555000111", firstName = "Istniejący", lastName = "Klient")
+        )
+        scheduleBlockRepository.save(
+            ScheduleBlock(
+                companyId = companyId,
+                employeeId = employee.id,
+                startTime = reservationTime,
+                endTime = reservationTime.plusHours(1)
+            )
+        )
+        val body = mapOf(
+            "employeeId" to employee.id,
+            "serviceId" to serviceId,
+            "startTime" to reservationTime.plusMinutes(30).toString(),
+            "customerPhone" to existingClient.phoneNumber
+        )
+
+        mockMvc.post("/api/reservations/staff") {
+            header("Authorization", "Bearer $staffToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isConflict() }
+        }
+
+        assertEquals(0, reservationRepository.findAll().size)
     }
 }

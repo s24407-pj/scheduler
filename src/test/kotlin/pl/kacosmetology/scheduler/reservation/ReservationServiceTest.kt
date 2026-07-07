@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.context.ApplicationEventPublisher
+import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
@@ -45,6 +46,9 @@ class ReservationServiceTest {
 
     @MockK
     private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
+
+    @MockK(relaxed = true)
+    private lateinit var employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
 
     @InjectMockKs
     private lateinit var reservationService: ReservationService
@@ -116,8 +120,9 @@ class ReservationServiceTest {
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
         every { companyRepository.findById(companyId) } returns Optional.of(Company(id = companyId, name = "Salon"))
 
-        // SYMULUJEMY ZAJĘTY TERMIN:
-        every { reservationRepository.existsOverlapping(employeeId, any(), any()) } returns true
+        every {
+            employeeAvailabilityPolicy.assertAvailable(employeeId, any(), any())
+        } throws IllegalStateException("Ten termin jest już zajęty")
 
         // WHEN & THEN
         val exception = assertThrows<IllegalStateException> {
