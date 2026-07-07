@@ -37,20 +37,28 @@ class EmployeeOfferingIntegrationTest {
 
     @Autowired
     private lateinit var mockMvc: MockMvc
+
     @Autowired
     private lateinit var objectMapper: ObjectMapper
+
     @Autowired
     private lateinit var jwtService: JwtService
+
     @Autowired
     private lateinit var userRepository: UserRepository
+
     @Autowired
     private lateinit var companyRepository: CompanyRepository
+
     @Autowired
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+
     @Autowired
     private lateinit var offeringRepository: OfferingRepository
+
     @Autowired
     private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
+
     @Autowired
     private lateinit var reservationRepository: ReservationRepository
 

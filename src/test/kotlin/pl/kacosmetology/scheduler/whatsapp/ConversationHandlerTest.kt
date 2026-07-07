@@ -27,20 +27,28 @@ class ConversationHandlerTest {
 
     @MockK
     private lateinit var sender: WhatsAppSender
+
     @MockK
     private lateinit var store: ConversationStore
+
     @MockK
     private lateinit var properties: WhatsAppProperties
+
     @MockK
     private lateinit var offeringService: OfferingService
+
     @MockK
     private lateinit var availabilityService: AvailabilityService
+
     @MockK
     private lateinit var reservationService: ReservationService
+
     @MockK
     private lateinit var userRepository: UserRepository
+
     @MockK
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+
     @MockK
     private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 

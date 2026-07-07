@@ -189,7 +189,8 @@ class ReservationService(
         start: LocalDateTime,
         end: LocalDateTime
     ): List<DashboardReservationResponse> {
-        val reservations = reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end)
+        val reservations =
+            reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end)
         val customerIds = reservations.map { it.customerId }.distinct()
         val usersById = userRepository.findAllById(customerIds).associateBy { it.id }
         return reservations.map { r ->

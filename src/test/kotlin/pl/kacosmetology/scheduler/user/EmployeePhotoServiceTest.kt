@@ -27,10 +27,13 @@ class EmployeePhotoServiceTest {
 
     @MockK
     private lateinit var s3Client: S3Client
+
     @MockK
     private lateinit var r2Props: R2Properties
+
     @MockK
     private lateinit var userRepository: UserRepository
+
     @MockK
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 

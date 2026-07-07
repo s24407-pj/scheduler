@@ -69,7 +69,8 @@ class CustomerServiceTest {
     fun `listCustomers includes block status and notes`() {
         // GIVEN
         val customer = User(id = customerId, phoneNumber = "+48111111111", firstName = "Jan", lastName = "Kowalski")
-        val block = CompanyCustomerBlock(companyId = companyId, customerId = customerId, noShowCount = 3, blocked = true)
+        val block =
+            CompanyCustomerBlock(companyId = companyId, customerId = customerId, noShowCount = 3, blocked = true)
         val companyCustomer = CompanyCustomer(companyId = companyId, userId = customerId, notes = "VIP")
         every { reservationRepository.findDistinctCustomerIdsByCompanyId(companyId) } returns listOf(customerId)
         every { userRepository.findAllById(listOf(customerId)) } returns listOf(customer)

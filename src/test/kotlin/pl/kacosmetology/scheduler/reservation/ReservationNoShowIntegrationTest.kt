@@ -34,18 +34,25 @@ class ReservationNoShowIntegrationTest {
 
     @Autowired
     private lateinit var mockMvc: MockMvc
+
     @Autowired
     private lateinit var jwtService: JwtService
+
     @Autowired
     private lateinit var userRepository: UserRepository
+
     @Autowired
     private lateinit var companyRepository: CompanyRepository
+
     @Autowired
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+
     @Autowired
     private lateinit var serviceRepository: OfferingRepository
+
     @Autowired
     private lateinit var reservationRepository: ReservationRepository
+
     @Autowired
     private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
 

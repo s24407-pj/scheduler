@@ -30,17 +30,27 @@ import java.time.LocalDateTime
 @Import(TestcontainersConfiguration::class)
 class CustomerListIntegrationTest {
 
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var jwtService: JwtService
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var offeringRepository: OfferingRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
-    @Autowired private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
-    @Autowired private lateinit var companyCustomerRepository: CompanyCustomerRepository
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+    @Autowired
+    private lateinit var jwtService: JwtService
+    @Autowired
+    private lateinit var userRepository: UserRepository
+    @Autowired
+    private lateinit var companyRepository: CompanyRepository
+    @Autowired
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired
+    private lateinit var offeringRepository: OfferingRepository
+    @Autowired
+    private lateinit var reservationRepository: ReservationRepository
+    @Autowired
+    private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
+    @Autowired
+    private lateinit var companyCustomerRepository: CompanyCustomerRepository
 
-    @MockkBean private lateinit var s3Client: S3Client
+    @MockkBean
+    private lateinit var s3Client: S3Client
 
     private lateinit var owner: User
     private lateinit var employee: User

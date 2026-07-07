@@ -812,7 +812,7 @@ class ReservationServiceTest {
             )
         } returns expected
         every { userRepository.findAllById(listOf(customerId)) } returns listOf(
-            pl.kacosmetology.scheduler.user.User(
+            User(
                 id = customerId, phoneNumber = "+48100000001", firstName = "Jan", lastName = "Kowalski"
             )
         )
