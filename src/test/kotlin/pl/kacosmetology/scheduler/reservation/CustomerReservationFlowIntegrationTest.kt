@@ -27,6 +27,8 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.dto.CreateReservationRequest
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -62,6 +64,9 @@ class CustomerReservationFlowIntegrationTest {
     @Autowired
     private lateinit var reservationRepository: ReservationRepository
 
+    @Autowired
+    private lateinit var scheduleBlockRepository: ScheduleBlockRepository
+
     @MockkBean
     private lateinit var smsSender: SmsSender
 
@@ -75,6 +80,7 @@ class CustomerReservationFlowIntegrationTest {
     fun setup() {
         // 1. Czyszczenie bazy danych przed testem
         reservationRepository.deleteAll()
+        scheduleBlockRepository.deleteAll()
         redisTemplate.connectionFactory?.connection?.serverCommands()?.flushAll()
         serviceRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
@@ -185,5 +191,121 @@ class CustomerReservationFlowIntegrationTest {
         val customerInDb = userRepository.findByPhoneNumber(newCustomerPhone)
         assertNotNull(customerInDb)
         assertEquals(customerInDb!!.id, savedReservation.customerId, "Rezerwacja powinna należeć do nowego klienta")
+    }
+
+    @Test
+    fun `customer reservation should return 409 when requested time overlaps schedule block`() {
+        val customerPhone = "+48555111222"
+        val requestCodeReq = RequestCodeRequest(phoneNumber = customerPhone)
+
+        mockMvc.post("/api/auth/request-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(requestCodeReq)
+        }.andExpect {
+            status { isOk() }
+        }
+
+        val generatedCode = redisTemplate.opsForValue().get("otp:$customerPhone")
+        assertNotNull(generatedCode)
+
+        val verifyResponse = mockMvc.post("/api/auth/verify-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                VerifyCodeRequest(
+                    phoneNumber = customerPhone,
+                    code = generatedCode!!,
+                    firstName = "Adam",
+                    lastName = "Testowy"
+                )
+            )
+        }.andExpect {
+            status { isOk() }
+        }.andReturn()
+
+        val jwtToken = objectMapper.readTree(verifyResponse.response.contentAsString).get("token").stringValue()
+        val blockStart = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
+        scheduleBlockRepository.save(
+            ScheduleBlock(
+                companyId = companyRepository.findAll().first().id!!,
+                employeeId = employeeId,
+                startTime = blockStart,
+                endTime = blockStart.plusHours(1)
+            )
+        )
+
+        val createReservationReq = CreateReservationRequest(
+            employeeId = employeeId,
+            serviceId = serviceId,
+            startTime = blockStart.plusMinutes(30)
+        )
+
+        mockMvc.post("/api/reservations") {
+            header("Authorization", "Bearer $jwtToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(createReservationReq)
+        }.andExpect {
+            status { isConflict() }
+        }
+
+        assertEquals(0, reservationRepository.findAll().size)
+    }
+
+    @Test
+    fun `customer reservation should return 400 when employee belongs to another company`() {
+        val customerPhone = "+48555111999"
+        val requestCodeReq = RequestCodeRequest(phoneNumber = customerPhone)
+
+        mockMvc.post("/api/auth/request-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(requestCodeReq)
+        }.andExpect {
+            status { isOk() }
+        }
+
+        val generatedCode = redisTemplate.opsForValue().get("otp:$customerPhone")
+        assertNotNull(generatedCode)
+
+        val verifyResponse = mockMvc.post("/api/auth/verify-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                VerifyCodeRequest(
+                    phoneNumber = customerPhone,
+                    code = generatedCode!!,
+                    firstName = "Ewa",
+                    lastName = "Testowa"
+                )
+            )
+        }.andExpect {
+            status { isOk() }
+        }.andReturn()
+
+        val jwtToken = objectMapper.readTree(verifyResponse.response.contentAsString).get("token").stringValue()
+        val otherCompany = companyRepository.save(Company(name = "Obcy Salon"))
+        val otherEmployee =
+            userRepository.save(User(phoneNumber = "+48999123123", firstName = "Obcy", lastName = "Pracownik"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(
+                companyId = otherCompany.id!!,
+                userId = otherEmployee.id,
+                role = "EMPLOYEE"
+            )
+        )
+        val reservationTime = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
+
+        val createReservationReq = CreateReservationRequest(
+            employeeId = otherEmployee.id,
+            serviceId = serviceId,
+            startTime = reservationTime
+        )
+
+        mockMvc.post("/api/reservations") {
+            header("Authorization", "Bearer $jwtToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(createReservationReq)
+        }.andExpect {
+            status { isBadRequest() }
+        }
+
+        assertEquals(0, reservationRepository.findAll().size)
     }
 }

@@ -31,6 +31,7 @@ import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -90,7 +91,7 @@ class ScheduleBlockIntegrationTest {
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER"))
 
         // Grafik pracownika: pracuje cały tydzień 9:00-17:00
-        for (day in java.time.DayOfWeek.values()) {
+        for (day in DayOfWeek.entries) {
             workScheduleRepository.save(
                 EmployeeWorkSchedule(
                     companyId = companyId,
@@ -247,6 +248,29 @@ class ScheduleBlockIntegrationTest {
         }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(2) }
+        }
+    }
+
+    @Test
+    fun `GET schedule-blocks employee should include blocks overlapping range start`() {
+        scheduleBlockRepository.save(
+            ScheduleBlock(
+                companyId = companyId,
+                employeeId = employee.id,
+                startTime = testDate.atStartOfDay().minusMinutes(30),
+                endTime = testDate.atStartOfDay().plusMinutes(30),
+                reason = "Dyżur"
+            )
+        )
+
+        mockMvc.get("/api/schedule-blocks/employee") {
+            header("Authorization", "Bearer $employeeToken")
+            param("start", testDate.atStartOfDay().toString())
+            param("end", testDate.atTime(1, 0).toString())
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].reason") { value("Dyżur") }
         }
     }
 

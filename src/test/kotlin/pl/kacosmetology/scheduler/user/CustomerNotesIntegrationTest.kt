@@ -19,8 +19,8 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
@@ -32,20 +32,28 @@ class CustomerNotesIntegrationTest {
 
     @Autowired
     private lateinit var mockMvc: MockMvc
+
     @Autowired
     private lateinit var objectMapper: ObjectMapper
+
     @Autowired
     private lateinit var jwtService: JwtService
+
     @Autowired
     private lateinit var userRepository: UserRepository
+
     @Autowired
     private lateinit var companyRepository: CompanyRepository
+
     @Autowired
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+
     @Autowired
     private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
+
     @Autowired
     private lateinit var companyCustomerRepository: CompanyCustomerRepository
+
     @Autowired
     private lateinit var reservationRepository: ReservationRepository
 

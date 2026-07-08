@@ -240,4 +240,55 @@ class WorkScheduleIntegrationTest {
             jsonPath("$[0].dayOfWeek") { value("THURSDAY") }
         }
     }
+
+    @Test
+    fun `GET work-schedule should return 200 for employee`() {
+        workScheduleRepository.save(
+            EmployeeWorkSchedule(
+                companyId = companyId,
+                employeeId = employeeId,
+                dayOfWeek = DayOfWeek.MONDAY,
+                startTime = java.time.LocalTime.of(9, 0),
+                endTime = java.time.LocalTime.of(17, 0)
+            )
+        )
+
+        mockMvc.get("/api/employees/$employeeId/work-schedule") {
+            header("Authorization", "Bearer $employeeToken")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].dayOfWeek") { value("MONDAY") }
+        }
+    }
+
+    @Test
+    fun `GET work-schedule should return 403 for customer`() {
+        val customer = userRepository.save(User(phoneNumber = "+48300300300", firstName = "Customer", lastName = "Test"))
+        val customerToken = jwtService.generateToken(
+            CustomUserDetails(customer, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER"))),
+            null
+        )
+
+        mockMvc.get("/api/employees/$employeeId/work-schedule") {
+            header("Authorization", "Bearer $customerToken")
+        }.andExpect {
+            status { isForbidden() }
+        }
+    }
+
+    @Test
+    fun `GET work-schedule should return 404 for employee outside owner company`() {
+        val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
+        val otherEmployee = userRepository.save(User(phoneNumber = "+48400400400", firstName = "Other", lastName = "Employee"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id, role = "EMPLOYEE")
+        )
+
+        mockMvc.get("/api/employees/${otherEmployee.id}/work-schedule") {
+            header("Authorization", "Bearer $ownerToken")
+        }.andExpect {
+            status { isNotFound() }
+        }
+    }
 }

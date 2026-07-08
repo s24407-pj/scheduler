@@ -16,10 +16,17 @@ class EmployeeOfferingService(
     private val offeringRepository: OfferingRepository
 ) {
 
-    /** Returns all offering assignments for the given employee. */
+    /**
+     * Returns all offering assignments for the given employee.
+     * Throws [NoSuchElementException] if the employee is not in the company.
+     */
     @Transactional(readOnly = true)
-    fun getAssignments(employeeId: Long): List<EmployeeOfferingAssignmentResponse> =
-        assignmentRepository.findAllByEmployeeId(employeeId).map { it.toResponse() }
+    fun getAssignments(companyId: Long, employeeId: Long): List<EmployeeOfferingAssignmentResponse> {
+        if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
+            throw NoSuchElementException("Pracownik nie należy do tej firmy")
+        }
+        return assignmentRepository.findAllByEmployeeId(employeeId).map { it.toResponse() }
+    }
 
     /**
      * Returns active offerings assigned to the given employee.

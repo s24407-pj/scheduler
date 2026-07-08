@@ -121,4 +121,13 @@ class WorkScheduleServiceTest {
             workScheduleService.setSchedule(companyId, employeeId, request)
         }
     }
+
+    @Test
+    fun `getSchedule should throw when employee does not belong to company`() {
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
+
+        assertThrows<NoSuchElementException> {
+            workScheduleService.getSchedule(companyId, employeeId)
+        }
+    }
 }

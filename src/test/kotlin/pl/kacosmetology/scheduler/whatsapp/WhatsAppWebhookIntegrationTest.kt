@@ -27,6 +27,7 @@ class WhatsAppWebhookIntegrationTest {
 
     @MockkBean
     private lateinit var s3Client: S3Client
+
     @MockkBean
     private lateinit var whatsAppSender: WhatsAppSender
 

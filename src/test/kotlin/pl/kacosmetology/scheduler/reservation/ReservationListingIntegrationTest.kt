@@ -224,6 +224,41 @@ class ReservationListingIntegrationTest {
     }
 
     @Test
+    fun `employee schedule should include reservations overlapping range start`() {
+        val employee = userRepository.findAll().first { it.phoneNumber == "+48111000111" }
+        val customer = userRepository.findAll().first { it.phoneNumber == "+48222000222" }
+        val service = serviceRepository.findAll().first()
+        reservationRepository.save(
+            Reservation(
+                companyId = service.companyId,
+                customerId = customer.id,
+                employeeId = employee.id,
+                serviceId = service.id!!,
+                price = 100,
+                startTime = todayStart.minusMinutes(30),
+                endTime = todayStart.plusMinutes(30),
+                status = ReservationStatus.CONFIRMED
+            )
+        )
+
+        mockMvc.get("/api/reservations/employee") {
+            header("Authorization", "Bearer $employeeToken")
+            param("start", todayStart.toString())
+            param("end", todayStart.plusHours(1).toString())
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].startTime") {
+                value(
+                    org.hamcrest.Matchers.startsWith(
+                        todayStart.minusMinutes(30).toString().substring(0, 16)
+                    )
+                )
+            }
+        }
+    }
+
+    @Test
     fun `customer cannot access employee schedule (403)`() {
         mockMvc.get("/api/reservations/employee") {
             header("Authorization", "Bearer $customerToken")

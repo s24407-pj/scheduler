@@ -27,20 +27,28 @@ class ConversationHandlerTest {
 
     @MockK
     private lateinit var sender: WhatsAppSender
+
     @MockK
     private lateinit var store: ConversationStore
+
     @MockK
     private lateinit var properties: WhatsAppProperties
+
     @MockK
     private lateinit var offeringService: OfferingService
+
     @MockK
     private lateinit var availabilityService: AvailabilityService
+
     @MockK
     private lateinit var reservationService: ReservationService
+
     @MockK
     private lateinit var userRepository: UserRepository
+
     @MockK
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+
     @MockK
     private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
@@ -234,7 +242,8 @@ class ConversationHandlerTest {
                 any(),
                 normalizedPhone,
                 "Jan",
-                "Kowalski"
+                "Kowalski",
+                companyId
             )
         } returns reservation
 
@@ -321,7 +330,8 @@ class ConversationHandlerTest {
                 any(),
                 normalizedPhone,
                 "Jan",
-                "Nowak"
+                "Nowak",
+                companyId
             )
         } returns reservation
 
@@ -369,7 +379,8 @@ class ConversationHandlerTest {
                 any(),
                 normalizedPhone,
                 "Jan",
-                "Kowalski"
+                "Kowalski",
+                companyId
             )
         } throws IllegalStateException("Ten termin jest już zajęty")
 

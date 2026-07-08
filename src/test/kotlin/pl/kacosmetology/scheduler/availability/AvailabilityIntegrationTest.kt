@@ -295,6 +295,37 @@ class AvailabilityIntegrationTest {
     }
 
     @Test
+    fun `should return 400 when employee belongs to another company`() {
+        val otherCompany = companyRepository.save(Company(name = "Obcy Salon"))
+        val otherEmployee =
+            userRepository.save(User(phoneNumber = "+48111999000", firstName = "Obcy", lastName = "Pracownik"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(
+                companyId = otherCompany.id!!,
+                userId = otherEmployee.id,
+                role = "EMPLOYEE"
+            )
+        )
+        workScheduleRepository.save(
+            EmployeeWorkSchedule(
+                companyId = otherCompany.id!!,
+                employeeId = otherEmployee.id,
+                dayOfWeek = testDate.dayOfWeek,
+                startTime = LocalTime.of(9, 0),
+                endTime = LocalTime.of(17, 0)
+            )
+        )
+
+        mockMvc.get("/api/availability") {
+            param("employeeId", otherEmployee.id.toString())
+            param("serviceId", serviceId.toString())
+            param("date", testDate.toString())
+        }.andExpect {
+            status { isBadRequest() }
+        }
+    }
+
+    @Test
     fun `should use employee work schedule hours for slot boundaries`() {
         // Grafik skrócony: 13:00-17:00 tylko dla dnia testu (nadpisujemy setup)
         workScheduleRepository.deleteAll()

@@ -22,32 +22,26 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
     )
     fun existsOverlapping(employeeId: Long, start: LocalDateTime, end: LocalDateTime): Boolean
 
-    /** Returns all active (non-cancelled, non-no-show) reservations for an employee on a given day (used by availability check). */
+    /** Returns active (non-cancelled, non-no-show) reservations overlapping the given time range. */
     @Query(
         """
         SELECT r FROM Reservation r
         WHERE r.employeeId = :employeeId
         AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
-        AND r.startTime >= :startOfDay
-        AND r.startTime < :endOfDay
+        AND (:start < r.endTime AND :end > r.startTime)
         ORDER BY r.startTime ASC
     """
     )
-    fun findByEmployeeIdAndDate(
-        employeeId: Long,
-        startOfDay: LocalDateTime,
-        endOfDay: LocalDateTime
-    ): List<Reservation>
+    fun findOverlapping(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<Reservation>
 
     fun findAllByCustomerIdOrderByStartTimeDesc(customerId: Long): List<Reservation>
 
-    /** Returns an employee's schedule within a given time range (for the staff dashboard). */
+    /** Returns an employee's schedule overlapping a given time range (for the staff dashboard). */
     @Query(
         """
-        SELECT r FROM Reservation r 
-        WHERE r.employeeId = :employeeId 
-        AND r.startTime >= :start 
-        AND r.startTime <= :end
+        SELECT r FROM Reservation r
+        WHERE r.employeeId = :employeeId
+        AND (:start < r.endTime AND :end > r.startTime)
         ORDER BY r.startTime ASC
     """
     )
@@ -96,7 +90,7 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
     fun findDistinctCustomerIdsByCompanyId(@Param("companyId") companyId: Long): List<Long>
 
     /**
-     * Returns reservations for a specific employee within a company and date range.
+     * Returns reservations for a specific employee within a company that overlap a date range.
      * Used by the owner dashboard to display the calendar for any employee.
      */
     @Query(
@@ -104,8 +98,7 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
         SELECT r FROM Reservation r
         WHERE r.companyId = :companyId
         AND r.employeeId = :employeeId
-        AND r.startTime >= :start
-        AND r.startTime <= :end
+        AND (:start < r.endTime AND :end > r.startTime)
         ORDER BY r.startTime ASC
     """
     )

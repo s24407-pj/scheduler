@@ -304,7 +304,8 @@ class ConversationHandler(
                 startTime = startTime,
                 customerPhone = phone,
                 customerFirstName = firstName,
-                customerLastName = lastName
+                customerLastName = lastName,
+                requesterCompanyId = properties.companyId
             )
             store.delete(phone)
             sender.sendMessage(
@@ -364,7 +365,7 @@ class ConversationHandler(
     /** Parses a 1-based index from user input. Returns null if not a valid number in [1, maxSize]. */
     private fun parseIndex(text: String, maxSize: Int): Int? {
         val n = text.toIntOrNull() ?: return null
-        if (n < 1 || n > maxSize) return null
+        if (n !in 1..maxSize) return null
         return n - 1
     }
 

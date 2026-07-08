@@ -16,7 +16,7 @@ class LoginRateLimiter(
     companion object {
         private const val KEY_PREFIX = "rate:login:"
 
-        private val incrWithExpireScript = RedisScript.of<Long>(
+        private val incrWithExpireScript = RedisScript.of(
             """
             local v = redis.call('INCR', KEYS[1])
             if v == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end

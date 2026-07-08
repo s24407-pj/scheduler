@@ -127,13 +127,15 @@ class ReservationController(
         @Valid @RequestBody request: StaffCreateReservationRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails
     ): ReservationResponse {
+        val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
         return reservationService.createReservationByStaff(
             employeeId = request.employeeId!!,
             serviceId = request.serviceId!!,
             startTime = request.startTime!!,
             customerPhone = request.customerPhone!!,
             customerFirstName = request.customerFirstName,
-            customerLastName = request.customerLastName
+            customerLastName = request.customerLastName,
+            requesterCompanyId = companyId
         ).toResponse()
     }
 }

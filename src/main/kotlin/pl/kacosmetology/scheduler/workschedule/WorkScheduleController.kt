@@ -20,10 +20,11 @@ class WorkScheduleController(
 
     /** Returns the weekly schedule for the given employee. */
     @GetMapping("/{employeeId}/work-schedule")
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getSchedule(
         @PathVariable employeeId: Long,
         @AuthenticationPrincipal userDetails: CustomUserDetails
-    ): List<WorkScheduleEntryResponse> = workScheduleService.getSchedule(employeeId)
+    ): List<WorkScheduleEntryResponse> = workScheduleService.getSchedule(userDetails.companyId!!, employeeId)
 
     /**
      * Replaces the employee's weekly work schedule.

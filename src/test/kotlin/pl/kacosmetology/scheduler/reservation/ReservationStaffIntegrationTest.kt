@@ -20,6 +20,8 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
@@ -49,6 +51,8 @@ class ReservationStaffIntegrationTest {
     private lateinit var serviceRepository: OfferingRepository
     @Autowired
     private lateinit var reservationRepository: ReservationRepository
+    @Autowired
+    private lateinit var scheduleBlockRepository: ScheduleBlockRepository
 
     @MockkBean
     private lateinit var s3Client: S3Client
@@ -63,6 +67,7 @@ class ReservationStaffIntegrationTest {
     @BeforeEach
     fun setup() {
         reservationRepository.deleteAll()
+        scheduleBlockRepository.deleteAll()
         serviceRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
@@ -173,6 +178,41 @@ class ReservationStaffIntegrationTest {
     }
 
     @Test
+    fun `POST reservations-staff should return 400 when service belongs to another company`() {
+        val otherCompany = companyRepository.save(Company(name = "Obcy Salon"))
+        val otherEmployee = userRepository.save(
+            User(phoneNumber = "+48777111222", firstName = "Obcy", lastName = "Pracownik")
+        )
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id, role = "EMPLOYEE")
+        )
+        val otherService = serviceRepository.save(
+            Offering(companyId = otherCompany.id!!, name = "Obca usługa", durationMinutes = 30, price = 90)
+        )
+        val unknownPhone = "+48123999888"
+
+        val body = mapOf(
+            "employeeId" to otherEmployee.id,
+            "serviceId" to otherService.id,
+            "startTime" to reservationTime.toString(),
+            "customerPhone" to unknownPhone,
+            "customerFirstName" to "Nowy",
+            "customerLastName" to "Klient"
+        )
+
+        mockMvc.post("/api/reservations/staff") {
+            header("Authorization", "Bearer $staffToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isBadRequest() }
+        }
+
+        assertEquals(0, reservationRepository.findAll().size)
+        assertEquals(null, userRepository.findByPhoneNumber(unknownPhone))
+    }
+
+    @Test
     fun `POST reservations-staff should return 403 without token`() {
         val body = mapOf(
             "employeeId" to employee.id,
@@ -187,5 +227,36 @@ class ReservationStaffIntegrationTest {
         }.andExpect {
             status { isForbidden() }
         }
+    }
+
+    @Test
+    fun `POST reservations-staff should return 409 when requested time overlaps schedule block`() {
+        val existingClient = userRepository.save(
+            User(phoneNumber = "+48555000111", firstName = "Istniejący", lastName = "Klient")
+        )
+        scheduleBlockRepository.save(
+            ScheduleBlock(
+                companyId = companyId,
+                employeeId = employee.id,
+                startTime = reservationTime,
+                endTime = reservationTime.plusHours(1)
+            )
+        )
+        val body = mapOf(
+            "employeeId" to employee.id,
+            "serviceId" to serviceId,
+            "startTime" to reservationTime.plusMinutes(30).toString(),
+            "customerPhone" to existingClient.phoneNumber
+        )
+
+        mockMvc.post("/api/reservations/staff") {
+            header("Authorization", "Bearer $staffToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isConflict() }
+        }
+
+        assertEquals(0, reservationRepository.findAll().size)
     }
 }
