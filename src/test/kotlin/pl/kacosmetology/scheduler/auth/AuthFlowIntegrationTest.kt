@@ -129,6 +129,44 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
+    fun `incomplete registration should preserve OTP for retry with names`() {
+        val phoneNumber = "+48111222444"
+
+        mockMvc.post("/api/auth/request-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(RequestCodeRequest(phoneNumber))
+        }.andExpect {
+            status { isOk() }
+        }
+
+        val otpCode = requireNotNull(redisTemplate.opsForValue().get("otp:$phoneNumber"))
+
+        mockMvc.post("/api/auth/verify-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                VerifyCodeRequest(phoneNumber, otpCode, firstName = null, lastName = "Kowalski")
+            )
+        }.andExpect {
+            status { isBadRequest() }
+        }
+
+        assertEquals(otpCode, redisTemplate.opsForValue().get("otp:$phoneNumber"))
+
+        mockMvc.post("/api/auth/verify-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                VerifyCodeRequest(phoneNumber, otpCode, firstName = "Jan", lastName = "Kowalski")
+            )
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.token") { exists() }
+        }
+
+        Assertions.assertNotNull(userRepository.findByPhoneNumber(phoneNumber))
+        Assertions.assertNull(redisTemplate.opsForValue().get("otp:$phoneNumber"))
+    }
+
+    @Test
     fun `staff login with email and password should return token`() {
         // 1. GIVEN - Mamy pracownika w bazie z ustawionym hasłem
         val rawPassword = "superSecretPassword"

@@ -55,7 +55,30 @@ class AuthService(
             throw RateLimitExceededException()
         }
 
-        when (otpStore.verifyAndConsumeCode(request.phoneNumber, request.code)) {
+        requireVerified(otpStore.verifyCode(request.phoneNumber, request.code))
+
+        val existingUser = userRepository.findByPhoneNumber(request.phoneNumber)
+
+        if (existingUser == null) {
+            requireNotNull(request.firstName) { "Imię jest wymagane przy pierwszej rejestracji" }
+            requireNotNull(request.lastName) { "Nazwisko jest wymagane przy pierwszej rejestracji" }
+        }
+
+        requireVerified(otpStore.verifyAndConsumeCode(request.phoneNumber, request.code))
+
+        val user = existingUser ?: userRepository.save(
+            User(
+                phoneNumber = request.phoneNumber,
+                firstName = request.firstName!!,
+                lastName = request.lastName!!
+            )
+        )
+
+        return AuthResponse(jwtService.generateCustomerToken(user))
+    }
+
+    private fun requireVerified(result: OtpVerificationResult) {
+        when (result) {
             OtpVerificationResult.EXPIRED_OR_MISSING ->
                 throw IllegalArgumentException("Brak kodu dla tego numeru lub kod wygasł")
             OtpVerificationResult.INVALID -> throw IllegalArgumentException("Nieprawidłowy kod")
@@ -63,23 +86,6 @@ class AuthService(
                 throw RateLimitExceededException("Zbyt wiele nieudanych prób kodu. Poproś o nowy kod.")
             OtpVerificationResult.VERIFIED -> Unit
         }
-
-        var user = userRepository.findByPhoneNumber(request.phoneNumber)
-
-        if (user == null) {
-            requireNotNull(request.firstName) { "Imię jest wymagane przy pierwszej rejestracji" }
-            requireNotNull(request.lastName) { "Nazwisko jest wymagane przy pierwszej rejestracji" }
-
-            user = userRepository.save(
-                User(
-                    phoneNumber = request.phoneNumber,
-                    firstName = request.firstName,
-                    lastName = request.lastName
-                )
-            )
-        }
-
-        return AuthResponse(jwtService.generateCustomerToken(user))
     }
 
     /**

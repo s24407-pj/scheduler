@@ -96,7 +96,7 @@ class AuthServiceTest {
         // GIVEN
         val request = VerifyCodeRequest(testPhone, "123456")
         every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
-        every { otpStore.verifyAndConsumeCode(testPhone, request.code) } returns
+        every { otpStore.verifyCode(testPhone, request.code) } returns
             OtpVerificationResult.EXPIRED_OR_MISSING
 
         // WHEN & THEN
@@ -111,7 +111,7 @@ class AuthServiceTest {
         // GIVEN
         val request = VerifyCodeRequest(testPhone, "111111") // Zły kod
         every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
-        every { otpStore.verifyAndConsumeCode(testPhone, request.code) } returns OtpVerificationResult.INVALID
+        every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.INVALID
 
         // WHEN & THEN
         val exception = assertThrows<IllegalArgumentException> {
@@ -124,7 +124,7 @@ class AuthServiceTest {
     fun `verifyCode should throw RateLimitExceededException when code attempts are exhausted`() {
         val request = VerifyCodeRequest(testPhone, "111111")
         every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
-        every { otpStore.verifyAndConsumeCode(testPhone, request.code) } returns
+        every { otpStore.verifyCode(testPhone, request.code) } returns
             OtpVerificationResult.ATTEMPTS_EXCEEDED
 
         val exception = assertThrows<RateLimitExceededException> {
@@ -152,6 +152,7 @@ class AuthServiceTest {
         // GIVEN
         val request = VerifyCodeRequest(testPhone, "123456", "Jan", "Kowalski")
         every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
+        every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
         every { otpStore.verifyAndConsumeCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
         every { userRepository.findByPhoneNumber(testPhone) } returns null // Użytkownika jeszcze nie ma
 
@@ -272,13 +273,27 @@ class AuthServiceTest {
         // GIVEN - nowy użytkownik (nie ma w bazie), ale nie podał firstName
         val request = VerifyCodeRequest(testPhone, "123456", firstName = null, lastName = "Kowalski")
         every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
-        every { otpStore.verifyAndConsumeCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
+        every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
         every { userRepository.findByPhoneNumber(testPhone) } returns null
 
         // WHEN & THEN
         assertThrows<IllegalArgumentException> {
             authService.verifyCode(request, testIp)
         }
+        verify(exactly = 0) { otpStore.verifyAndConsumeCode(any(), any()) }
+    }
+
+    @Test
+    fun `verifyCode should not consume code when lastName is missing on first registration`() {
+        val request = VerifyCodeRequest(testPhone, "123456", firstName = "Jan", lastName = null)
+        every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
+        every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
+        every { userRepository.findByPhoneNumber(testPhone) } returns null
+
+        assertThrows<IllegalArgumentException> {
+            authService.verifyCode(request, testIp)
+        }
+        verify(exactly = 0) { otpStore.verifyAndConsumeCode(any(), any()) }
     }
 
     @Test
@@ -288,6 +303,7 @@ class AuthServiceTest {
         val existingUser = User(id = 1, phoneNumber = testPhone, firstName = "Jan", lastName = "Kowalski")
 
         every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
+        every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
         every { otpStore.verifyAndConsumeCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
         every { userRepository.findByPhoneNumber(testPhone) } returns existingUser // Użytkownik JUŻ istnieje!
         every { jwtService.generateCustomerToken(existingUser) } returns "EXISTING_USER_TOKEN"
