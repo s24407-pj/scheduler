@@ -33,6 +33,9 @@ import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -403,6 +406,113 @@ class AuthFlowIntegrationTest {
         }.andExpect {
             status { isTooManyRequests() }
         }
+    }
+
+    @Test
+    fun `verify-code should retain TTL lock after three failures and reset on replacement code`() {
+        val phoneNumber = "+48555111222"
+        val requestCode = RequestCodeRequest(phoneNumber)
+        mockMvc.post("/api/auth/request-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(requestCode)
+        }.andExpect { status { isOk() } }
+
+        val otpKey = "otp:$phoneNumber"
+        val firstCode = requireNotNull(redisTemplate.opsForValue().get(otpKey))
+        val initialTtl = requireNotNull(redisTemplate.getExpire(otpKey, TimeUnit.SECONDS))
+        val wrongCode = "000000"
+
+        repeat(2) {
+            mockMvc.post("/api/auth/verify-code") {
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, wrongCode))
+            }.andExpect { status { isBadRequest() } }
+        }
+
+        val ttlAfterFailures = requireNotNull(redisTemplate.getExpire(otpKey, TimeUnit.SECONDS))
+        Assertions.assertTrue(ttlAfterFailures > 0)
+        Assertions.assertTrue(ttlAfterFailures <= initialTtl)
+        assertEquals("$firstCode|2", redisTemplate.opsForValue().get(otpKey))
+
+        mockMvc.post("/api/auth/verify-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, wrongCode))
+        }.andExpect { status { isTooManyRequests() } }
+
+        mockMvc.post("/api/auth/verify-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, firstCode, "Jan", "Nowak"))
+        }.andExpect { status { isTooManyRequests() } }
+
+        mockMvc.post("/api/auth/request-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(requestCode)
+        }.andExpect { status { isOk() } }
+
+        val replacementCode = requireNotNull(redisTemplate.opsForValue().get(otpKey))
+        Assertions.assertFalse(replacementCode.contains('|'))
+        mockMvc.post("/api/auth/verify-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                VerifyCodeRequest(phoneNumber, replacementCode, "Jan", "Nowak")
+            )
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.token") { exists() }
+        }
+    }
+
+    @Test
+    fun `two concurrent correct verify-code requests should issue exactly one token`() {
+        val phoneNumber = "+48555222333"
+        mockMvc.post("/api/auth/request-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(RequestCodeRequest(phoneNumber))
+        }.andExpect { status { isOk() } }
+        val code = requireNotNull(redisTemplate.opsForValue().get("otp:$phoneNumber"))
+        val requestBody = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, code, "Jan", "Nowak"))
+
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val requests = List(2) {
+                executor.submit<Int> {
+                    start.await()
+                    mockMvc.post("/api/auth/verify-code") {
+                        contentType = MediaType.APPLICATION_JSON
+                        content = requestBody
+                    }.andReturn().response.status
+                }
+            }
+            start.countDown()
+            val statuses = requests.map { it.get(10, TimeUnit.SECONDS) }.sorted()
+
+            assertEquals(listOf(200, 400), statuses)
+            Assertions.assertNotNull(userRepository.findByPhoneNumber(phoneNumber))
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `verify-code should return 429 after ten requests from forwarded client IP`() {
+        val forwardedIp = "203.0.113.10"
+        repeat(10) { attempt ->
+            val phoneNumber = "+4860000${attempt.toString().padStart(4, '0')}"
+            mockMvc.post("/api/auth/verify-code") {
+                header("X-Forwarded-For", "$forwardedIp, 10.0.0.1")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, "123456"))
+            }.andExpect { status { isBadRequest() } }
+        }
+
+        mockMvc.post("/api/auth/verify-code") {
+            header("X-Forwarded-For", "$forwardedIp, 10.0.0.1")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(VerifyCodeRequest("+48699999999", "123456"))
+        }.andExpect { status { isTooManyRequests() } }
+
+        assertEquals("11", redisTemplate.opsForValue().get("rate:otp-verify:$forwardedIp"))
     }
 
     private fun loginForEmployment(password: String, employmentId: Long): String {

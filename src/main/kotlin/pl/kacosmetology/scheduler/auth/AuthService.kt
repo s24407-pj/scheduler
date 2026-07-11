@@ -28,7 +28,8 @@ class AuthService(
     private val passwordEncoder: PasswordEncoder,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
     private val companyRepository: CompanyRepository,
-    private val loginRateLimiter: LoginRateLimiter
+    private val loginRateLimiter: LoginRateLimiter,
+    private val otpVerificationRateLimiter: OtpVerificationRateLimiter
 ) {
 
     private val secureRandom = SecureRandom()
@@ -49,12 +50,18 @@ class AuthService(
      * Creates a new user on first verification (requires firstName and lastName).
      */
     @Transactional
-    fun verifyCode(request: VerifyCodeRequest): AuthResponse {
-        val storedCode = otpStore.getCode(request.phoneNumber)
-            ?: throw IllegalArgumentException("Brak kodu dla tego numeru lub kod wygasł")
+    fun verifyCode(request: VerifyCodeRequest, clientIp: String): AuthResponse {
+        if (!otpVerificationRateLimiter.checkAndIncrement(clientIp)) {
+            throw RateLimitExceededException()
+        }
 
-        if (storedCode != request.code) {
-            throw IllegalArgumentException("Nieprawidłowy kod")
+        when (otpStore.verifyAndConsumeCode(request.phoneNumber, request.code)) {
+            OtpVerificationResult.EXPIRED_OR_MISSING ->
+                throw IllegalArgumentException("Brak kodu dla tego numeru lub kod wygasł")
+            OtpVerificationResult.INVALID -> throw IllegalArgumentException("Nieprawidłowy kod")
+            OtpVerificationResult.ATTEMPTS_EXCEEDED ->
+                throw RateLimitExceededException("Zbyt wiele nieudanych prób kodu. Poproś o nowy kod.")
+            OtpVerificationResult.VERIFIED -> Unit
         }
 
         var user = userRepository.findByPhoneNumber(request.phoneNumber)
@@ -71,8 +78,6 @@ class AuthService(
                 )
             )
         }
-
-        otpStore.deleteCode(request.phoneNumber)
 
         return AuthResponse(jwtService.generateCustomerToken(user))
     }

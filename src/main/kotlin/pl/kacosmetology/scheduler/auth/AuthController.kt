@@ -29,8 +29,11 @@ class AuthController(
 
     /** Verifies the OTP code and returns a JWT token. Registers a new user on first login. */
     @PostMapping("/verify-code")
-    fun verifyCode(@Valid @RequestBody request: VerifyCodeRequest): ResponseEntity<AuthResponse> {
-        return ResponseEntity.ok(authService.verifyCode(request))
+    fun verifyCode(
+        @Valid @RequestBody request: VerifyCodeRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<AuthResponse> {
+        return ResponseEntity.ok(authService.verifyCode(request, clientIp(httpRequest)))
     }
 
     /** Authenticates a staff member using email and password. Returns a JWT token. */
@@ -39,8 +42,10 @@ class AuthController(
         @Valid @RequestBody request: StaffLoginRequest,
         httpRequest: HttpServletRequest
     ): ResponseEntity<StaffLoginResponse> {
-        val clientIp = httpRequest.getHeader("X-Forwarded-For")?.split(",")?.first()?.trim()
-            ?: httpRequest.remoteAddr
-        return ResponseEntity.ok(authService.loginStaff(request, clientIp))
+        return ResponseEntity.ok(authService.loginStaff(request, clientIp(httpRequest)))
     }
+
+    private fun clientIp(request: HttpServletRequest): String =
+        request.getHeader("X-Forwarded-For")?.split(",")?.first()?.trim()
+            ?: request.remoteAddr
 }
