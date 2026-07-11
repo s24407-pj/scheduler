@@ -24,6 +24,9 @@ import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
 import java.time.LocalDateTime
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -80,7 +83,10 @@ class ReservationNoShowIntegrationTest {
         customerToken = jwtService.generateCustomerToken(customer)
     }
 
-    private fun saveReservation(status: ReservationStatus = ReservationStatus.PENDING): Reservation {
+    private fun saveReservation(
+        status: ReservationStatus = ReservationStatus.PENDING,
+        startTime: LocalDateTime = LocalDateTime.now().plusDays(1)
+    ): Reservation {
         val service = serviceRepository.save(
             Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 50)
         )
@@ -91,8 +97,8 @@ class ReservationNoShowIntegrationTest {
                 employeeId = employee.id,
                 serviceId = service.id!!,
                 price = 50,
-                startTime = LocalDateTime.now().plusDays(1),
-                endTime = LocalDateTime.now().plusDays(1).plusMinutes(30),
+                startTime = startTime,
+                endTime = startTime.plusMinutes(30),
                 status = status
             )
         )
@@ -212,6 +218,40 @@ class ReservationNoShowIntegrationTest {
 
         val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id)!!
         assertEquals(3, block.noShowCount)
+        assertTrue(block.blocked)
+    }
+
+    @Test
+    fun `concurrent PATCH no-show requests should preserve every increment and auto-block`() {
+        val requestCount = 8
+        val firstStart = LocalDateTime.now().plusDays(1)
+        val reservations = List(requestCount) { index ->
+            saveReservation(startTime = firstStart.plusMinutes(index * 30L))
+        }
+        val ready = CountDownLatch(requestCount)
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(requestCount)
+
+        try {
+            val requests = reservations.map { reservation ->
+                executor.submit {
+                    ready.countDown()
+                    start.await()
+                    mockMvc.patch("/api/reservations/${reservation.id}/no-show") {
+                        header("Authorization", "Bearer $employeeToken")
+                    }.andExpect { status { isNoContent() } }
+                }
+            }
+
+            assertTrue(ready.await(10, TimeUnit.SECONDS))
+            start.countDown()
+            requests.forEach { it.get(20, TimeUnit.SECONDS) }
+        } finally {
+            executor.shutdownNow()
+        }
+
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id)!!
+        assertEquals(requestCount, block.noShowCount)
         assertTrue(block.blocked)
     }
 }

@@ -11,7 +11,6 @@ import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRep
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.dto.DashboardReservationResponse
 import pl.kacosmetology.scheduler.reservation.dto.toDashboardResponse
-import pl.kacosmetology.scheduler.user.CompanyCustomerBlock
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -157,18 +156,10 @@ class ReservationService(
         reservation.markNoShow()
         reservationRepository.save(reservation)
 
-        val block = companyCustomerBlockRepository
-            .findByCompanyIdAndCustomerId(reservation.companyId, reservation.customerId)
-            ?: CompanyCustomerBlock(companyId = reservation.companyId, customerId = reservation.customerId)
-        block.noShowCount++
-
-        val company = companyRepository.findById(reservation.companyId)
-            .orElseThrow { NoSuchElementException("Firma nie istnieje") }
-        if (company.maxNoShows > 0 && block.noShowCount >= company.maxNoShows) {
-            block.blocked = true
-        }
-
-        companyCustomerBlockRepository.save(block)
+        companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(
+            reservation.companyId,
+            reservation.customerId
+        )
     }
 
     /** Returns all reservations for a customer, ordered by start time descending. */
