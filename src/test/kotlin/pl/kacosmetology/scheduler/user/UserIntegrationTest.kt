@@ -100,7 +100,7 @@ class UserIntegrationTest {
         }
 
         // Upewniamy się, że zmiana zapisała się w prawdziwej bazie
-        val userInDb = userRepository.findById(testUser.id).get()
+        val userInDb = userRepository.findById(testUser.id!!).get()
         assertEquals("Piotr", userInDb.firstName)
         assertEquals("piotr.nowak@example.com", userInDb.email)
     }

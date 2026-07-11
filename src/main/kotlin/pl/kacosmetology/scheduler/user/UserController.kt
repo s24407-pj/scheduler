@@ -36,7 +36,7 @@ class UserController(
     }
 
     private fun User.toProfileResponse() = UserProfileResponse(
-        id = id,
+        id = requireNotNull(id) { "Persisted user must have an ID" },
         phoneNumber = phoneNumber,
         firstName = firstName,
         lastName = lastName,

@@ -74,7 +74,7 @@ class ReservationNoShowIntegrationTest {
         employee =
             userRepository.save(User(phoneNumber = "+48700111001", firstName = "Pracownik", lastName = "Testowy"))
         val employment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
         )
 
         customer = userRepository.save(User(phoneNumber = "+48600222001", firstName = "Klient", lastName = "Testowy"))
@@ -93,8 +93,8 @@ class ReservationNoShowIntegrationTest {
         return reservationRepository.save(
             Reservation(
                 companyId = companyId,
-                customerId = customer.id,
-                employeeId = employee.id,
+                customerId = customer.id!!,
+                employeeId = employee.id!!,
                 serviceId = service.id!!,
                 price = 50,
                 startTime = startTime,
@@ -108,7 +108,7 @@ class ReservationNoShowIntegrationTest {
     fun `PATCH no-show as employee should return 204 and mark reservation`() {
         val reservation = saveReservation()
 
-        mockMvc.patch("/api/reservations/${reservation.id}/no-show") {
+        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
             header("Authorization", "Bearer $employeeToken")
         }.andExpect {
             status { isNoContent() }
@@ -117,7 +117,7 @@ class ReservationNoShowIntegrationTest {
         val updated = reservationRepository.findById(reservation.id!!).get()
         assertEquals(ReservationStatus.NO_SHOW, updated.status)
 
-        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id)!!
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!)!!
         assertEquals(1, block.noShowCount)
     }
 
@@ -125,7 +125,7 @@ class ReservationNoShowIntegrationTest {
     fun `PATCH no-show as customer should return 403`() {
         val reservation = saveReservation()
 
-        mockMvc.patch("/api/reservations/${reservation.id}/no-show") {
+        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
             header("Authorization", "Bearer $customerToken")
         }.andExpect {
             status { isForbidden() }
@@ -136,7 +136,7 @@ class ReservationNoShowIntegrationTest {
     fun `PATCH no-show on already completed reservation should return 409`() {
         val reservation = saveReservation(ReservationStatus.COMPLETED)
 
-        mockMvc.patch("/api/reservations/${reservation.id}/no-show") {
+        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
             header("Authorization", "Bearer $employeeToken")
         }.andExpect {
             status { isConflict() }
@@ -147,7 +147,7 @@ class ReservationNoShowIntegrationTest {
     fun `PATCH no-show on cancelled reservation should return 409`() {
         val reservation = saveReservation(ReservationStatus.CANCELLED)
 
-        mockMvc.patch("/api/reservations/${reservation.id}/no-show") {
+        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
             header("Authorization", "Bearer $employeeToken")
         }.andExpect {
             status { isConflict() }
@@ -164,13 +164,13 @@ class ReservationNoShowIntegrationTest {
         val otherEmployment = companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = otherCompany.id!!,
-                userId = otherOwner.id,
+                userId = otherOwner.id!!,
                 role = "OWNER"
             )
         )
         val otherToken = jwtService.generateStaffToken(otherOwner, otherEmployment)
 
-        mockMvc.patch("/api/reservations/${reservation.id}/no-show") {
+        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
             header("Authorization", "Bearer $otherToken")
         }.andExpect {
             status { isConflict() }
@@ -191,13 +191,13 @@ class ReservationNoShowIntegrationTest {
         val otherEmployment = companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = otherCompany.id!!,
-                userId = otherOwner.id,
+                userId = otherOwner.id!!,
                 role = "OWNER"
             )
         )
         val otherToken = jwtService.generateStaffToken(otherOwner, otherEmployment)
 
-        mockMvc.patch("/api/reservations/${reservation.id}/complete") {
+        mockMvc.patch("/api/reservations/${reservation.id!!}/complete") {
             header("Authorization", "Bearer $otherToken")
         }.andExpect {
             status { isConflict() }
@@ -211,12 +211,12 @@ class ReservationNoShowIntegrationTest {
     fun `PATCH no-show three times should auto-block the customer`() {
         repeat(3) {
             val r = saveReservation()
-            mockMvc.patch("/api/reservations/${r.id}/no-show") {
+            mockMvc.patch("/api/reservations/${r.id!!}/no-show") {
                 header("Authorization", "Bearer $employeeToken")
             }.andExpect { status { isNoContent() } }
         }
 
-        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id)!!
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!)!!
         assertEquals(3, block.noShowCount)
         assertTrue(block.blocked)
     }
@@ -237,7 +237,7 @@ class ReservationNoShowIntegrationTest {
                 executor.submit {
                     ready.countDown()
                     start.await()
-                    mockMvc.patch("/api/reservations/${reservation.id}/no-show") {
+                    mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
                         header("Authorization", "Bearer $employeeToken")
                     }.andExpect { status { isNoContent() } }
                 }
@@ -250,7 +250,7 @@ class ReservationNoShowIntegrationTest {
             executor.shutdownNow()
         }
 
-        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id)!!
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!)!!
         assertEquals(requestCount, block.noShowCount)
         assertTrue(block.blocked)
     }

@@ -34,7 +34,9 @@ class NotificationScheduler(
         val sentIds = mutableListOf<Long>()
         pending.forEach { reservation ->
             runCatching { notificationService.sendReminder(reservation) }
-                .onSuccess { sentIds += reservation.id!! }
+                .onSuccess {
+                    sentIds += requireNotNull(reservation.id) { "Scheduled reservation must have an ID" }
+                }
                 .onFailure { logger.warn("Failed to send reminder for reservation ${reservation.id}", it) }
         }
         if (sentIds.isNotEmpty()) reservationRepository.markRemindersAsSent(sentIds)

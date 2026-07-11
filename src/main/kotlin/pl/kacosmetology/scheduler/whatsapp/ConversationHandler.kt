@@ -83,7 +83,9 @@ class ConversationHandler(
         }
         val newState = ConversationState(
             step = ConversationStep.SELECTING_SERVICE,
-            serviceOptions = offerings.map { it.id!! }
+            serviceOptions = offerings.map {
+                requireNotNull(it.id) { "Persisted offering must have an ID" }
+            }
         )
         store.save(phone, newState)
         sender.sendMessage(phone, sb.toString())
@@ -267,7 +269,12 @@ class ConversationHandler(
     }
 
     private fun handleAwaitingLastName(phone: String, state: ConversationState, text: String) {
-        createReservation(phone, state, state.pendingFirstName!!, text)
+        val firstName = state.pendingFirstName ?: run {
+            store.delete(phone)
+            sender.sendMessage(phone, "Coś poszło nie tak. Zacznijmy od nowa.")
+            return
+        }
+        createReservation(phone, state, firstName, text)
     }
 
     // -------------------------------------------------------------------------

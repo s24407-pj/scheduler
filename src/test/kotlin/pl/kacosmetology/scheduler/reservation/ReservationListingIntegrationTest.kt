@@ -79,7 +79,7 @@ class ReservationListingIntegrationTest {
         val employeeEmployment = companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = company.id!!,
-                userId = employee.id,
+                userId = employee.id!!,
                 role = "EMPLOYEE"
             )
         )
@@ -105,8 +105,8 @@ class ReservationListingIntegrationTest {
         reservationRepository.save(
             Reservation(
                 companyId = company.id!!,
-                customerId = customerA.id,
-                employeeId = employee.id,
+                customerId = customerA.id!!,
+                employeeId = employee.id!!,
                 serviceId = service.id!!,
                 price = 100,
                 startTime = todayStart.withHour(10),
@@ -119,8 +119,8 @@ class ReservationListingIntegrationTest {
         reservationRepository.save(
             Reservation(
                 companyId = company.id!!,
-                customerId = customerA.id,
-                employeeId = employee.id,
+                customerId = customerA.id!!,
+                employeeId = employee.id!!,
                 serviceId = service.id!!,
                 price = 100,
                 startTime = todayStart.withHour(12),
@@ -133,8 +133,8 @@ class ReservationListingIntegrationTest {
         reservationRepository.save(
             Reservation(
                 companyId = company.id!!,
-                customerId = customerB.id,
-                employeeId = employee.id,
+                customerId = customerB.id!!,
+                employeeId = employee.id!!,
                 serviceId = service.id!!,
                 price = 100,
                 startTime = todayStart.withHour(14),
@@ -214,8 +214,8 @@ class ReservationListingIntegrationTest {
         reservationRepository.save(
             Reservation(
                 companyId = service.companyId,
-                customerId = customer.id,
-                employeeId = employee.id,
+                customerId = customer.id!!,
+                employeeId = employee.id!!,
                 serviceId = service.id!!,
                 price = 100,
                 startTime = todayStart.minusMinutes(30),

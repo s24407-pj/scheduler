@@ -58,17 +58,10 @@ class OfferingService(
             throw IllegalStateException("Brak dostępu do tej usługi")
         }
 
-        return offeringRepository.save(
-            Offering(
-                id = existing.id,
-                companyId = existing.companyId,
-                name = request.name,
-                durationMinutes = request.durationMinutes,
-                price = request.price,
-                active = existing.active,
-                categoryId = existing.categoryId
-            )
-        )
+        existing.name = request.name
+        existing.durationMinutes = request.durationMinutes
+        existing.price = request.price
+        return existing
     }
 
     /** Reactivates a previously deactivated offering. */
@@ -81,17 +74,7 @@ class OfferingService(
             throw IllegalStateException("Brak dostępu do tej usługi")
         }
 
-        offeringRepository.save(
-            Offering(
-                id = existing.id,
-                companyId = existing.companyId,
-                name = existing.name,
-                durationMinutes = existing.durationMinutes,
-                price = existing.price,
-                active = true,
-                categoryId = existing.categoryId
-            )
-        )
+        existing.active = true
     }
 
     /**
@@ -130,16 +113,6 @@ class OfferingService(
             throw IllegalStateException("Brak dostępu do tej usługi")
         }
 
-        offeringRepository.save(
-            Offering(
-                id = existing.id,
-                companyId = existing.companyId,
-                name = existing.name,
-                durationMinutes = existing.durationMinutes,
-                price = existing.price,
-                active = false,
-                categoryId = existing.categoryId
-            )
-        )
+        existing.active = false
     }
 }

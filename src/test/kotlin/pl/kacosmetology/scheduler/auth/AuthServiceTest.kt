@@ -305,11 +305,11 @@ class AuthServiceTest {
     fun `loginStaff should issue token for the only employment and exact role`() {
         val request = StaffLoginRequest("owner@mail.com", "password123")
         val user = staffUser()
-        val employment = CompanyEmployee(11L, 22L, user.id, "OWNER")
+        val employment = CompanyEmployee(11L, 22L, user.id!!, "OWNER")
         every { loginRateLimiter.checkAndIncrement(testIp) } returns true
         every { userRepository.findByEmail(request.email) } returns user
         every { passwordEncoder.matches(request.password, user.passwordHash) } returns true
-        every { companyEmployeeRepository.findAllByUserId(user.id) } returns listOf(employment)
+        every { companyEmployeeRepository.findAllByUserId(user.id!!) } returns listOf(employment)
         every { jwtService.generateStaffToken(user, employment) } returns "SCOPED_TOKEN"
 
         val response = authService.loginStaff(request, testIp)
@@ -324,12 +324,12 @@ class AuthServiceTest {
     fun `loginStaff should return sorted options for multiple employments without selection`() {
         val request = StaffLoginRequest("owner@mail.com", "password123")
         val user = staffUser()
-        val employmentB = CompanyEmployee(12L, 32L, user.id, "OWNER")
-        val employmentA = CompanyEmployee(11L, 31L, user.id, "EMPLOYEE")
+        val employmentB = CompanyEmployee(12L, 32L, user.id!!, "OWNER")
+        val employmentA = CompanyEmployee(11L, 31L, user.id!!, "EMPLOYEE")
         every { loginRateLimiter.checkAndIncrement(testIp) } returns true
         every { userRepository.findByEmail(request.email) } returns user
         every { passwordEncoder.matches(request.password, user.passwordHash) } returns true
-        every { companyEmployeeRepository.findAllByUserId(user.id) } returns listOf(employmentB, employmentA)
+        every { companyEmployeeRepository.findAllByUserId(user.id!!) } returns listOf(employmentB, employmentA)
         every { companyRepository.findAllById(listOf(32L, 31L)) } returns
             listOf(Company(id = 32L, name = "Zulu"), Company(id = 31L, name = "Alpha"))
 
@@ -343,13 +343,13 @@ class AuthServiceTest {
     @Test
     fun `loginStaff should issue token only for selected employment`() {
         val user = staffUser()
-        val employee = CompanyEmployee(11L, 31L, user.id, "EMPLOYEE")
-        val owner = CompanyEmployee(12L, 32L, user.id, "OWNER")
+        val employee = CompanyEmployee(11L, 31L, user.id!!, "EMPLOYEE")
+        val owner = CompanyEmployee(12L, 32L, user.id!!, "OWNER")
         val request = StaffLoginRequest("owner@mail.com", "password123", employmentId = 11L)
         every { loginRateLimiter.checkAndIncrement(testIp) } returns true
         every { userRepository.findByEmail(request.email) } returns user
         every { passwordEncoder.matches(request.password, user.passwordHash) } returns true
-        every { companyEmployeeRepository.findAllByUserId(user.id) } returns listOf(employee, owner)
+        every { companyEmployeeRepository.findAllByUserId(user.id!!) } returns listOf(employee, owner)
         every { jwtService.generateStaffToken(user, employee) } returns "EMPLOYEE_TOKEN"
 
         val response = authService.loginStaff(request, testIp)
@@ -366,8 +366,8 @@ class AuthServiceTest {
         every { loginRateLimiter.checkAndIncrement(testIp) } returns true
         every { userRepository.findByEmail(request.email) } returns user
         every { passwordEncoder.matches(request.password, user.passwordHash) } returns true
-        every { companyEmployeeRepository.findAllByUserId(user.id) } returns
-            listOf(CompanyEmployee(11L, 31L, user.id, "EMPLOYEE"))
+        every { companyEmployeeRepository.findAllByUserId(user.id!!) } returns
+            listOf(CompanyEmployee(11L, 31L, user.id!!, "EMPLOYEE"))
 
         assertThrows<IllegalArgumentException> { authService.loginStaff(request, testIp) }
     }
@@ -379,7 +379,7 @@ class AuthServiceTest {
         every { loginRateLimiter.checkAndIncrement(testIp) } returns true
         every { userRepository.findByEmail(request.email) } returns user
         every { passwordEncoder.matches(request.password, user.passwordHash) } returns true
-        every { companyEmployeeRepository.findAllByUserId(user.id) } returns emptyList()
+        every { companyEmployeeRepository.findAllByUserId(user.id!!) } returns emptyList()
 
         assertThrows<IllegalArgumentException> { authService.loginStaff(request, testIp) }
     }

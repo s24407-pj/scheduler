@@ -7,9 +7,7 @@ import jakarta.persistence.*
 @Entity
 @Table(name = "users")
 class User(
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
+    id: Long? = null,
 
     @Column(name = "phone_number", nullable = false, unique = true)
     val phoneNumber: String,
@@ -29,4 +27,9 @@ class User(
 
     @Column(name = "photo_url")
     var photoUrl: String? = null
-)
+) {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    var id: Long? = id
+        protected set
+}

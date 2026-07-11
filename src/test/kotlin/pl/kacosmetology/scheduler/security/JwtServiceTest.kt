@@ -38,7 +38,7 @@ class JwtServiceTest {
     @Test
     fun `staff token should contain claims from the same employment`() {
         val user = user(7L, "+48999888777")
-        val employment = CompanyEmployee(id = 12L, companyId = 34L, userId = user.id, role = "EMPLOYEE")
+        val employment = CompanyEmployee(id = 12L, companyId = 34L, userId = user.id!!, role = "EMPLOYEE")
 
         val token = jwtService.generateStaffToken(user, employment)
 

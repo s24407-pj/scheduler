@@ -6,6 +6,7 @@ import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
@@ -72,7 +73,7 @@ class EmployeePhotoServiceTest {
         val result = employeePhotoService.upload(companyId, employeeId, file)
 
         // THEN
-        assert(result.photoUrl?.startsWith("https://pub.r2.dev/employees/$companyId/$employeeId/") == true)
+        assertTrue(result.photoUrl?.startsWith("https://pub.r2.dev/employees/$companyId/$employeeId/") == true)
         verify(exactly = 1) { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) }
         verify(exactly = 0) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
         verify(exactly = 1) { userRepository.save(user) }
@@ -116,7 +117,7 @@ class EmployeePhotoServiceTest {
         val ex = assertThrows<IllegalArgumentException> {
             employeePhotoService.upload(companyId, employeeId, file)
         }
-        assert(ex.message!!.contains("Niedozwolony typ pliku"))
+        assertTrue(ex.message!!.contains("Niedozwolony typ pliku"))
         verify(exactly = 0) { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) }
     }
 
@@ -130,7 +131,7 @@ class EmployeePhotoServiceTest {
         val ex = assertThrows<IllegalArgumentException> {
             employeePhotoService.upload(companyId, employeeId, file)
         }
-        assert(ex.message!!.contains("za duży"))
+        assertTrue(ex.message!!.contains("za duży"))
         verify(exactly = 0) { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) }
     }
 

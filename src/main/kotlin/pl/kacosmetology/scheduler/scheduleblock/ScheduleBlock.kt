@@ -7,9 +7,7 @@ import java.time.LocalDateTime
 @Entity
 @Table(name = "schedule_blocks")
 class ScheduleBlock(
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long? = null,
+    id: Long? = null,
 
     @Column(name = "company_id", nullable = false)
     val companyId: Long,
@@ -28,4 +26,8 @@ class ScheduleBlock(
 
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     val createdAt: LocalDateTime? = null
-)
+) {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    var id: Long? = id
+        protected set
+}

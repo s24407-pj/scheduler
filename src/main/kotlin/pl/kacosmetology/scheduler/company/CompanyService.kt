@@ -37,7 +37,7 @@ class CompanyService(
             val user = usersById[ce.userId]
                 ?: throw NoSuchElementException("Użytkownik ${ce.userId} nie istnieje")
             CompanyEmployeeResponse(
-                id = ce.id!!,
+                id = requireNotNull(ce.id) { "Persisted employment must have an ID" },
                 userId = ce.userId,
                 firstName = user.firstName,
                 lastName = user.lastName,
@@ -56,25 +56,19 @@ class CompanyService(
         val company = companyRepository.findById(companyId)
             .orElseThrow { NoSuchElementException("Firma nie istnieje") }
 
-        if (!request.closingTime!!.isAfter(request.openingTime!!)) {
+        val openingTime = requireNotNull(request.openingTime) { "Godzina otwarcia jest wymagana" }
+        val closingTime = requireNotNull(request.closingTime) { "Godzina zamknięcia jest wymagana" }
+        if (!closingTime.isAfter(openingTime)) {
             throw IllegalArgumentException("Godzina zamknięcia musi być późniejsza niż godzina otwarcia")
         }
 
-        val updated = companyRepository.save(
-            Company(
-                id = company.id,
-                name = company.name,
-                taxId = company.taxId,
-                address = company.address,
-                openingTime = request.openingTime,
-                closingTime = request.closingTime,
-                slotIntervalMinutes = request.slotIntervalMinutes,
-                maxNoShows = request.maxNoShows,
-                lastMinuteDiscountPercent = request.lastMinuteDiscountPercent,
-                lastMinuteDiscountHours = request.lastMinuteDiscountHours,
-                minBookingAdvanceMinutes = request.minBookingAdvanceMinutes
-            )
-        )
-        return updated.toSettingsResponse()
+        company.openingTime = openingTime
+        company.closingTime = closingTime
+        company.slotIntervalMinutes = request.slotIntervalMinutes
+        company.maxNoShows = request.maxNoShows
+        company.lastMinuteDiscountPercent = request.lastMinuteDiscountPercent
+        company.lastMinuteDiscountHours = request.lastMinuteDiscountHours
+        company.minBookingAdvanceMinutes = request.minBookingAdvanceMinutes
+        return company.toSettingsResponse()
     }
 }

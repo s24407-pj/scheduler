@@ -103,7 +103,8 @@ class AuthService(
             throw IllegalArgumentException("Nieprawidłowy email lub hasło")
         }
 
-        val employments = companyEmployeeRepository.findAllByUserId(user.id)
+        val userId = requireNotNull(user.id) { "Persisted staff user must have an ID" }
+        val employments = companyEmployeeRepository.findAllByUserId(userId)
         if (employments.isEmpty()) {
             throw IllegalArgumentException("Użytkownik nie ma przypisania do firmy")
         }

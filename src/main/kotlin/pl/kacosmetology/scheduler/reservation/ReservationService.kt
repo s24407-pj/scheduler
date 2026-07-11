@@ -254,7 +254,7 @@ class ReservationService(
             }
 
         return createReservation(
-            customerId = customer.id,
+            customerId = requireNotNull(customer.id) { "Persisted customer must have an ID" },
             employeeId = employeeId,
             offeringId = serviceId,
             startTime = startTime,

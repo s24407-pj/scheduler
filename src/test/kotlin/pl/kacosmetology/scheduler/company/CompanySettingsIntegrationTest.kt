@@ -69,14 +69,14 @@ class CompanySettingsIntegrationTest {
 
         val owner = userRepository.save(User(phoneNumber = "+48100200300", firstName = "Owner", lastName = "Test"))
         val ownerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER")
+            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
         )
         ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
 
         val employee =
             userRepository.save(User(phoneNumber = "+48300200100", firstName = "Employee", lastName = "Test"))
         val employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
         )
         employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
     }

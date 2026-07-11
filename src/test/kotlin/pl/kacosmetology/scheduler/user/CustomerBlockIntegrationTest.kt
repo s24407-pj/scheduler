@@ -86,13 +86,13 @@ class CustomerBlockIntegrationTest {
 
         owner = userRepository.save(User(phoneNumber = "+48800111001", firstName = "Owner", lastName = "Test"))
         val ownerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER")
+            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
         )
         ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
 
         employee = userRepository.save(User(phoneNumber = "+48800222001", firstName = "Employee", lastName = "Test"))
         val employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
         )
         employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
 
@@ -108,8 +108,8 @@ class CustomerBlockIntegrationTest {
         reservationRepository.save(
             Reservation(
                 companyId = companyId,
-                customerId = customer.id,
-                employeeId = employee.id,
+                customerId = customer.id!!,
+                employeeId = employee.id!!,
                 serviceId = serviceId,
                 price = 100,
                 startTime = LocalDateTime.now().minusDays(1),
@@ -121,13 +121,13 @@ class CustomerBlockIntegrationTest {
 
     @Test
     fun `PATCH block as owner should return 204 and block the customer`() {
-        mockMvc.patch("/api/customers/${customer.id}/block") {
+        mockMvc.patch("/api/customers/${customer.id!!}/block") {
             header("Authorization", "Bearer $ownerToken")
         }.andExpect {
             status { isNoContent() }
         }
 
-        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id)!!
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!)!!
         assertTrue(block.blocked)
     }
 
@@ -135,23 +135,23 @@ class CustomerBlockIntegrationTest {
     fun `PATCH unblock as owner should return 204 and unblock the customer`() {
         // First set up a block record
         companyCustomerBlockRepository.save(
-            CompanyCustomerBlock(companyId = companyId, customerId = customer.id, noShowCount = 5, blocked = true)
+            CompanyCustomerBlock(companyId = companyId, customerId = customer.id!!, noShowCount = 5, blocked = true)
         )
 
-        mockMvc.patch("/api/customers/${customer.id}/unblock") {
+        mockMvc.patch("/api/customers/${customer.id!!}/unblock") {
             header("Authorization", "Bearer $ownerToken")
         }.andExpect {
             status { isNoContent() }
         }
 
-        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id)!!
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!)!!
         assertFalse(block.blocked)
         assertEquals(0, block.noShowCount)
     }
 
     @Test
     fun `PATCH block as employee should return 403`() {
-        mockMvc.patch("/api/customers/${customer.id}/block") {
+        mockMvc.patch("/api/customers/${customer.id!!}/block") {
             header("Authorization", "Bearer $employeeToken")
         }.andExpect {
             status { isForbidden() }
@@ -162,12 +162,12 @@ class CustomerBlockIntegrationTest {
     fun `blocked customer cannot create a reservation`() {
         // Block the customer at this company
         companyCustomerBlockRepository.save(
-            CompanyCustomerBlock(companyId = companyId, customerId = customer.id, blocked = true)
+            CompanyCustomerBlock(companyId = companyId, customerId = customer.id!!, blocked = true)
         )
 
         val reservationTime = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
         val request = CreateReservationRequest(
-            employeeId = employee.id,
+            employeeId = employee.id!!,
             serviceId = serviceId,
             startTime = reservationTime
         )
@@ -187,7 +187,7 @@ class CustomerBlockIntegrationTest {
             User(phoneNumber = "+48800444001", firstName = "Obcy", lastName = "Klient")
         )
 
-        mockMvc.patch("/api/customers/${otherCustomer.id}/block") {
+        mockMvc.patch("/api/customers/${otherCustomer.id!!}/block") {
             header("Authorization", "Bearer $ownerToken")
         }.andExpect {
             status { isBadRequest() }
@@ -197,9 +197,9 @@ class CustomerBlockIntegrationTest {
     @Test
     fun `unblock when no block record exists should return 204`() {
         // Customer has a reservation (from setup) but no block record
-        assertNull(companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id))
+        assertNull(companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!))
 
-        mockMvc.patch("/api/customers/${customer.id}/unblock") {
+        mockMvc.patch("/api/customers/${customer.id!!}/unblock") {
             header("Authorization", "Bearer $ownerToken")
         }.andExpect {
             status { isNoContent() }

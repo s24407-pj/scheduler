@@ -120,7 +120,7 @@ class CustomerServiceTest {
         customerService.blockCustomer(customerId, companyId)
 
         // THEN
-        assert(existingBlock.blocked)
+        assertTrue(existingBlock.blocked)
         verify(exactly = 1) { companyCustomerBlockRepository.save(existingBlock) }
     }
 
@@ -200,7 +200,7 @@ class CustomerServiceTest {
     @Test
     fun `getCustomerStatus includes notes from CompanyCustomer record`() {
         // GIVEN
-        val customer = User(phoneNumber = "+48123456789", firstName = "Jan", lastName = "Kowalski")
+        val customer = User(id = customerId, phoneNumber = "+48123456789", firstName = "Jan", lastName = "Kowalski")
         every { userRepository.findById(customerId) } returns Optional.of(customer)
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
         every { companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId) } returns
@@ -216,7 +216,7 @@ class CustomerServiceTest {
     @Test
     fun `getCustomerStatus returns null notes when no CompanyCustomer record`() {
         // GIVEN
-        val customer = User(phoneNumber = "+48123456789", firstName = "Jan", lastName = "Kowalski")
+        val customer = User(id = customerId, phoneNumber = "+48123456789", firstName = "Jan", lastName = "Kowalski")
         every { userRepository.findById(customerId) } returns Optional.of(customer)
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
         every { companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId) } returns null

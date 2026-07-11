@@ -82,10 +82,10 @@ class OfferingManagementIntegrationTest {
         userB = userRepository.save(User(phoneNumber = "+48999888777", firstName = "Admin", lastName = "FirmaB"))
 
         employmentA = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyA_Id, userId = userA.id, role = "OWNER")
+            CompanyEmployee(companyId = companyA_Id, userId = userA.id!!, role = "OWNER")
         )
         employmentB = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyB_Id, userId = userB.id, role = "OWNER")
+            CompanyEmployee(companyId = companyB_Id, userId = userB.id!!, role = "OWNER")
         )
     }
 
@@ -125,7 +125,7 @@ class OfferingManagementIntegrationTest {
 
         val tokenB = jwtService.generateStaffToken(userB, employmentB)
 
-        mockMvc.delete("/api/offerings/${offeringOfCompanyA.id}") {
+        mockMvc.delete("/api/offerings/${offeringOfCompanyA.id!!}") {
             header("Authorization", "Bearer $tokenB")
         }.andExpect {
             status { isForbidden() }
@@ -163,11 +163,11 @@ class OfferingManagementIntegrationTest {
         )
         val tokenA = jwtService.generateStaffToken(userA, employmentA)
 
-        mockMvc.get("/api/offerings/${offering.id}") {
+        mockMvc.get("/api/offerings/${offering.id!!}") {
             header("Authorization", "Bearer $tokenA")
         }.andExpect {
             status { isOk() }
-            jsonPath("$.id") { value(offering.id) }
+            jsonPath("$.id") { value(offering.id!!) }
             jsonPath("$.name") { value("Masaż") }
         }
     }
@@ -179,7 +179,7 @@ class OfferingManagementIntegrationTest {
         )
         val tokenA = jwtService.generateStaffToken(userA, employmentA)
 
-        mockMvc.patch("/api/offerings/${inactive.id}/activate") {
+        mockMvc.patch("/api/offerings/${inactive.id!!}/activate") {
             header("Authorization", "Bearer $tokenA")
         }.andExpect {
             status { isNoContent() }
@@ -196,7 +196,7 @@ class OfferingManagementIntegrationTest {
         )
         val tokenB = jwtService.generateStaffToken(userB, employmentB)
 
-        mockMvc.patch("/api/offerings/${inactive.id}/activate") {
+        mockMvc.patch("/api/offerings/${inactive.id!!}/activate") {
             header("Authorization", "Bearer $tokenB")
         }.andExpect {
             status { isForbidden() }
@@ -213,7 +213,7 @@ class OfferingManagementIntegrationTest {
 
         val updateRequest = OfferingRequest(name = "Nowa Nazwa", durationMinutes = 45, price = 250)
 
-        mockMvc.put("/api/offerings/${initialOffering.id}") {
+        mockMvc.put("/api/offerings/${initialOffering.id!!}") {
             header("Authorization", "Bearer $tokenA")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(updateRequest)

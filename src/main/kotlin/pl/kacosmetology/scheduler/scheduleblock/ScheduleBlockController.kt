@@ -44,8 +44,8 @@ class ScheduleBlockController(
         return scheduleBlockService.createBlock(
             employeeId = targetEmployeeId,
             companyId = companyId,
-            startTime = request.startTime!!,
-            endTime = request.endTime!!,
+            startTime = requireNotNull(request.startTime) { "Czas rozpoczęcia jest wymagany" },
+            endTime = requireNotNull(request.endTime) { "Czas zakończenia jest wymagany" },
             reason = request.reason
         ).toResponse()
     }

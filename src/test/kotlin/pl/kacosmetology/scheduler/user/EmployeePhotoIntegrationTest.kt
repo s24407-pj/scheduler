@@ -75,10 +75,10 @@ class EmployeePhotoIntegrationTest {
         employee = userRepository.save(User(phoneNumber = "+48100000002", firstName = "Employee", lastName = "Test"))
 
         ownerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER")
+            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
         )
         employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
         )
 
         every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder()
@@ -95,13 +95,13 @@ class EmployeePhotoIntegrationTest {
         val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(1024))
 
         mockMvc.perform(
-            multipart("/api/employees/${employee.id}/photo")
+            multipart("/api/employees/${employee.id!!}/photo")
                 .file(file)
                 .header("Authorization", "Bearer ${ownerToken()}")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.photoUrl").isString)
-            .andExpect(jsonPath("$.id").value(employee.id))
+            .andExpect(jsonPath("$.id").value(employee.id!!))
     }
 
     @Test
@@ -109,7 +109,7 @@ class EmployeePhotoIntegrationTest {
         // First upload
         val file1 = MockMultipartFile("photo", "first.jpg", "image/jpeg", ByteArray(512))
         mockMvc.perform(
-            multipart("/api/employees/${employee.id}/photo")
+            multipart("/api/employees/${employee.id!!}/photo")
                 .file(file1)
                 .header("Authorization", "Bearer ${ownerToken()}")
         ).andExpect(status().isOk)
@@ -117,7 +117,7 @@ class EmployeePhotoIntegrationTest {
         // Second upload should trigger a delete of the old key
         val file2 = MockMultipartFile("photo", "second.png", "image/png", ByteArray(256))
         mockMvc.perform(
-            multipart("/api/employees/${employee.id}/photo")
+            multipart("/api/employees/${employee.id!!}/photo")
                 .file(file2)
                 .header("Authorization", "Bearer ${ownerToken()}")
         )
@@ -133,7 +133,7 @@ class EmployeePhotoIntegrationTest {
         val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
 
         mockMvc.perform(
-            multipart("/api/employees/${employee.id}/photo")
+            multipart("/api/employees/${employee.id!!}/photo")
                 .file(file)
                 .header("Authorization", "Bearer ${employeeToken()}")
         )
@@ -145,7 +145,7 @@ class EmployeePhotoIntegrationTest {
         val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
 
         mockMvc.perform(
-            multipart("/api/employees/${employee.id}/photo").file(file)
+            multipart("/api/employees/${employee.id!!}/photo").file(file)
         )
             .andExpect(status().isForbidden)
     }
@@ -157,7 +157,7 @@ class EmployeePhotoIntegrationTest {
         val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
 
         mockMvc.perform(
-            multipart("/api/employees/${outsider.id}/photo")
+            multipart("/api/employees/${outsider.id!!}/photo")
                 .file(file)
                 .header("Authorization", "Bearer ${ownerToken()}")
         )
@@ -169,7 +169,7 @@ class EmployeePhotoIntegrationTest {
         val file = MockMultipartFile("photo", "doc.pdf", "application/pdf", ByteArray(100))
 
         mockMvc.perform(
-            multipart("/api/employees/${employee.id}/photo")
+            multipart("/api/employees/${employee.id!!}/photo")
                 .file(file)
                 .header("Authorization", "Bearer ${ownerToken()}")
         )
@@ -181,7 +181,7 @@ class EmployeePhotoIntegrationTest {
         val file = MockMultipartFile("photo", "big.jpg", "image/jpeg", ByteArray(6 * 1024 * 1024))
 
         mockMvc.perform(
-            multipart("/api/employees/${employee.id}/photo")
+            multipart("/api/employees/${employee.id!!}/photo")
                 .file(file)
                 .header("Authorization", "Bearer ${ownerToken()}")
         )
@@ -191,10 +191,10 @@ class EmployeePhotoIntegrationTest {
     @Test
     fun `DELETE photo - owner removes existing photo and gets 200 with null photoUrl`() {
         // Persist photo URL directly
-        employee.photoUrl = "https://pub.r2.dev/employees/$companyId/${employee.id}/abc.jpg"
+        employee.photoUrl = "https://pub.r2.dev/employees/$companyId/${employee.id!!}/abc.jpg"
         userRepository.save(employee)
 
-        mockMvc.delete("/api/employees/${employee.id}/photo") {
+        mockMvc.delete("/api/employees/${employee.id!!}/photo") {
             header("Authorization", "Bearer ${ownerToken()}")
         }.andExpect {
             status { isOk() }
@@ -206,7 +206,7 @@ class EmployeePhotoIntegrationTest {
 
     @Test
     fun `DELETE photo - no-op when employee has no photo, returns 200 with null photoUrl`() {
-        mockMvc.delete("/api/employees/${employee.id}/photo") {
+        mockMvc.delete("/api/employees/${employee.id!!}/photo") {
             header("Authorization", "Bearer ${ownerToken()}")
         }.andExpect {
             status { isOk() }

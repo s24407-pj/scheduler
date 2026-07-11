@@ -72,15 +72,15 @@ class WorkScheduleIntegrationTest {
 
         val owner = userRepository.save(User(phoneNumber = "+48111222333", firstName = "Owner", lastName = "Test"))
         val ownerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER")
+            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
         )
         ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
 
         val employee = userRepository.save(User(phoneNumber = "+48333222111", firstName = "Emp", lastName = "Test"))
         val employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
         )
-        employeeId = employee.id
+        employeeId = employee.id!!
         employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
     }
 
@@ -275,10 +275,10 @@ class WorkScheduleIntegrationTest {
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
         val otherEmployee = userRepository.save(User(phoneNumber = "+48400400400", firstName = "Other", lastName = "Employee"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE")
         )
 
-        mockMvc.get("/api/employees/${otherEmployee.id}/work-schedule") {
+        mockMvc.get("/api/employees/${otherEmployee.id!!}/work-schedule") {
             header("Authorization", "Bearer $ownerToken")
         }.andExpect {
             status { isNotFound() }

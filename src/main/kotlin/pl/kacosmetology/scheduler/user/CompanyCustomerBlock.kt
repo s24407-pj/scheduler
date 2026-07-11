@@ -6,8 +6,7 @@ import jakarta.persistence.*
 @Entity
 @Table(name = "company_customer_blocks")
 class CompanyCustomerBlock(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
+    id: Long? = null,
 
     @Column(name = "company_id", nullable = false)
     val companyId: Long,
@@ -20,4 +19,9 @@ class CompanyCustomerBlock(
 
     @Column(nullable = false)
     var blocked: Boolean = false
-)
+) {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    var id: Long? = id
+        protected set
+}

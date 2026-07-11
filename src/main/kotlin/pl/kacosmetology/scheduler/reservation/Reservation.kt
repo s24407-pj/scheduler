@@ -3,14 +3,14 @@ package pl.kacosmetology.scheduler.reservation
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
+/** Lifecycle states supported by a reservation. */
 enum class ReservationStatus { PENDING, CONFIRMED, CANCELLED, COMPLETED, NO_SHOW }
 
+/** A priced booking connecting a customer, employee, and offering within one company. */
 @Entity
 @Table(name = "reservations")
 class Reservation(
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long? = null,
+    id: Long? = null,
 
     @Column(name = "company_id", nullable = false)
     val companyId: Long,
@@ -45,4 +45,8 @@ class Reservation(
 
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     val createdAt: LocalDateTime? = null
-)
+) {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    var id: Long? = id
+        protected set
+}

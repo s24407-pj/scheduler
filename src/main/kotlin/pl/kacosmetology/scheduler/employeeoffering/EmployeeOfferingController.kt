@@ -29,7 +29,7 @@ class EmployeeOfferingController(
         @PathVariable employeeId: Long,
         @AuthenticationPrincipal userDetails: CustomUserDetails
     ): List<EmployeeOfferingAssignmentResponse> =
-        employeeOfferingService.getAssignments(userDetails.companyId!!, employeeId)
+        employeeOfferingService.getAssignments(userDetails.requireCompanyId(), employeeId)
 
     /** Assigns an offering to an employee. Requires OWNER role. */
     @PostMapping("/api/employees/{employeeId}/offerings/{offeringId}")
@@ -40,7 +40,7 @@ class EmployeeOfferingController(
         @PathVariable offeringId: Long,
         @AuthenticationPrincipal userDetails: CustomUserDetails
     ): EmployeeOfferingAssignmentResponse =
-        employeeOfferingService.assignOffering(userDetails.companyId!!, employeeId, offeringId)
+        employeeOfferingService.assignOffering(userDetails.requireCompanyId(), employeeId, offeringId)
 
     /** Removes an offering assignment from an employee. Requires OWNER role. */
     @DeleteMapping("/api/employees/{employeeId}/offerings/{offeringId}")
@@ -50,5 +50,5 @@ class EmployeeOfferingController(
         @PathVariable employeeId: Long,
         @PathVariable offeringId: Long,
         @AuthenticationPrincipal userDetails: CustomUserDetails
-    ) = employeeOfferingService.removeAssignment(userDetails.companyId!!, employeeId, offeringId)
+    ) = employeeOfferingService.removeAssignment(userDetails.requireCompanyId(), employeeId, offeringId)
 }

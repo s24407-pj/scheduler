@@ -65,16 +65,6 @@ class OfferingCategoryService(
                 throw IllegalStateException("Brak dostępu do tej kategorii")
             }
         }
-        offeringRepository.save(
-            Offering(
-                id = offering.id,
-                companyId = offering.companyId,
-                name = offering.name,
-                durationMinutes = offering.durationMinutes,
-                price = offering.price,
-                active = offering.active,
-                categoryId = categoryId
-            )
-        )
+        offering.categoryId = categoryId
     }
 }

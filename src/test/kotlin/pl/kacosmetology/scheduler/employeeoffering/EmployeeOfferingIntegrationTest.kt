@@ -83,15 +83,15 @@ class EmployeeOfferingIntegrationTest {
 
         val owner = userRepository.save(User(phoneNumber = "+48100100100", firstName = "Owner", lastName = "Test"))
         val ownerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER")
+            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
         )
         ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
 
         val employee = userRepository.save(User(phoneNumber = "+48200200200", firstName = "Emp", lastName = "Test"))
         val employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
         )
-        employeeId = employee.id
+        employeeId = employee.id!!
         employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
 
         val offering = offeringRepository.save(
@@ -197,10 +197,10 @@ class EmployeeOfferingIntegrationTest {
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
         val otherEmployee = userRepository.save(User(phoneNumber = "+48400400400", firstName = "Other", lastName = "Employee"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE")
         )
 
-        mockMvc.get("/api/employees/${otherEmployee.id}/offerings") {
+        mockMvc.get("/api/employees/${otherEmployee.id!!}/offerings") {
             header("Authorization", "Bearer $ownerToken")
         }.andExpect {
             status { isNotFound() }
@@ -249,7 +249,7 @@ class EmployeeOfferingIntegrationTest {
 
         val body = mapOf(
             "employeeId" to employeeId,
-            "serviceId" to otherOffering.id,
+            "serviceId" to otherOffering.id!!,
             "startTime" to LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
                 .toString(),
             "customerPhone" to customer.phoneNumber

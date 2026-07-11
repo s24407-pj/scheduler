@@ -84,10 +84,10 @@ class OfferingImageIntegrationTest {
         employee = userRepository.save(User(phoneNumber = "+48100000002", firstName = "Employee", lastName = "Test"))
 
         ownerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER")
+            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
         )
         employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
         )
 
         every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder()
@@ -107,7 +107,7 @@ class OfferingImageIntegrationTest {
         val file = MockMultipartFile("image", "photo.jpg", "image/jpeg", ByteArray(1024))
 
         mockMvc.perform(
-            multipart("/api/offerings/${offering.id}/image")
+            multipart("/api/offerings/${offering.id!!}/image")
                 .file(file)
                 .header("Authorization", "Bearer ${ownerToken()}")
         )
@@ -124,7 +124,7 @@ class OfferingImageIntegrationTest {
         val file = MockMultipartFile("image", "photo.png", "image/png", ByteArray(100))
 
         mockMvc.perform(
-            multipart("/api/offerings/${offering.id}/image")
+            multipart("/api/offerings/${offering.id!!}/image")
                 .file(file)
                 .header("Authorization", "Bearer ${employeeToken()}")
         )
@@ -139,7 +139,7 @@ class OfferingImageIntegrationTest {
         val file = MockMultipartFile("image", "photo.png", "image/png", ByteArray(100))
 
         mockMvc.perform(
-            multipart("/api/offerings/${offering.id}/image").file(file)
+            multipart("/api/offerings/${offering.id!!}/image").file(file)
         )
             .andExpect(status().isForbidden)
     }
@@ -164,7 +164,7 @@ class OfferingImageIntegrationTest {
         val file = MockMultipartFile("image", "doc.pdf", "application/pdf", ByteArray(100))
 
         mockMvc.perform(
-            multipart("/api/offerings/${offering.id}/image")
+            multipart("/api/offerings/${offering.id!!}/image")
                 .file(file)
                 .header("Authorization", "Bearer ${ownerToken()}")
         )
@@ -187,7 +187,7 @@ class OfferingImageIntegrationTest {
         val file = MockMultipartFile("image", "extra.jpg", "image/jpeg", ByteArray(100))
 
         mockMvc.perform(
-            multipart("/api/offerings/${offering.id}/image")
+            multipart("/api/offerings/${offering.id!!}/image")
                 .file(file)
                 .header("Authorization", "Bearer ${ownerToken()}")
         )
@@ -203,7 +203,7 @@ class OfferingImageIntegrationTest {
             OfferingImage(offeringId = offering.id!!, imageUrl = "http://pub.r2.dev/offerings/1/1/abc.jpg")
         )
 
-        mockMvc.delete("/api/offerings/${offering.id}/image/${image.id}") {
+        mockMvc.delete("/api/offerings/${offering.id!!}/image/${image.id!!}") {
             header("Authorization", "Bearer ${ownerToken()}")
         }.andExpect {
             status { isOk() }
@@ -217,7 +217,7 @@ class OfferingImageIntegrationTest {
             Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80)
         )
 
-        mockMvc.delete("/api/offerings/${offering.id}/image/99999") {
+        mockMvc.delete("/api/offerings/${offering.id!!}/image/99999") {
             header("Authorization", "Bearer ${ownerToken()}")
         }.andExpect {
             status { isNotFound() }

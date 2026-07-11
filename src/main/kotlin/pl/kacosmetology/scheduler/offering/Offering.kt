@@ -3,31 +3,35 @@ package pl.kacosmetology.scheduler.offering
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
+/** Company-scoped salon service that can be booked by customers. */
 @Entity
 @Table(name = "offerings")
 class Offering(
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long? = null,
+    id: Long? = null,
 
     @Column(name = "company_id", nullable = false)
     val companyId: Long,
 
     @Column(nullable = false)
-    val name: String,
+    var name: String,
 
     @Column(name = "duration_minutes", nullable = false)
-    val durationMinutes: Int,
+    var durationMinutes: Int,
 
     @Column(nullable = false)
-    val price: Int,
+    var price: Int,
 
     @Column(nullable = false)
-    val active: Boolean = true,
+    var active: Boolean = true,
 
     @Column(name = "category_id")
-    val categoryId: Long? = null,
+    var categoryId: Long? = null,
 
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     val createdAt: LocalDateTime? = null
-)
+) {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    var id: Long? = id
+        protected set
+}

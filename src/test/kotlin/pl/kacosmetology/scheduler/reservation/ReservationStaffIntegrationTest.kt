@@ -76,7 +76,7 @@ class ReservationStaffIntegrationTest {
 
         employee = userRepository.save(User(phoneNumber = "+48700111222", firstName = "Styl", lastName = "Pracownik"))
         val employment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
         )
 
         val service = serviceRepository.save(
@@ -95,7 +95,7 @@ class ReservationStaffIntegrationTest {
         )
 
         val body = mapOf(
-            "employeeId" to employee.id,
+            "employeeId" to employee.id!!,
             "serviceId" to serviceId,
             "startTime" to reservationTime.toString(),
             "customerPhone" to existingClient.phoneNumber
@@ -114,7 +114,7 @@ class ReservationStaffIntegrationTest {
 
         val reservations = reservationRepository.findAll()
         assertEquals(1, reservations.size)
-        assertEquals(existingClient.id, reservations.first().customerId)
+        assertEquals(existingClient.id!!, reservations.first().customerId)
     }
 
     @Test
@@ -122,7 +122,7 @@ class ReservationStaffIntegrationTest {
         val newClientPhone = "+48666777888"
 
         val body = mapOf(
-            "employeeId" to employee.id,
+            "employeeId" to employee.id!!,
             "serviceId" to serviceId,
             "startTime" to reservationTime.toString(),
             "customerPhone" to newClientPhone,
@@ -145,7 +145,7 @@ class ReservationStaffIntegrationTest {
 
         val reservations = reservationRepository.findAll()
         assertEquals(1, reservations.size)
-        assertEquals(newClient.id, reservations.first().customerId)
+        assertEquals(newClient.id!!, reservations.first().customerId)
     }
 
     @Test
@@ -153,7 +153,7 @@ class ReservationStaffIntegrationTest {
         val unknownPhone = "+48100200300"
 
         val body = mapOf(
-            "employeeId" to employee.id,
+            "employeeId" to employee.id!!,
             "serviceId" to serviceId,
             "startTime" to reservationTime.toString(),
             "customerPhone" to unknownPhone
@@ -181,7 +181,7 @@ class ReservationStaffIntegrationTest {
             User(phoneNumber = "+48777111222", firstName = "Obcy", lastName = "Pracownik")
         )
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE")
         )
         val otherService = serviceRepository.save(
             Offering(companyId = otherCompany.id!!, name = "Obca usługa", durationMinutes = 30, price = 90)
@@ -189,8 +189,8 @@ class ReservationStaffIntegrationTest {
         val unknownPhone = "+48123999888"
 
         val body = mapOf(
-            "employeeId" to otherEmployee.id,
-            "serviceId" to otherService.id,
+            "employeeId" to otherEmployee.id!!,
+            "serviceId" to otherService.id!!,
             "startTime" to reservationTime.toString(),
             "customerPhone" to unknownPhone,
             "customerFirstName" to "Nowy",
@@ -212,7 +212,7 @@ class ReservationStaffIntegrationTest {
     @Test
     fun `POST reservations-staff should return 403 without token`() {
         val body = mapOf(
-            "employeeId" to employee.id,
+            "employeeId" to employee.id!!,
             "serviceId" to serviceId,
             "startTime" to reservationTime.toString(),
             "customerPhone" to "+48000000000"
@@ -234,13 +234,13 @@ class ReservationStaffIntegrationTest {
         scheduleBlockRepository.save(
             ScheduleBlock(
                 companyId = companyId,
-                employeeId = employee.id,
+                employeeId = employee.id!!,
                 startTime = reservationTime,
                 endTime = reservationTime.plusHours(1)
             )
         )
         val body = mapOf(
-            "employeeId" to employee.id,
+            "employeeId" to employee.id!!,
             "serviceId" to serviceId,
             "startTime" to reservationTime.plusMinutes(30).toString(),
             "customerPhone" to existingClient.phoneNumber

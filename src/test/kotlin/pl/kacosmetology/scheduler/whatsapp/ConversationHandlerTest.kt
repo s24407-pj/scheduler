@@ -5,6 +5,7 @@ import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.availability.AvailabilityService
 import pl.kacosmetology.scheduler.company.CompanyEmployee
@@ -82,9 +83,9 @@ class ConversationHandlerTest {
         val msgSlot = slot<String>()
         verify { store.save(normalizedPhone, any()) }
         verify { sender.sendMessage(eq(normalizedPhone), capture(msgSlot)) }
-        assert(msgSlot.captured.contains("Strzyżenie"))
-        assert(msgSlot.captured.contains("30 min"))
-        assert(msgSlot.captured.contains("80 zł"))
+        assertTrue(msgSlot.captured.contains("Strzyżenie"))
+        assertTrue(msgSlot.captured.contains("30 min"))
+        assertTrue(msgSlot.captured.contains("80 zł"))
     }
 
     @Test
@@ -108,12 +109,12 @@ class ConversationHandlerTest {
 
         val stateSlot = slot<ConversationState>()
         verify { store.save(normalizedPhone, capture(stateSlot)) }
-        assert(stateSlot.captured.step == ConversationStep.SELECTING_EMPLOYEE)
-        assert(stateSlot.captured.serviceId == serviceId)
+        assertTrue(stateSlot.captured.step == ConversationStep.SELECTING_EMPLOYEE)
+        assertTrue(stateSlot.captured.serviceId == serviceId)
 
         val msgSlot = slot<String>()
         verify { sender.sendMessage(eq(normalizedPhone), capture(msgSlot)) }
-        assert(msgSlot.captured.contains("Anna K."))
+        assertTrue(msgSlot.captured.contains("Anna K."))
     }
 
     @Test
@@ -129,7 +130,7 @@ class ConversationHandlerTest {
         verify(exactly = 0) { store.save(any(), any()) }
         val msgSlot = slot<String>()
         verify { sender.sendMessage(eq(normalizedPhone), capture(msgSlot)) }
-        assert(msgSlot.captured.contains("1"))
+        assertTrue(msgSlot.captured.contains("1"))
     }
 
     @Test
@@ -153,9 +154,9 @@ class ConversationHandlerTest {
 
         val stateSlot = slot<ConversationState>()
         verify { store.save(normalizedPhone, capture(stateSlot)) }
-        assert(stateSlot.captured.step == ConversationStep.SELECTING_DATE)
-        assert(stateSlot.captured.employeeId == employeeId)
-        assert(stateSlot.captured.dateOptions.isNotEmpty())
+        assertTrue(stateSlot.captured.step == ConversationStep.SELECTING_DATE)
+        assertTrue(stateSlot.captured.employeeId == employeeId)
+        assertTrue(stateSlot.captured.dateOptions.isNotEmpty())
     }
 
     @Test
@@ -179,9 +180,9 @@ class ConversationHandlerTest {
 
         val stateSlot = slot<ConversationState>()
         verify { store.save(normalizedPhone, capture(stateSlot)) }
-        assert(stateSlot.captured.step == ConversationStep.SELECTING_TIME)
-        assert(stateSlot.captured.date == today)
-        assert(stateSlot.captured.timeOptions.size == 2)
+        assertTrue(stateSlot.captured.step == ConversationStep.SELECTING_TIME)
+        assertTrue(stateSlot.captured.date == today)
+        assertTrue(stateSlot.captured.timeOptions.size == 2)
     }
 
     @Test
@@ -203,14 +204,14 @@ class ConversationHandlerTest {
 
         val stateSlot = slot<ConversationState>()
         verify { store.save(normalizedPhone, capture(stateSlot)) }
-        assert(stateSlot.captured.step == ConversationStep.CONFIRMING)
-        assert(stateSlot.captured.time == LocalTime.of(9, 0))
+        assertTrue(stateSlot.captured.step == ConversationStep.CONFIRMING)
+        assertTrue(stateSlot.captured.time == LocalTime.of(9, 0))
 
         val msgSlot = slot<String>()
         verify { sender.sendMessage(eq(normalizedPhone), capture(msgSlot)) }
-        assert(msgSlot.captured.contains("Strzyżenie"))
-        assert(msgSlot.captured.contains("Anna K."))
-        assert(msgSlot.captured.contains("tak"))
+        assertTrue(msgSlot.captured.contains("Strzyżenie"))
+        assertTrue(msgSlot.captured.contains("Anna K."))
+        assertTrue(msgSlot.captured.contains("tak"))
     }
 
     @Test
@@ -219,7 +220,7 @@ class ConversationHandlerTest {
         val tomorrow = LocalDate.now().plusDays(1)
         val existingUser = User(id = 99L, phoneNumber = normalizedPhone, firstName = "Jan", lastName = "Kowalski")
         val reservation = Reservation(
-            id = 42L, companyId = companyId, customerId = existingUser.id, employeeId = employeeId,
+            id = 42L, companyId = companyId, customerId = existingUser.id!!, employeeId = employeeId,
             serviceId = serviceId, price = 80, status = ReservationStatus.PENDING,
             startTime = LocalDateTime.of(tomorrow, LocalTime.of(9, 0)),
             endTime = LocalDateTime.of(tomorrow, LocalTime.of(9, 30))
@@ -252,8 +253,8 @@ class ConversationHandlerTest {
         verify { store.delete(normalizedPhone) }
         val msgSlot = slot<String>()
         verify { sender.sendMessage(eq(normalizedPhone), capture(msgSlot)) }
-        assert(msgSlot.captured.contains("#42"))
-        assert(msgSlot.captured.contains("✅"))
+        assertTrue(msgSlot.captured.contains("#42"))
+        assertTrue(msgSlot.captured.contains("✅"))
     }
 
     @Test
@@ -273,7 +274,7 @@ class ConversationHandlerTest {
 
         val stateSlot = slot<ConversationState>()
         verify { store.save(normalizedPhone, capture(stateSlot)) }
-        assert(stateSlot.captured.step == ConversationStep.AWAITING_FIRST_NAME)
+        assertTrue(stateSlot.captured.step == ConversationStep.AWAITING_FIRST_NAME)
         verify { sender.sendMessage(eq(normalizedPhone), any()) }
     }
 
@@ -297,8 +298,8 @@ class ConversationHandlerTest {
 
         val stateSlot = slot<ConversationState>()
         verify { store.save(normalizedPhone, capture(stateSlot)) }
-        assert(stateSlot.captured.step == ConversationStep.AWAITING_LAST_NAME)
-        assert(stateSlot.captured.pendingFirstName == "Jan")
+        assertTrue(stateSlot.captured.step == ConversationStep.AWAITING_LAST_NAME)
+        assertTrue(stateSlot.captured.pendingFirstName == "Jan")
         verify { sender.sendMessage(eq(normalizedPhone), any()) }
     }
 
@@ -340,7 +341,24 @@ class ConversationHandlerTest {
         verify { store.delete(normalizedPhone) }
         val msgSlot = slot<String>()
         verify { sender.sendMessage(eq(normalizedPhone), capture(msgSlot)) }
-        assert(msgSlot.captured.contains("#55"))
+        assertTrue(msgSlot.captured.contains("#55"))
+    }
+
+    @Test
+    fun `AWAITING_LAST_NAME without first name should reset incomplete state`() {
+        setupCommonMocks()
+        every { store.get(normalizedPhone) } returns ConversationState(
+            step = ConversationStep.AWAITING_LAST_NAME,
+            pendingFirstName = null
+        )
+
+        handler.handle(phone, "Nowak")
+
+        verify { store.delete(normalizedPhone) }
+        verify {
+            sender.sendMessage(normalizedPhone, "Coś poszło nie tak. Zacznijmy od nowa.")
+        }
+        verify(exactly = 0) { reservationService.createReservationByStaff(any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -388,11 +406,11 @@ class ConversationHandlerTest {
 
         val stateSlot = slot<ConversationState>()
         verify { store.save(normalizedPhone, capture(stateSlot)) }
-        assert(stateSlot.captured.step == ConversationStep.SELECTING_DATE)
+        assertTrue(stateSlot.captured.step == ConversationStep.SELECTING_DATE)
 
         val msgSlot = slot<String>()
         verify { sender.sendMessage(eq(normalizedPhone), capture(msgSlot)) }
-        assert(msgSlot.captured.contains("❌"))
+        assertTrue(msgSlot.captured.contains("❌"))
     }
 
     @Test

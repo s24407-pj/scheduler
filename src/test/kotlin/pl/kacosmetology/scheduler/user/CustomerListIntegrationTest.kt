@@ -74,13 +74,13 @@ class CustomerListIntegrationTest {
 
         owner = userRepository.save(User(phoneNumber = "+48811111001", firstName = "Owner", lastName = "List"))
         val ownerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER")
+            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
         )
         ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
 
         employee = userRepository.save(User(phoneNumber = "+48811222001", firstName = "Employee", lastName = "List"))
         val employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
         )
         employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
 
@@ -95,8 +95,8 @@ class CustomerListIntegrationTest {
         reservationRepository.save(
             Reservation(
                 companyId = companyId,
-                customerId = customer.id,
-                employeeId = employee.id,
+                customerId = customer.id!!,
+                employeeId = employee.id!!,
                 serviceId = offeringId,
                 price = 100,
                 startTime = LocalDateTime.now().minusDays(1),
@@ -113,7 +113,7 @@ class CustomerListIntegrationTest {
         }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].id") { value(customer.id) }
+            jsonPath("$[0].id") { value(customer.id!!) }
             jsonPath("$[0].firstName") { value("Anna") }
             jsonPath("$[0].lastName") { value("Kowalska") }
             jsonPath("$[0].phoneNumber") { value("+48811333001") }
@@ -135,7 +135,7 @@ class CustomerListIntegrationTest {
     @Test
     fun `GET customers includes block status when customer is blocked`() {
         companyCustomerBlockRepository.save(
-            CompanyCustomerBlock(companyId = companyId, customerId = customer.id, noShowCount = 2, blocked = true)
+            CompanyCustomerBlock(companyId = companyId, customerId = customer.id!!, noShowCount = 2, blocked = true)
         )
 
         mockMvc.get("/api/customers") {
@@ -150,7 +150,7 @@ class CustomerListIntegrationTest {
     @Test
     fun `GET customers includes notes when set`() {
         companyCustomerRepository.save(
-            CompanyCustomer(companyId = companyId, userId = customer.id, notes = "VIP klientka")
+            CompanyCustomer(companyId = companyId, userId = customer.id!!, notes = "VIP klientka")
         )
 
         mockMvc.get("/api/customers") {
@@ -201,8 +201,8 @@ class CustomerListIntegrationTest {
         reservationRepository.save(
             Reservation(
                 companyId = otherCompany.id!!,
-                customerId = otherCustomer.id,
-                employeeId = employee.id,
+                customerId = otherCustomer.id!!,
+                employeeId = employee.id!!,
                 serviceId = otherOffering.id!!,
                 price = 100,
                 startTime = LocalDateTime.now().minusDays(2),
@@ -216,7 +216,7 @@ class CustomerListIntegrationTest {
         }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].id") { value(customer.id) }
+            jsonPath("$[0].id") { value(customer.id!!) }
         }
     }
 }

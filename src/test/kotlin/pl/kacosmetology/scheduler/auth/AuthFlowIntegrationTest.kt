@@ -143,7 +143,7 @@ class AuthFlowIntegrationTest {
         )
         val company = companyRepository.save(Company(name = "Anna Salon"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = company.id!!, userId = staff.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = company.id!!, userId = staff.id!!, role = "EMPLOYEE")
         )
 
         // 2. WHEN - Pracownik próbuje się zalogować
@@ -178,7 +178,7 @@ class AuthFlowIntegrationTest {
                 passwordHash = passwordEncoder.encode(rawPassword)
             )
         )
-        companyEmployeeRepository.save(CompanyEmployee(companyId = company.id!!, userId = owner.id, role = "OWNER"))
+        companyEmployeeRepository.save(CompanyEmployee(companyId = company.id!!, userId = owner.id!!, role = "OWNER"))
 
         // WHEN
         val result = mockMvc.post("/api/auth/login-staff") {
@@ -193,7 +193,7 @@ class AuthFlowIntegrationTest {
 
         // THEN
         assertEquals("owner", jwtService.extractRole(token), "Token powinien zawierać rolę owner")
-        assertEquals(company.id, jwtService.extractCompanyId(token))
+        assertEquals(company.id!!, jwtService.extractCompanyId(token))
         Assertions.assertNotNull(jwtService.extractEmploymentId(token))
     }
 
@@ -212,10 +212,10 @@ class AuthFlowIntegrationTest {
             )
         )
         val ownerInB = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyB.id!!, userId = staff.id, role = "OWNER")
+            CompanyEmployee(companyId = companyB.id!!, userId = staff.id!!, role = "OWNER")
         )
         val employeeInA = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyA.id!!, userId = staff.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = companyA.id!!, userId = staff.id!!, role = "EMPLOYEE")
         )
 
         val selectionResult = mockMvc.post("/api/auth/login-staff") {
@@ -227,17 +227,17 @@ class AuthFlowIntegrationTest {
             status { isOk() }
             jsonPath("$.status") { value("EMPLOYMENT_SELECTION_REQUIRED") }
             jsonPath("$.token") { doesNotExist() }
-            jsonPath("$.employments[0].employmentId") { value(employeeInA.id) }
+            jsonPath("$.employments[0].employmentId") { value(employeeInA.id!!) }
             jsonPath("$.employments[0].companyName") { value("Alpha Salon") }
-            jsonPath("$.employments[1].employmentId") { value(ownerInB.id) }
+            jsonPath("$.employments[1].employmentId") { value(ownerInB.id!!) }
             jsonPath("$.employments[1].companyName") { value("Beta Salon") }
         }.andReturn()
         Assertions.assertTrue(selectionResult.response.contentAsString.contains("EMPLOYMENT_SELECTION_REQUIRED"))
 
         val employeeToken = loginForEmployment(rawPassword, employeeInA.id!!)
         assertEquals("employee", jwtService.extractRole(employeeToken))
-        assertEquals(companyA.id, jwtService.extractCompanyId(employeeToken))
-        assertEquals(employeeInA.id, jwtService.extractEmploymentId(employeeToken))
+        assertEquals(companyA.id!!, jwtService.extractCompanyId(employeeToken))
+        assertEquals(employeeInA.id!!, jwtService.extractEmploymentId(employeeToken))
         mockMvc.put("/api/company/settings") {
             header("Authorization", "Bearer $employeeToken")
             contentType = MediaType.APPLICATION_JSON
@@ -246,12 +246,12 @@ class AuthFlowIntegrationTest {
 
         val ownerToken = loginForEmployment(rawPassword, ownerInB.id!!)
         assertEquals("owner", jwtService.extractRole(ownerToken))
-        assertEquals(companyB.id, jwtService.extractCompanyId(ownerToken))
+        assertEquals(companyB.id!!, jwtService.extractCompanyId(ownerToken))
         mockMvc.get("/api/company/settings") {
             header("Authorization", "Bearer $ownerToken")
         }.andExpect {
             status { isOk() }
-            jsonPath("$.id") { value(companyB.id) }
+            jsonPath("$.id") { value(companyB.id!!) }
         }
 
         companyEmployeeRepository.delete(employeeInA)

@@ -471,7 +471,7 @@ class ReservationServiceTest {
         )
 
         // THEN
-        assertEquals(newCustomer.id, result.customerId)
+        assertEquals(newCustomer.id!!, result.customerId)
         verify(exactly = 1) { userRepository.save(any()) }
     }
 
@@ -817,7 +817,7 @@ class ReservationServiceTest {
 
         // THEN
         assertEquals(1, result.size)
-        assertEquals(1L, result[0].id)
+        assertEquals(1L, result[0].id!!)
         assertEquals("Jan", result[0].customerFirstName)
         assertEquals("Kowalski", result[0].customerLastName)
         verify(exactly = 1) {

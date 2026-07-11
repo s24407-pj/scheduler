@@ -129,10 +129,10 @@ class ReservationController(
     ): ReservationResponse {
         val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
         return reservationService.createReservationByStaff(
-            employeeId = request.employeeId!!,
-            serviceId = request.serviceId!!,
-            startTime = request.startTime!!,
-            customerPhone = request.customerPhone!!,
+            employeeId = requireNotNull(request.employeeId) { "Pracownik jest wymagany" },
+            serviceId = requireNotNull(request.serviceId) { "Usługa jest wymagana" },
+            startTime = requireNotNull(request.startTime) { "Czas rozpoczęcia jest wymagany" },
+            customerPhone = requireNotNull(request.customerPhone) { "Numer telefonu jest wymagany" },
             customerFirstName = request.customerFirstName,
             customerLastName = request.customerLastName,
             requesterCompanyId = companyId

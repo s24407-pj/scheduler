@@ -33,7 +33,7 @@ class DataInitializer(
     override fun run(vararg args: String) {
         val company = companyRepository.findAll().firstOrNull()
             ?: companyRepository.save(Company(name = "Ka.Cosmetology"))
-        val cid = company.id!!
+        val cid = requireNotNull(company.id) { "Seeded company must have an ID" }
 
         ensureOwner(cid)
         ensureTestEmployee(cid)
@@ -57,7 +57,11 @@ class DataInitializer(
             )
         )
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER")
+            CompanyEmployee(
+                companyId = companyId,
+                userId = requireNotNull(owner.id) { "Seeded owner must have an ID" },
+                role = "OWNER"
+            )
         )
         logger.info("Owner seeded: gabinet@kacosmetology.pl / admin123")
     }
@@ -76,7 +80,11 @@ class DataInitializer(
             )
         )
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
+            CompanyEmployee(
+                companyId = companyId,
+                userId = requireNotNull(employee.id) { "Seeded employee must have an ID" },
+                role = "EMPLOYEE"
+            )
         )
         logger.info("Test employee seeded: pracownik@kacosmetology.pl / employee123")
     }
