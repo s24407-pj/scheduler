@@ -45,6 +45,8 @@ class AuthController(
         return ResponseEntity.ok(authService.loginStaff(request, clientIp(httpRequest)))
     }
 
+    // TODO: Before deployment, configure trusted-proxy forwarding or use remoteAddr exclusively;
+    //      never trust a client-supplied X-Forwarded-For header on a directly accessible app.
     private fun clientIp(request: HttpServletRequest): String =
         request.getHeader("X-Forwarded-For")?.split(",")?.first()?.trim()
             ?: request.remoteAddr
