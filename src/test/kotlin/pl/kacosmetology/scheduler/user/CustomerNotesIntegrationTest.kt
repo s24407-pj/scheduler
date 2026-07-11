@@ -10,7 +10,6 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.put
@@ -20,7 +19,6 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
@@ -81,24 +79,19 @@ class CustomerNotesIntegrationTest {
         companyId = company.id!!
 
         owner = userRepository.save(User(phoneNumber = "+48801111001", firstName = "Owner", lastName = "Notes"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER"))
-        ownerToken = jwtService.generateToken(
-            CustomUserDetails(owner, companyId, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
-            companyId
+        val ownerEmployment = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER")
         )
+        ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
 
         employee = userRepository.save(User(phoneNumber = "+48801222001", firstName = "Employee", lastName = "Notes"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
-        employeeToken = jwtService.generateToken(
-            CustomUserDetails(employee, companyId, listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE"))),
-            companyId
+        val employeeEmployment = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
         )
+        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
 
         customer = userRepository.save(User(phoneNumber = "+48801333001", firstName = "Klient", lastName = "Notes"))
-        customerToken = jwtService.generateToken(
-            CustomUserDetails(customer, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER"))),
-            null
-        )
+        customerToken = jwtService.generateCustomerToken(customer)
     }
 
     @Test

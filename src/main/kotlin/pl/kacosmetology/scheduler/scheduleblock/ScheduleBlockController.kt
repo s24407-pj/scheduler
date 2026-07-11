@@ -14,7 +14,7 @@ import pl.kacosmetology.scheduler.security.CustomUserDetails
 import java.time.LocalDateTime
 
 /**
- * REST API for managing an employee's schedule blocks.
+ * REST API for managing company-scoped employee schedule blocks.
  * All endpoints require OWNER or EMPLOYEE role.
  */
 @RestController
@@ -24,7 +24,7 @@ class ScheduleBlockController(
 ) {
 
     /**
-     * Creates a new schedule block.
+     * Creates a non-overlapping schedule block for an employee of the authenticated company.
      * OWNER may specify a target employee via [CreateScheduleBlockRequest.employeeId];
      * EMPLOYEE always creates for themselves (JWT identity).
      */
@@ -69,7 +69,7 @@ class ScheduleBlockController(
 
     /**
      * Returns schedule blocks within a time range.
-     * OWNER may supply [employeeId] to query any employee's blocks.
+     * OWNER may supply [employeeId] to query another employee's blocks within their company.
      * EMPLOYEE always receives only their own blocks (the param is ignored).
      */
     @GetMapping("/employee")

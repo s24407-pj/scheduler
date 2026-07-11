@@ -12,7 +12,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
@@ -25,7 +24,6 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -89,8 +87,12 @@ class ScheduleBlockIntegrationTest {
         employee =
             userRepository.save(User(phoneNumber = "+48700800900", firstName = "Pracownik", lastName = "Testowy"))
         owner = userRepository.save(User(phoneNumber = "+48111222333", firstName = "Właściciel", lastName = "Testowy"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER"))
+        val employeeEmployment = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
+        )
+        val ownerEmployment = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER")
+        )
 
         // Grafik pracownika: pracuje cały tydzień 9:00-17:00
         for (day in DayOfWeek.entries) {
@@ -105,14 +107,8 @@ class ScheduleBlockIntegrationTest {
             )
         }
 
-        employeeToken = jwtService.generateToken(
-            CustomUserDetails(employee, companyId, listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE"))),
-            companyId
-        )
-        ownerToken = jwtService.generateToken(
-            CustomUserDetails(owner, companyId, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
-            companyId
-        )
+        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
+        ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
     }
 
     @Test
@@ -400,13 +396,10 @@ class ScheduleBlockIntegrationTest {
         companyEmployeeRepository.save(
             CompanyEmployee(companyId = otherCompanyId, userId = employee.id, role = "EMPLOYEE")
         )
-        companyEmployeeRepository.save(
+        val otherOwnerEmployment = companyEmployeeRepository.save(
             CompanyEmployee(companyId = otherCompanyId, userId = owner.id, role = "OWNER")
         )
-        val otherCompanyOwnerToken = jwtService.generateToken(
-            CustomUserDetails(owner, otherCompanyId, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
-            otherCompanyId
-        )
+        val otherCompanyOwnerToken = jwtService.generateStaffToken(owner, otherOwnerEmployment)
         scheduleBlockRepository.save(
             ScheduleBlock(
                 companyId = companyId,

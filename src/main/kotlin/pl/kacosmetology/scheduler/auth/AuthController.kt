@@ -36,7 +36,7 @@ class AuthController(
         return ResponseEntity.ok(authService.verifyCode(request, clientIp(httpRequest)))
     }
 
-    /** Authenticates a staff member using email and password. Returns a JWT token. */
+    /** Authenticates staff or returns their employments when an explicit employment selection is required. */
     @PostMapping("/login-staff")
     fun loginStaff(
         @Valid @RequestBody request: StaffLoginRequest,

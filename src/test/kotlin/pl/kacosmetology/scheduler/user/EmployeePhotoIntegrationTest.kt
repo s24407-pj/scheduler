@@ -10,7 +10,6 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.mock.web.MockMultipartFile
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
@@ -22,7 +21,6 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
@@ -59,6 +57,8 @@ class EmployeePhotoIntegrationTest {
 
     private lateinit var owner: User
     private lateinit var employee: User
+    private lateinit var ownerEmployment: CompanyEmployee
+    private lateinit var employeeEmployment: CompanyEmployee
     private var companyId: Long = 0
 
     @BeforeEach
@@ -74,21 +74,21 @@ class EmployeePhotoIntegrationTest {
         owner = userRepository.save(User(phoneNumber = "+48100000001", firstName = "Owner", lastName = "Test"))
         employee = userRepository.save(User(phoneNumber = "+48100000002", firstName = "Employee", lastName = "Test"))
 
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
+        ownerEmployment = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER")
+        )
+        employeeEmployment = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
+        )
 
         every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder()
             .build()
         every { s3Client.deleteObject(any<DeleteObjectRequest>()) } returns DeleteObjectResponse.builder().build()
     }
 
-    private fun ownerToken() = jwtService.generateToken(
-        CustomUserDetails(owner, companyId, listOf(SimpleGrantedAuthority("ROLE_OWNER"))), companyId
-    )
+    private fun ownerToken() = jwtService.generateStaffToken(owner, ownerEmployment)
 
-    private fun employeeToken() = jwtService.generateToken(
-        CustomUserDetails(employee, companyId, listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE"))), companyId
-    )
+    private fun employeeToken() = jwtService.generateStaffToken(employee, employeeEmployment)
 
     @Test
     fun `POST photo - owner uploads photo and gets 200 with photoUrl`() {

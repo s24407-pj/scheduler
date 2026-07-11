@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.patch
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
@@ -19,7 +18,6 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.User
@@ -72,18 +70,14 @@ class ReservationNoShowIntegrationTest {
 
         employee =
             userRepository.save(User(phoneNumber = "+48700111001", firstName = "Pracownik", lastName = "Testowy"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
+        val employment = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE")
+        )
 
         customer = userRepository.save(User(phoneNumber = "+48600222001", firstName = "Klient", lastName = "Testowy"))
 
-        employeeToken = jwtService.generateToken(
-            CustomUserDetails(employee, companyId, listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE"))),
-            companyId
-        )
-        customerToken = jwtService.generateToken(
-            CustomUserDetails(customer, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER"))),
-            null
-        )
+        employeeToken = jwtService.generateStaffToken(employee, employment)
+        customerToken = jwtService.generateCustomerToken(customer)
     }
 
     private fun saveReservation(status: ReservationStatus = ReservationStatus.PENDING): Reservation {
@@ -161,17 +155,14 @@ class ReservationNoShowIntegrationTest {
         // Staff from a different company
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
         val otherOwner = userRepository.save(User(phoneNumber = "+48900000099", firstName = "Obcy", lastName = "Owner"))
-        companyEmployeeRepository.save(
+        val otherEmployment = companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = otherCompany.id!!,
                 userId = otherOwner.id,
                 role = "OWNER"
             )
         )
-        val otherToken = jwtService.generateToken(
-            CustomUserDetails(otherOwner, otherCompany.id, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
-            otherCompany.id
-        )
+        val otherToken = jwtService.generateStaffToken(otherOwner, otherEmployment)
 
         mockMvc.patch("/api/reservations/${reservation.id}/no-show") {
             header("Authorization", "Bearer $otherToken")
@@ -191,17 +182,14 @@ class ReservationNoShowIntegrationTest {
         val otherCompany = companyRepository.save(Company(name = "Inny Salon B"))
         val otherOwner =
             userRepository.save(User(phoneNumber = "+48900000098", firstName = "Obcy2", lastName = "Owner2"))
-        companyEmployeeRepository.save(
+        val otherEmployment = companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = otherCompany.id!!,
                 userId = otherOwner.id,
                 role = "OWNER"
             )
         )
-        val otherToken = jwtService.generateToken(
-            CustomUserDetails(otherOwner, otherCompany.id, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
-            otherCompany.id
-        )
+        val otherToken = jwtService.generateStaffToken(otherOwner, otherEmployment)
 
         mockMvc.patch("/api/reservations/${reservation.id}/complete") {
             header("Authorization", "Bearer $otherToken")

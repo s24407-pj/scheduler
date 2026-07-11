@@ -9,7 +9,6 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.put
@@ -17,7 +16,6 @@ import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.dto.UpdateUserProfileRequest
 import software.amazon.awssdk.services.s3.S3Client
@@ -68,9 +66,7 @@ class UserIntegrationTest {
             User(phoneNumber = "+48111222333", firstName = "Jan", lastName = "Kowalski")
         )
 
-        // Generujemy dla niego token (z null jako companyId, bo to zwykły klient)
-        val userDetails = CustomUserDetails(testUser, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")))
-        jwtToken = jwtService.generateToken(userDetails, null)
+        jwtToken = jwtService.generateCustomerToken(testUser)
     }
 
     @Test
@@ -148,8 +144,7 @@ class UserIntegrationTest {
                 passwordHash = "super_secret_hash"
             )
         )
-        val details = CustomUserDetails(userWithPassword, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")))
-        val token = jwtService.generateToken(details, null)
+        val token = jwtService.generateCustomerToken(userWithPassword)
 
         // WHEN & THEN
         mockMvc.get("/api/users/me") {

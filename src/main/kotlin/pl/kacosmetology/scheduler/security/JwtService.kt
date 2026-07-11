@@ -6,7 +6,6 @@ import io.jsonwebtoken.security.Keys
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import pl.kacosmetology.scheduler.company.CompanyEmployee
-import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.user.User
 import java.util.*
 import javax.crypto.SecretKey
@@ -15,8 +14,7 @@ import javax.crypto.SecretKey
 @Service
 class JwtService(
     @Value($$"${jwt.secret}") private val secret: String,
-    @Value($$"${jwt.expiration-ms}") private val expirationMs: Long,
-    private val companyEmployeeRepository: CompanyEmployeeRepository? = null
+    @Value($$"${jwt.expiration-ms}") private val expirationMs: Long
 ) {
 
     private val signingKey: SecretKey by lazy { Keys.hmacShaKeyFor(secret.toByteArray()) }
@@ -36,23 +34,6 @@ class JwtService(
                 "role" to employment.role.lowercase()
             )
         )
-    }
-
-    /**
-     * Compatibility bridge for integration-test token fixtures being migrated to explicit token methods.
-     * It still resolves and embeds one exact current employment; it cannot create legacy staff tokens.
-     */
-    @Deprecated("Use generateCustomerToken or generateStaffToken")
-    fun generateToken(userDetails: CustomUserDetails, companyId: Long?): String {
-        if (companyId == null) return generateCustomerToken(userDetails.user)
-        val repository = requireNotNull(companyEmployeeRepository) { "An employment repository is required" }
-        val employment = userDetails.employmentId?.let { repository.findById(it).orElse(null) }
-            ?: repository.findAllByUserId(userDetails.id).singleOrNull { it.companyId == companyId }
-            ?: error("An exact staff employment is required")
-        require(employment.companyId == companyId && employment.userId == userDetails.id) {
-            "Staff scope does not match employment"
-        }
-        return generateStaffToken(userDetails.user, employment)
     }
 
     private fun generateToken(subject: String, claims: Map<String, Any>): String {

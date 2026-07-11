@@ -3,7 +3,7 @@ package pl.kacosmetology.scheduler.scheduleblock
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
-/** Represents a time range blocked by an employee (e.g. a break or personal unavailability). */
+/** Represents company-scoped employee unavailability, such as a break or personal appointment. */
 @Entity
 @Table(name = "schedule_blocks")
 class ScheduleBlock(

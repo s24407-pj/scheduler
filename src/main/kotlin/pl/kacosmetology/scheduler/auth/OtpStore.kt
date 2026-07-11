@@ -6,7 +6,7 @@ import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.stereotype.Component
 import java.time.Duration
 
-/** Redis-backed store for OTP codes with built-in TTL expiration and rate limiting. */
+/** Redis-backed OTP store with TTL, request limiting, and atomic verification and consumption. */
 @Component
 class OtpStore(
     private val redisTemplate: StringRedisTemplate,

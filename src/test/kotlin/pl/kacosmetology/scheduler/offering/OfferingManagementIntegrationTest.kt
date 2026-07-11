@@ -10,7 +10,6 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.*
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.company.Company
@@ -19,7 +18,6 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -60,6 +58,8 @@ class OfferingManagementIntegrationTest {
 
     private lateinit var userA: User
     private lateinit var userB: User
+    private lateinit var employmentA: CompanyEmployee
+    private lateinit var employmentB: CompanyEmployee
 
     private var companyA_Id: Long = 0
     private var companyB_Id: Long = 0
@@ -81,8 +81,12 @@ class OfferingManagementIntegrationTest {
         userA = userRepository.save(User(phoneNumber = "+48111222333", firstName = "Admin", lastName = "FirmaA"))
         userB = userRepository.save(User(phoneNumber = "+48999888777", firstName = "Admin", lastName = "FirmaB"))
 
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyA_Id, userId = userA.id, role = "OWNER"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyB_Id, userId = userB.id, role = "OWNER"))
+        employmentA = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyA_Id, userId = userA.id, role = "OWNER")
+        )
+        employmentB = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyB_Id, userId = userB.id, role = "OWNER")
+        )
     }
 
     @Test
@@ -99,8 +103,7 @@ class OfferingManagementIntegrationTest {
 
     @Test
     fun `should create offering and assign to company from token (201)`() {
-        val userDetailsA = CustomUserDetails(userA, companyA_Id, listOf(SimpleGrantedAuthority("ROLE_OWNER")))
-        val tokenA = jwtService.generateToken(userDetailsA, companyA_Id)
+        val tokenA = jwtService.generateStaffToken(userA, employmentA)
         val request = OfferingRequest(name = "Masaż", durationMinutes = 60, price = 200)
 
         mockMvc.post("/api/offerings") {
@@ -120,8 +123,7 @@ class OfferingManagementIntegrationTest {
             Offering(companyId = companyA_Id, name = "Złota Usługa", durationMinutes = 30, price = 500)
         )
 
-        val userDetailsB = CustomUserDetails(userB, companyB_Id, listOf(SimpleGrantedAuthority("ROLE_OWNER")))
-        val tokenB = jwtService.generateToken(userDetailsB, companyB_Id)
+        val tokenB = jwtService.generateStaffToken(userB, employmentB)
 
         mockMvc.delete("/api/offerings/${offeringOfCompanyA.id}") {
             header("Authorization", "Bearer $tokenB")
@@ -159,9 +161,7 @@ class OfferingManagementIntegrationTest {
         val offering = offeringRepository.save(
             Offering(companyId = companyA_Id, name = "Masaż", durationMinutes = 60, price = 200)
         )
-        val tokenA = jwtService.generateToken(
-            CustomUserDetails(userA, companyA_Id, listOf(SimpleGrantedAuthority("ROLE_OWNER"))), companyA_Id
-        )
+        val tokenA = jwtService.generateStaffToken(userA, employmentA)
 
         mockMvc.get("/api/offerings/${offering.id}") {
             header("Authorization", "Bearer $tokenA")
@@ -177,9 +177,7 @@ class OfferingManagementIntegrationTest {
         val inactive = offeringRepository.save(
             Offering(companyId = companyA_Id, name = "Stara", durationMinutes = 30, price = 50, active = false)
         )
-        val tokenA = jwtService.generateToken(
-            CustomUserDetails(userA, companyA_Id, listOf(SimpleGrantedAuthority("ROLE_OWNER"))), companyA_Id
-        )
+        val tokenA = jwtService.generateStaffToken(userA, employmentA)
 
         mockMvc.patch("/api/offerings/${inactive.id}/activate") {
             header("Authorization", "Bearer $tokenA")
@@ -196,9 +194,7 @@ class OfferingManagementIntegrationTest {
         val inactive = offeringRepository.save(
             Offering(companyId = companyA_Id, name = "Stara", durationMinutes = 30, price = 50, active = false)
         )
-        val tokenB = jwtService.generateToken(
-            CustomUserDetails(userB, companyB_Id, listOf(SimpleGrantedAuthority("ROLE_OWNER"))), companyB_Id
-        )
+        val tokenB = jwtService.generateStaffToken(userB, employmentB)
 
         mockMvc.patch("/api/offerings/${inactive.id}/activate") {
             header("Authorization", "Bearer $tokenB")
@@ -213,8 +209,7 @@ class OfferingManagementIntegrationTest {
             Offering(companyId = companyA_Id, name = "Stara Nazwa", durationMinutes = 30, price = 100)
         )
 
-        val userDetailsA = CustomUserDetails(userA, companyA_Id, listOf(SimpleGrantedAuthority("ROLE_OWNER")))
-        val tokenA = jwtService.generateToken(userDetailsA, companyA_Id)
+        val tokenA = jwtService.generateStaffToken(userA, employmentA)
 
         val updateRequest = OfferingRequest(name = "Nowa Nazwa", durationMinutes = 45, price = 250)
 
