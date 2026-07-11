@@ -5,6 +5,7 @@ import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityConflict
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityConflictSource
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
+import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import java.time.LocalDateTime
 import java.util.*
@@ -37,10 +39,16 @@ class ScheduleBlockServiceTest {
     private val startTime = LocalDateTime.of(2030, 6, 1, 10, 0)
     private val endTime = LocalDateTime.of(2030, 6, 1, 11, 0)
 
+    private fun mockLockedMembership() {
+        every {
+            companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId)
+        } returns CompanyEmployee(companyId = companyId, userId = employeeId, role = "EMPLOYEE")
+    }
+
     @Test
     fun `createBlock should save and return block when no overlaps exist`() {
         // GIVEN
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
+        mockLockedMembership()
         every { employeeAvailabilityPolicy.findFirstConflict(companyId, employeeId, startTime, endTime) } returns null
         every { scheduleBlockRepository.save(any()) } answers { firstArg() }
 
@@ -53,13 +61,18 @@ class ScheduleBlockServiceTest {
         assertEquals(companyId, result.companyId)
         assertEquals("Przerwa", result.reason)
         verify(exactly = 1) { scheduleBlockRepository.save(any()) }
+        verifyOrder {
+            companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId)
+            employeeAvailabilityPolicy.findFirstConflict(companyId, employeeId, startTime, endTime)
+            scheduleBlockRepository.save(any())
+        }
     }
 
     @Test
     fun `createBlock should throw when endTime is not after startTime`() {
         // GIVEN - end == start
         val sameTime = startTime
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
+        mockLockedMembership()
 
         // WHEN & THEN
         val exception = assertThrows<IllegalArgumentException> {
@@ -72,7 +85,7 @@ class ScheduleBlockServiceTest {
     @Test
     fun `createBlock should throw when existing reservation overlaps`() {
         // GIVEN
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
+        mockLockedMembership()
         every {
             employeeAvailabilityPolicy.findFirstConflict(companyId, employeeId, startTime, endTime)
         } returns EmployeeAvailabilityConflict(
@@ -92,7 +105,7 @@ class ScheduleBlockServiceTest {
     @Test
     fun `createBlock should throw when another block overlaps`() {
         // GIVEN
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
+        mockLockedMembership()
         every {
             employeeAvailabilityPolicy.findFirstConflict(companyId, employeeId, startTime, endTime)
         } returns EmployeeAvailabilityConflict(
@@ -111,7 +124,7 @@ class ScheduleBlockServiceTest {
 
     @Test
     fun `createBlock should reject employee outside company before conflict query or save`() {
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
+        every { companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId) } returns null
 
         assertThrows<NoSuchElementException> {
             scheduleBlockService.createBlock(employeeId, companyId, startTime, endTime, null)

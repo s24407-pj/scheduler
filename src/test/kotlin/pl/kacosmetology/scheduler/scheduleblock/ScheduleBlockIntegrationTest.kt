@@ -35,6 +35,9 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -171,6 +174,61 @@ class ScheduleBlockIntegrationTest {
             content = objectMapper.writeValueAsString(body)
         }.andExpect {
             status { isConflict() }
+        }
+    }
+
+    @Test
+    fun `concurrent reservation and schedule block should persist exactly one busy interval`() {
+        val customer = userRepository.save(
+            User(phoneNumber = "+48600600600", firstName = "Klient", lastName = "Testowy")
+        )
+        val customerToken = jwtService.generateCustomerToken(customer)
+        val offering = serviceRepository.save(
+            Offering(companyId = companyId, name = "Kolizja", durationMinutes = 60, price = 100)
+        )
+        val startTime = testDate.atTime(12, 0)
+        val endTime = startTime.plusHours(1)
+        val reservationBody = mapOf(
+            "employeeId" to employee.id,
+            "serviceId" to offering.id,
+            "startTime" to startTime.toString()
+        )
+        val blockBody = mapOf(
+            "employeeId" to employee.id,
+            "startTime" to startTime.toString(),
+            "endTime" to endTime.toString()
+        )
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+
+        try {
+            val reservationRequest = executor.submit<Int> {
+                start.await()
+                mockMvc.post("/api/reservations") {
+                    header("Authorization", "Bearer $customerToken")
+                    contentType = MediaType.APPLICATION_JSON
+                    content = objectMapper.writeValueAsString(reservationBody)
+                }.andReturn().response.status
+            }
+            val blockRequest = executor.submit<Int> {
+                start.await()
+                mockMvc.post("/api/schedule-blocks") {
+                    header("Authorization", "Bearer $ownerToken")
+                    contentType = MediaType.APPLICATION_JSON
+                    content = objectMapper.writeValueAsString(blockBody)
+                }.andReturn().response.status
+            }
+
+            start.countDown()
+            val statuses = listOf(
+                reservationRequest.get(10, TimeUnit.SECONDS),
+                blockRequest.get(10, TimeUnit.SECONDS)
+            ).sorted()
+
+            assertEquals(listOf(201, 409), statuses)
+            assertEquals(1L, reservationRepository.count() + scheduleBlockRepository.count())
+        } finally {
+            executor.shutdownNow()
         }
     }
 

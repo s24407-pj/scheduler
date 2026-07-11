@@ -5,6 +5,7 @@ import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.context.ApplicationEventPublisher
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
 import pl.kacosmetology.scheduler.company.Company
+import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
@@ -69,7 +71,9 @@ class ReservationServiceTest {
 
     @BeforeEach
     fun setupCompanyEmployeeMembership() {
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(any(), any()) } returns true
+        every {
+            companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(any(), any())
+        } returns CompanyEmployee(companyId = companyId, userId = employeeId, role = "EMPLOYEE")
     }
 
     @Test
@@ -107,6 +111,11 @@ class ReservationServiceTest {
         assertEquals(ReservationStatus.PENDING, result.status)
 
         verify(exactly = 1) { reservationRepository.save(any()) }
+        verifyOrder {
+            companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId)
+            employeeAvailabilityPolicy.assertAvailable(companyId, employeeId, startTime, startTime.plusMinutes(45))
+            reservationRepository.save(any())
+        }
     }
 
     @Test
@@ -176,7 +185,7 @@ class ReservationServiceTest {
         )
         every { userRepository.existsById(customerId) } returns true
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
+        every { companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId) } returns null
 
         // WHEN & THEN
         val exception = assertThrows<IllegalArgumentException> {

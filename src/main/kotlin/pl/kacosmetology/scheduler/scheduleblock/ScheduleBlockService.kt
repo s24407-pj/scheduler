@@ -28,7 +28,7 @@ class ScheduleBlockService(
         endTime: LocalDateTime,
         reason: String?
     ): ScheduleBlock {
-        requireCompanyMembership(companyId, employeeId)
+        lockCompanyMembership(companyId, employeeId)
 
         if (!endTime.isAfter(startTime)) {
             throw IllegalArgumentException("Czas zakończenia musi być późniejszy niż czas rozpoczęcia")
@@ -87,6 +87,12 @@ class ScheduleBlockService(
 
     private fun requireCompanyMembership(companyId: Long, employeeId: Long) {
         if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
+            throw NoSuchElementException("Pracownik nie należy do tej firmy")
+        }
+    }
+
+    private fun lockCompanyMembership(companyId: Long, employeeId: Long) {
+        if (companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId) == null) {
             throw NoSuchElementException("Pracownik nie należy do tej firmy")
         }
     }

@@ -60,7 +60,7 @@ class ReservationService(
             throw IllegalArgumentException("Ta usługa nie jest już dostępna")
         }
 
-        if (!companyEmployeeRepository.existsByCompanyIdAndUserId(offering.companyId, employeeId)) {
+        if (companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(offering.companyId, employeeId) == null) {
             throw IllegalArgumentException("Pracownik nie należy do firmy wybranej usługi")
         }
 
