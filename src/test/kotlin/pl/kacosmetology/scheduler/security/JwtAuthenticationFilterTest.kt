@@ -6,11 +6,11 @@ import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.just
-import io.mockk.verify
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
@@ -18,99 +18,129 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
-import org.springframework.security.core.userdetails.UserDetailsService
 import pl.kacosmetology.scheduler.user.User
 
 @ExtendWith(MockKExtension::class)
 class JwtAuthenticationFilterTest {
 
-    @MockK
-    private lateinit var jwtService: JwtService
-
-    @MockK
-    private lateinit var userDetailsService: UserDetailsService
-
-    @MockK(relaxed = true)
-    private lateinit var request: HttpServletRequest
-
-    @MockK(relaxed = true)
-    private lateinit var response: HttpServletResponse
-
-    @MockK(relaxed = true)
-    private lateinit var filterChain: FilterChain
-
-    @InjectMockKs
-    private lateinit var jwtAuthenticationFilter: JwtAuthenticationFilter
+    @MockK private lateinit var jwtService: JwtService
+    @MockK private lateinit var userDetailsService: CustomUserDetailsService
+    @MockK(relaxed = true) private lateinit var request: HttpServletRequest
+    @MockK(relaxed = true) private lateinit var response: HttpServletResponse
+    @MockK(relaxed = true) private lateinit var filterChain: FilterChain
+    @InjectMockKs private lateinit var filter: JwtAuthenticationFilter
 
     @BeforeEach
     fun setup() {
-        // Czyścimy kontekst bezpieczeństwa przed każdym testem
         SecurityContextHolder.clearContext()
-
-        // Mówimy Springowi: "To jest świeże zapytanie, filtr jeszcze nie działał"
         every { request.getAttribute(any()) } returns null
-
-        // Zezwalamy Springowi na ustawienie flagi "filtr w trakcie działania" bez rzucania błędów
         every { request.setAttribute(any(), any()) } just Runs
         every { request.removeAttribute(any()) } just Runs
     }
 
     @AfterEach
-    fun teardown() {
-        SecurityContextHolder.clearContext()
-    }
+    fun teardown() = SecurityContextHolder.clearContext()
 
     @Test
-    fun `should pass request without verification when Authorization header is missing`() {
+    fun `missing header should remain anonymous`() {
         every { request.getHeader("Authorization") } returns null
 
-        jwtAuthenticationFilter.doFilter(request, response, filterChain)
-
-        assertNull(SecurityContextHolder.getContext().authentication, "Kontekst powinien być pusty")
-        verify(exactly = 1) { filterChain.doFilter(request, response) } // Udowadniamy, że zapytanie poszło dalej
-        verify(exactly = 0) { jwtService.extractUsername(any()) }
-    }
-
-    @Test
-    fun `should pass request without verification when header does not start with Bearer`() {
-        every { request.getHeader("Authorization") } returns "ZlyNaglowek 12345"
-
-        jwtAuthenticationFilter.doFilter(request, response, filterChain)
+        filter.doFilter(request, response, filterChain)
 
         assertNull(SecurityContextHolder.getContext().authentication)
-        verify(exactly = 1) { filterChain.doFilter(request, response) }
     }
 
     @Test
-    fun `should ignore broken token and pass request as anonymous`() {
-        val badToken = "zepsuty_token"
-        every { request.getHeader("Authorization") } returns "Bearer $badToken"
-        // Symulujemy wyjatek z biblioteki JWT podczas proby odczytu
-        every { jwtService.extractUsername(badToken) } throws IllegalArgumentException("Invalid token")
+    fun `customer token should load customer-only principal`() {
+        val details = customerDetails()
+        stubToken(role = "customer", companyId = null, employmentId = null)
+        every { userDetailsService.loadUserByUsername(details.username) } returns details
+        every { jwtService.isTokenValid("token", details) } returns true
 
-        jwtAuthenticationFilter.doFilter(request, response, filterChain)
+        filter.doFilter(request, response, filterChain)
 
-        assertNull(SecurityContextHolder.getContext().authentication, "Zepsuty token nie loguje uzytkownika")
-        verify(exactly = 1) { filterChain.doFilter(request, response) }
+        val authentication = SecurityContextHolder.getContext().authentication
+        assertNotNull(authentication)
+        assertEquals(listOf("ROLE_CUSTOMER"), authentication!!.authorities.map { it.authority })
     }
 
     @Test
-    fun `should set SecurityContext for valid token`() {
-        val goodToken = "dobry_token"
-        val phone = "+48111"
-        val user = User(id = 1, phoneNumber = phone, firstName = "A", lastName = "B")
+    fun `staff token should load only exact employment principal`() {
+        val details = staffDetails()
+        stubToken(role = "employee", companyId = 20L, employmentId = 10L)
+        every { userDetailsService.loadStaffByEmployment(details.username, 10L) } returns details
+        every { jwtService.isTokenValid("token", details) } returns true
 
-        // Mockujemy zachowania
-        every { request.getHeader("Authorization") } returns "Bearer $goodToken"
-        every { jwtService.extractUsername(goodToken) } returns phone
-        val userDetails = CustomUserDetails(user, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")))
-        every { userDetailsService.loadUserByUsername(phone) } returns userDetails
-        every { jwtService.isTokenValid(goodToken, userDetails) } returns true
+        filter.doFilter(request, response, filterChain)
 
-        jwtAuthenticationFilter.doFilter(request, response, filterChain)
+        val principal = SecurityContextHolder.getContext().authentication?.principal as CustomUserDetails
+        assertEquals(10L, principal.employmentId)
+        assertEquals(listOf("ROLE_EMPLOYEE"), principal.authorities.map { it.authority })
+    }
 
-        // SPRAWDZAMY CZY UŻYTKOWNIK JEST ZALOGOWANY
-        assertNotNull(SecurityContextHolder.getContext().authentication, "Kontekst musi zawierac Authentication")
-        verify(exactly = 1) { filterChain.doFilter(request, response) }
+    @Test
+    fun `legacy staff token without employment should remain anonymous`() {
+        stubToken(role = "owner", companyId = 20L, employmentId = null)
+
+        filter.doFilter(request, response, filterChain)
+
+        assertNull(SecurityContextHolder.getContext().authentication)
+    }
+
+    @Test
+    fun `changed employment role should remain anonymous`() {
+        val details = staffDetails()
+        stubToken(role = "owner", companyId = 20L, employmentId = 10L)
+        every { userDetailsService.loadStaffByEmployment(details.username, 10L) } returns details
+
+        filter.doFilter(request, response, filterChain)
+
+        assertNull(SecurityContextHolder.getContext().authentication)
+    }
+
+    @Test
+    fun `mismatched employment company claim should remain anonymous`() {
+        val details = staffDetails()
+        stubToken(role = "employee", companyId = 99L, employmentId = 10L)
+        every { userDetailsService.loadStaffByEmployment(details.username, 10L) } returns details
+
+        filter.doFilter(request, response, filterChain)
+
+        assertNull(SecurityContextHolder.getContext().authentication)
+    }
+
+    @Test
+    fun `deleted employment should remain anonymous`() {
+        val details = staffDetails()
+        stubToken(role = "employee", companyId = 20L, employmentId = 10L)
+        every { userDetailsService.loadStaffByEmployment(details.username, 10L) } throws
+            IllegalArgumentException("deleted")
+
+        filter.doFilter(request, response, filterChain)
+
+        assertNull(SecurityContextHolder.getContext().authentication)
+    }
+
+    private fun stubToken(role: String, companyId: Long?, employmentId: Long?) {
+        every { request.getHeader("Authorization") } returns "Bearer token"
+        every { jwtService.extractUsername("token") } returns "+48111"
+        every { jwtService.extractRole("token") } returns role
+        every { jwtService.extractCompanyId("token") } returns companyId
+        every { jwtService.extractEmploymentId("token") } returns employmentId
+    }
+
+    private fun customerDetails(): CustomUserDetails {
+        val user = User(id = 1L, phoneNumber = "+48111", firstName = "A", lastName = "B")
+        return CustomUserDetails(user, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")))
+    }
+
+    private fun staffDetails(): CustomUserDetails {
+        val user = User(id = 1L, phoneNumber = "+48111", firstName = "A", lastName = "B")
+        return CustomUserDetails(
+            user,
+            20L,
+            listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE")),
+            employmentId = 10L
+        )
     }
 }

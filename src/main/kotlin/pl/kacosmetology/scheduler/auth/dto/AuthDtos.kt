@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.auth.dto
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
 
 private const val PHONE_REGEXP = "^\\+?[0-9]{9,15}$"
@@ -37,9 +38,33 @@ data class StaffLoginRequest(
 
     @field:NotBlank(message = "Hasło jest wymagane")
     @field:Size(min = 8, message = "Hasło musi mieć co najmniej 8 znaków")
-    val password: String
+    val password: String,
+
+    @field:Positive(message = "Identyfikator zatrudnienia musi być dodatni")
+    val employmentId: Long? = null
 )
 
 data class AuthResponse(
     val token: String
+)
+
+/** Possible outcomes of a staff login request. */
+enum class StaffLoginStatus {
+    AUTHENTICATED,
+    EMPLOYMENT_SELECTION_REQUIRED
+}
+
+/** A company employment that can be selected for a staff session. */
+data class StaffEmploymentOption(
+    val employmentId: Long,
+    val companyId: Long,
+    val companyName: String,
+    val role: String
+)
+
+/** Staff login result, either a scoped JWT or the employments available for selection. */
+data class StaffLoginResponse(
+    val status: StaffLoginStatus,
+    val token: String?,
+    val employments: List<StaffEmploymentOption>
 )

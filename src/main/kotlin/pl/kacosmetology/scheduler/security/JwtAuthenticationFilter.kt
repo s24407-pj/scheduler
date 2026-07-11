@@ -5,7 +5,6 @@ import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
-import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
@@ -17,7 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter
 @Component
 class JwtAuthenticationFilter(
     private val jwtService: JwtService,
-    private val userDetailsService: UserDetailsService
+    private val userDetailsService: CustomUserDetailsService
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -41,20 +40,15 @@ class JwtAuthenticationFilter(
         }
 
         if (userIdentifier != null && SecurityContextHolder.getContext().authentication == null) {
-            val userDetails = userDetailsService.loadUserByUsername(userIdentifier)
+            val userDetails = try {
+                loadScopedUserDetails(jwt, userIdentifier)
+            } catch (_: Exception) {
+                null
+            }
 
-            if (jwtService.isTokenValid(jwt, userDetails)) {
-                val companyIdFromToken = try {
-                    jwtService.extractCompanyId(jwt)
-                } catch (_: Exception) {
-                    null
-                }
-
-                val originalUser = (userDetails as CustomUserDetails).user
-                val enrichedUserDetails = CustomUserDetails(originalUser, companyIdFromToken, userDetails.authorities)
-
+            if (userDetails != null && jwtService.isTokenValid(jwt, userDetails)) {
                 val authToken = UsernamePasswordAuthenticationToken(
-                    enrichedUserDetails, null, enrichedUserDetails.authorities
+                    userDetails, null, userDetails.authorities
                 )
                 authToken.details = WebAuthenticationDetailsSource().buildDetails(request)
 
@@ -63,5 +57,24 @@ class JwtAuthenticationFilter(
         }
 
         filterChain.doFilter(request, response)
+    }
+
+    private fun loadScopedUserDetails(jwt: String, username: String): CustomUserDetails? {
+        val role = jwtService.extractRole(jwt) ?: return null
+        val companyId = jwtService.extractCompanyId(jwt)
+        val employmentId = jwtService.extractEmploymentId(jwt)
+
+        if (role == "customer") {
+            if (companyId != null || employmentId != null) return null
+            return userDetailsService.loadUserByUsername(username) as CustomUserDetails
+        }
+        if (role !in setOf("owner", "employee") || companyId == null || employmentId == null) return null
+
+        val details = userDetailsService.loadStaffByEmployment(username, employmentId)
+        val currentRole = details.authorities.singleOrNull()?.authority
+            ?.removePrefix("ROLE_")?.lowercase()
+        return details.takeIf {
+            it.companyId == companyId && it.employmentId == employmentId && currentRole == role
+        }
     }
 }

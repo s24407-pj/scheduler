@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController
 import pl.kacosmetology.scheduler.auth.dto.AuthResponse
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
+import pl.kacosmetology.scheduler.auth.dto.StaffLoginResponse
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
 
 /** REST API for customer (SMS OTP) and staff (email/password) authentication. */
@@ -37,7 +38,7 @@ class AuthController(
     fun loginStaff(
         @Valid @RequestBody request: StaffLoginRequest,
         httpRequest: HttpServletRequest
-    ): ResponseEntity<AuthResponse> {
+    ): ResponseEntity<StaffLoginResponse> {
         val clientIp = httpRequest.getHeader("X-Forwarded-For")?.split(",")?.first()?.trim()
             ?: httpRequest.remoteAddr
         return ResponseEntity.ok(authService.loginStaff(request, clientIp))

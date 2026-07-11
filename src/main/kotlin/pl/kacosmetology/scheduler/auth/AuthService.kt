@@ -1,17 +1,18 @@
 package pl.kacosmetology.scheduler.auth
 
-import org.springframework.security.core.GrantedAuthority
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.auth.dto.AuthResponse
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
+import pl.kacosmetology.scheduler.auth.dto.StaffEmploymentOption
+import pl.kacosmetology.scheduler.auth.dto.StaffLoginResponse
+import pl.kacosmetology.scheduler.auth.dto.StaffLoginStatus
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
+import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -26,6 +27,7 @@ class AuthService(
     private val jwtService: JwtService,
     private val passwordEncoder: PasswordEncoder,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
+    private val companyRepository: CompanyRepository,
     private val loginRateLimiter: LoginRateLimiter
 ) {
 
@@ -72,22 +74,16 @@ class AuthService(
 
         otpStore.deleteCode(request.phoneNumber)
 
-        val userDetails = CustomUserDetails(
-            user = user,
-            companyId = null,
-            authorities = listOf(SimpleGrantedAuthority("ROLE_CUSTOMER"))
-        )
-
-        return AuthResponse(jwtService.generateToken(userDetails, null))
+        return AuthResponse(jwtService.generateCustomerToken(user))
     }
 
     /**
      * Authenticates a staff member using email and password.
-     * Returns a JWT token containing the company ID and employee roles.
+     * Returns a JWT scoped to one employment, or available employments when a selection is required.
      * Throws [RateLimitExceededException] if [clientIp] has exceeded the allowed login attempt rate.
      */
     @Transactional(readOnly = true)
-    fun loginStaff(request: StaffLoginRequest, clientIp: String): AuthResponse {
+    fun loginStaff(request: StaffLoginRequest, clientIp: String): StaffLoginResponse {
         if (!loginRateLimiter.checkAndIncrement(clientIp)) {
             throw RateLimitExceededException()
         }
@@ -103,14 +99,36 @@ class AuthService(
         }
 
         val employments = companyEmployeeRepository.findAllByUserId(user.id)
-        val companyId = employments.firstOrNull()?.companyId
-
-        val authorities = mutableListOf<GrantedAuthority>(SimpleGrantedAuthority("ROLE_CUSTOMER"))
-        employments.forEach { employment ->
-            authorities.add(SimpleGrantedAuthority("ROLE_${employment.role.uppercase()}"))
+        if (employments.isEmpty()) {
+            throw IllegalArgumentException("Użytkownik nie ma przypisania do firmy")
         }
 
-        val userDetails = CustomUserDetails(user = user, companyId = companyId, authorities = authorities)
-        return AuthResponse(jwtService.generateToken(userDetails, companyId))
+        if (employments.size > 1 && request.employmentId == null) {
+            val companies = companyRepository.findAllById(employments.map { it.companyId })
+                .associateBy { requireNotNull(it.id) }
+            val options = employments.map { employment ->
+                val company = companies[employment.companyId]
+                    ?: throw IllegalStateException("Firma przypisana do zatrudnienia nie istnieje")
+                StaffEmploymentOption(
+                    employmentId = requireNotNull(employment.id),
+                    companyId = employment.companyId,
+                    companyName = company.name,
+                    role = employment.role
+                )
+            }.sortedWith(compareBy<StaffEmploymentOption> { it.companyName }.thenBy { it.companyId })
+            return StaffLoginResponse(StaffLoginStatus.EMPLOYMENT_SELECTION_REQUIRED, null, options)
+        }
+
+        val selected = if (request.employmentId == null) {
+            employments.single()
+        } else {
+            employments.find { it.id == request.employmentId }
+                ?: throw IllegalArgumentException("Nieprawidłowy wybór zatrudnienia")
+        }
+        return StaffLoginResponse(
+            status = StaffLoginStatus.AUTHENTICATED,
+            token = jwtService.generateStaffToken(user, selected),
+            employments = emptyList()
+        )
     }
 }

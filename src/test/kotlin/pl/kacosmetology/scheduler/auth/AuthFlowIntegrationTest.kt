@@ -17,6 +17,8 @@ import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.put
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
@@ -127,7 +129,7 @@ class AuthFlowIntegrationTest {
     fun `staff login with email and password should return token`() {
         // 1. GIVEN - Mamy pracownika w bazie z ustawionym hasłem
         val rawPassword = "superSecretPassword"
-        userRepository.save(
+        val staff = userRepository.save(
             User(
                 phoneNumber = "+48999888777",
                 firstName = "Anna",
@@ -135,6 +137,10 @@ class AuthFlowIntegrationTest {
                 email = "anna@salon.pl",
                 passwordHash = passwordEncoder.encode(rawPassword)
             )
+        )
+        val company = companyRepository.save(Company(name = "Anna Salon"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = company.id!!, userId = staff.id, role = "EMPLOYEE")
         )
 
         // 2. WHEN - Pracownik próbuje się zalogować
@@ -149,7 +155,9 @@ class AuthFlowIntegrationTest {
             content = objectMapper.writeValueAsString(loginDto)
         }.andExpect {
             status { isOk() }
+            jsonPath("$.status") { value("AUTHENTICATED") }
             jsonPath("$.token") { exists() }
+            jsonPath("$.employments") { isEmpty() }
         }
     }
 
@@ -183,6 +191,89 @@ class AuthFlowIntegrationTest {
         // THEN
         assertEquals("owner", jwtService.extractRole(token), "Token powinien zawierać rolę owner")
         assertEquals(company.id, jwtService.extractCompanyId(token))
+        Assertions.assertNotNull(jwtService.extractEmploymentId(token))
+    }
+
+    @Test
+    fun `multi-company staff login should bind authorization to selected employment`() {
+        val rawPassword = "securePassword1"
+        val companyB = companyRepository.save(Company(name = "Beta Salon"))
+        val companyA = companyRepository.save(Company(name = "Alpha Salon"))
+        val staff = userRepository.save(
+            User(
+                phoneNumber = "+48700111222",
+                firstName = "Multi",
+                lastName = "Staff",
+                email = "multi@salon.pl",
+                passwordHash = passwordEncoder.encode(rawPassword)
+            )
+        )
+        val ownerInB = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyB.id!!, userId = staff.id, role = "OWNER")
+        )
+        val employeeInA = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyA.id!!, userId = staff.id, role = "EMPLOYEE")
+        )
+
+        val selectionResult = mockMvc.post("/api/auth/login-staff") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                StaffLoginRequest(email = "multi@salon.pl", password = rawPassword)
+            )
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("EMPLOYMENT_SELECTION_REQUIRED") }
+            jsonPath("$.token") { doesNotExist() }
+            jsonPath("$.employments[0].employmentId") { value(employeeInA.id) }
+            jsonPath("$.employments[0].companyName") { value("Alpha Salon") }
+            jsonPath("$.employments[1].employmentId") { value(ownerInB.id) }
+            jsonPath("$.employments[1].companyName") { value("Beta Salon") }
+        }.andReturn()
+        Assertions.assertTrue(selectionResult.response.contentAsString.contains("EMPLOYMENT_SELECTION_REQUIRED"))
+
+        val employeeToken = loginForEmployment(rawPassword, employeeInA.id!!)
+        assertEquals("employee", jwtService.extractRole(employeeToken))
+        assertEquals(companyA.id, jwtService.extractCompanyId(employeeToken))
+        assertEquals(employeeInA.id, jwtService.extractEmploymentId(employeeToken))
+        mockMvc.put("/api/company/settings") {
+            header("Authorization", "Bearer $employeeToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = settingsBody()
+        }.andExpect { status { isForbidden() } }
+
+        val ownerToken = loginForEmployment(rawPassword, ownerInB.id!!)
+        assertEquals("owner", jwtService.extractRole(ownerToken))
+        assertEquals(companyB.id, jwtService.extractCompanyId(ownerToken))
+        mockMvc.get("/api/company/settings") {
+            header("Authorization", "Bearer $ownerToken")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(companyB.id) }
+        }
+
+        companyEmployeeRepository.delete(employeeInA)
+        mockMvc.get("/api/company/settings") {
+            header("Authorization", "Bearer $employeeToken")
+        }.andExpect { status { isForbidden() } }
+    }
+
+    @Test
+    fun `staff login should reject account without employment`() {
+        val password = "securePassword1"
+        userRepository.save(
+            User(
+                phoneNumber = "+48700999888",
+                firstName = "No",
+                lastName = "Employment",
+                email = "none@salon.pl",
+                passwordHash = passwordEncoder.encode(password)
+            )
+        )
+
+        mockMvc.post("/api/auth/login-staff") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(StaffLoginRequest("none@salon.pl", password))
+        }.andExpect { status { isBadRequest() } }
     }
 
     @Test
@@ -313,4 +404,26 @@ class AuthFlowIntegrationTest {
             status { isTooManyRequests() }
         }
     }
+
+    private fun loginForEmployment(password: String, employmentId: Long): String {
+        val result = mockMvc.post("/api/auth/login-staff") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                StaffLoginRequest("multi@salon.pl", password, employmentId)
+            )
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("AUTHENTICATED") }
+            jsonPath("$.employments") { isEmpty() }
+        }.andReturn()
+        return objectMapper.readTree(result.response.contentAsString)["token"].asString()
+    }
+
+    private fun settingsBody(): String = objectMapper.writeValueAsString(
+        mapOf(
+            "openingTime" to "08:00:00",
+            "closingTime" to "20:00:00",
+            "slotIntervalMinutes" to 15
+        )
+    )
 }

@@ -4,11 +4,12 @@ import org.springframework.security.core.GrantedAuthority
 import org.springframework.security.core.userdetails.UserDetails
 import pl.kacosmetology.scheduler.user.User
 
-/** Extended UserDetails holding the domain [User] entity and optional company association. */
+/** Extended UserDetails holding the domain [User] and an optional, exact staff employment scope. */
 class CustomUserDetails(
     val user: User,
     val companyId: Long?,
-    private val authorities: Collection<GrantedAuthority>
+    private val authorities: Collection<GrantedAuthority>,
+    val employmentId: Long? = null
 ) : UserDetails {
 
     val id: Long get() = user.id

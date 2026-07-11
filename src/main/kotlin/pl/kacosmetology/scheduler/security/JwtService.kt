@@ -4,8 +4,10 @@ import io.jsonwebtoken.Claims
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.stereotype.Service
+import pl.kacosmetology.scheduler.company.CompanyEmployee
+import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.user.User
 import java.util.*
 import javax.crypto.SecretKey
 
@@ -13,28 +15,50 @@ import javax.crypto.SecretKey
 @Service
 class JwtService(
     @Value($$"${jwt.secret}") private val secret: String,
-    @Value($$"${jwt.expiration-ms}") private val expirationMs: Long
+    @Value($$"${jwt.expiration-ms}") private val expirationMs: Long,
+    private val companyEmployeeRepository: CompanyEmployeeRepository? = null
 ) {
 
     private val signingKey: SecretKey by lazy { Keys.hmacShaKeyFor(secret.toByteArray()) }
 
-    /** Generates a JWT token with the user's identity, optional company ID, and role in claims. */
-    fun generateToken(userDetails: UserDetails, companyId: Long?): String {
-        val claims = mutableMapOf<String, Any>()
-        if (companyId != null) {
-            claims["companyId"] = companyId
-        }
-        val rolePriority = mapOf("ROLE_OWNER" to 2, "ROLE_EMPLOYEE" to 1, "ROLE_CUSTOMER" to 0)
-        val role = userDetails.authorities
-            .maxByOrNull { rolePriority[it.authority] ?: -1 }
-            ?.authority?.removePrefix("ROLE_")?.lowercase()
-        if (role != null) {
-            claims["role"] = role
-        }
+    /** Generates a customer JWT without any company or employment scope. */
+    fun generateCustomerToken(user: User): String = generateToken(user.phoneNumber, mapOf("role" to "customer"))
 
+    /** Generates a staff JWT scoped to exactly one employment row. */
+    fun generateStaffToken(user: User, employment: CompanyEmployee): String {
+        val employmentId = requireNotNull(employment.id) { "Employment must be persisted before issuing a token" }
+        require(employment.userId == user.id) { "Employment does not belong to user" }
+        return generateToken(
+            user.phoneNumber,
+            mapOf(
+                "employmentId" to employmentId,
+                "companyId" to employment.companyId,
+                "role" to employment.role.lowercase()
+            )
+        )
+    }
+
+    /**
+     * Compatibility bridge for integration-test token fixtures being migrated to explicit token methods.
+     * It still resolves and embeds one exact current employment; it cannot create legacy staff tokens.
+     */
+    @Deprecated("Use generateCustomerToken or generateStaffToken")
+    fun generateToken(userDetails: CustomUserDetails, companyId: Long?): String {
+        if (companyId == null) return generateCustomerToken(userDetails.user)
+        val repository = requireNotNull(companyEmployeeRepository) { "An employment repository is required" }
+        val employment = userDetails.employmentId?.let { repository.findById(it).orElse(null) }
+            ?: repository.findAllByUserId(userDetails.id).singleOrNull { it.companyId == companyId }
+            ?: error("An exact staff employment is required")
+        require(employment.companyId == companyId && employment.userId == userDetails.id) {
+            "Staff scope does not match employment"
+        }
+        return generateStaffToken(userDetails.user, employment)
+    }
+
+    private fun generateToken(subject: String, claims: Map<String, Any>): String {
         return Jwts.builder()
             .claims(claims)
-            .subject(userDetails.username)
+            .subject(subject)
             .issuedAt(Date(System.currentTimeMillis()))
             .expiration(Date(System.currentTimeMillis() + expirationMs))
             .signWith(signingKey)
@@ -56,8 +80,13 @@ class JwtService(
         return extractAllClaims(token)["companyId"]?.toString()?.toLong()
     }
 
+    /** Extracts the exact staff employment ID from custom JWT claims. */
+    fun extractEmploymentId(token: String): Long? {
+        return extractAllClaims(token)["employmentId"]?.toString()?.toLong()
+    }
+
     /** Validates that the token belongs to the given user and has not expired. */
-    fun isTokenValid(token: String, userDetails: UserDetails): Boolean {
+    fun isTokenValid(token: String, userDetails: CustomUserDetails): Boolean {
         val username = extractUsername(token)
         return (username == userDetails.username) && !isTokenExpired(token)
     }

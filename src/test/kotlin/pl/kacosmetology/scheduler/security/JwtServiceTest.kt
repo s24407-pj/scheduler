@@ -1,10 +1,14 @@
 package pl.kacosmetology.scheduler.security
 
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.security.core.authority.SimpleGrantedAuthority
+import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.user.User
 
 class JwtServiceTest {
@@ -13,134 +17,88 @@ class JwtServiceTest {
 
     @BeforeEach
     fun setUp() {
-        // Ręcznie tworzymy instancję serwisu.
-        // Używamy długiego, wymyślonego klucza dla algorytmu HS256 i czasu życia 1 dzień.
-        val dummySecret = "BardzoTajnyKluczKtoryMusiMiecPrzynajmniej256BitowZebyZadzialac!!!"
-        val dummyExpirationMs = 86400000L // 24 godziny
-
-        jwtService = JwtService(dummySecret, dummyExpirationMs)
-    }
-
-    @Test
-    fun `should generate valid token with phone number as subject`() {
-        // GIVEN
-        val user = User(
-            phoneNumber = "+48123456789",
-            firstName = "Jan",
-            lastName = "Kowalski"
-        )
-        val companyId = 1L
-
-        // OPAKOWUJEMY USERA:
-        val userDetails = CustomUserDetails(
-            user = user,
-            companyId = companyId,
-            authorities = listOf(SimpleGrantedAuthority("ROLE_CUSTOMER"))
-        )
-
-        // WHEN (przekazujemy userDetails zamiast user)
-        val token = jwtService.generateToken(userDetails, companyId)
-
-        // THEN
-        assertNotNull(token)
-        assertTrue(token.isNotEmpty())
-
-        val extractedPhoneNumber = jwtService.extractUsername(token)
-        assertEquals("+48123456789", extractedPhoneNumber, "Subject w tokenie powinien byc numerem telefonu")
-
-        val extractedCompanyId = jwtService.extractCompanyId(token)
-        assertEquals(1L, extractedCompanyId, "Token powinien zawierac poprawne companyId")
-    }
-
-    @Test
-    fun `isTokenValid should return true for correct user and valid token`() {
-        // GIVEN
-        val user = User(
-            phoneNumber = "+48999888777",
-            firstName = "Anna",
-            lastName = "Nowak"
-        )
-        val userDetails = CustomUserDetails(user, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")))
-
-        val token = jwtService.generateToken(userDetails, null)
-
-        // WHEN
-        val isValid = jwtService.isTokenValid(token, userDetails)
-
-        // THEN
-        assertTrue(isValid, "Token powinien byc uznany za wazny")
-    }
-
-    @Test
-    fun `isTokenValid should return false for token of different user`() {
-        // GIVEN
-        val realUser = User(phoneNumber = "+48111222333", firstName = "X", lastName = "Y")
-        val fakeUser = User(phoneNumber = "+48999999999", firstName = "Z", lastName = "W")
-
-        val realUserDetails = CustomUserDetails(realUser, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")))
-        val fakeUserDetails = CustomUserDetails(fakeUser, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")))
-
-        val tokenForRealUser = jwtService.generateToken(realUserDetails, null)
-
-        // WHEN
-        val isValid = jwtService.isTokenValid(tokenForRealUser, fakeUserDetails)
-
-        // THEN
-        assertFalse(isValid, "Token wystawiony dla innego numeru nie moze byc wazny")
-    }
-
-    @Test
-    fun `isTokenValid should return false for expired token`() {
-        // GIVEN - serwis z tokenem ważnym 1ms
-        val shortLivedJwtService = JwtService(
+        jwtService = JwtService(
             "BardzoTajnyKluczKtoryMusiMiecPrzynajmniej256BitowZebyZadzialac!!!",
-            1L // 1 milisekunda!
+            86_400_000L
         )
+    }
 
-        val user = User(phoneNumber = "+48111222333", firstName = "X", lastName = "Y")
-        val userDetails = CustomUserDetails(user, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")))
-        val token = shortLivedJwtService.generateToken(userDetails, null)
+    @Test
+    fun `customer token should contain only customer scope`() {
+        val user = user(1L, "+48123456789")
 
-        // Czekamy aż token wygaśnie
-        Thread.sleep(50)
+        val token = jwtService.generateCustomerToken(user)
 
-        // WHEN & THEN - parsowanie wygasłego tokena powinno rzucić wyjątek
-        assertThrows<Exception> {
-            shortLivedJwtService.isTokenValid(token, userDetails)
+        assertEquals(user.phoneNumber, jwtService.extractUsername(token))
+        assertEquals("customer", jwtService.extractRole(token))
+        assertNull(jwtService.extractCompanyId(token))
+        assertNull(jwtService.extractEmploymentId(token))
+    }
+
+    @Test
+    fun `staff token should contain claims from the same employment`() {
+        val user = user(7L, "+48999888777")
+        val employment = CompanyEmployee(id = 12L, companyId = 34L, userId = user.id, role = "EMPLOYEE")
+
+        val token = jwtService.generateStaffToken(user, employment)
+
+        assertEquals(user.phoneNumber, jwtService.extractUsername(token))
+        assertEquals(12L, jwtService.extractEmploymentId(token))
+        assertEquals(34L, jwtService.extractCompanyId(token))
+        assertEquals("employee", jwtService.extractRole(token))
+    }
+
+    @Test
+    fun `staff token should reject an employment belonging to another user`() {
+        val user = user(7L, "+48999888777")
+        val foreignEmployment = CompanyEmployee(id = 12L, companyId = 34L, userId = 8L, role = "OWNER")
+
+        assertThrows<IllegalArgumentException> {
+            jwtService.generateStaffToken(user, foreignEmployment)
         }
     }
 
     @Test
-    fun `generateToken should contain highest priority role when multiple authorities present`() {
-        // GIVEN - authorities list like loginStaff builds it: CUSTOMER first, then OWNER
-        val user = User(phoneNumber = "+48123456789", firstName = "Jan", lastName = "Kowalski")
-        val userDetails = CustomUserDetails(
-            user = user,
-            companyId = 1L,
-            authorities = listOf(
-                SimpleGrantedAuthority("ROLE_CUSTOMER"),
-                SimpleGrantedAuthority("ROLE_OWNER")
-            )
+    fun `isTokenValid should reject token of another user`() {
+        val realUser = user(1L, "+48111222333")
+        val fakeUser = user(2L, "+48999999999")
+        val token = jwtService.generateCustomerToken(realUser)
+        val fakeDetails = CustomUserDetails(
+            fakeUser,
+            null,
+            listOf(SimpleGrantedAuthority("ROLE_CUSTOMER"))
         )
 
-        // WHEN
-        val token = jwtService.generateToken(userDetails, 1L)
-
-        // THEN
-        assertEquals("owner", jwtService.extractRole(token), "Token powinien zawierać rolę owner, nie customer")
+        assertFalse(jwtService.isTokenValid(token, fakeDetails))
     }
 
     @Test
-    fun `generateToken should contain null companyId when not provided`() {
-        // GIVEN
-        val user = User(phoneNumber = "+48111222333", firstName = "A", lastName = "B")
-        val userDetails = CustomUserDetails(user, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")))
+    fun `expired token should fail validation`() {
+        val shortLived = JwtService(
+            "BardzoTajnyKluczKtoryMusiMiecPrzynajmniej256BitowZebyZadzialac!!!",
+            1L
+        )
+        val user = user(1L, "+48111222333")
+        val token = shortLived.generateCustomerToken(user)
+        val details = CustomUserDetails(user, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")))
+        Thread.sleep(50)
 
-        // WHEN
-        val token = jwtService.generateToken(userDetails, null)
-
-        // THEN
-        val extractedCompanyId = jwtService.extractCompanyId(token)
-        assertNull(extractedCompanyId, "CompanyId powinien byc null dla zwyklego klienta")
+        assertThrows<Exception> { shortLived.isTokenValid(token, details) }
     }
+
+    @Test
+    fun `valid customer token should validate for its user`() {
+        val user = user(1L, "+48111222333")
+        val token = jwtService.generateCustomerToken(user)
+        val details = CustomUserDetails(user, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")))
+
+        assertTrue(jwtService.isTokenValid(token, details))
+    }
+
+    private fun user(id: Long, phone: String) = User(
+        id = id,
+        phoneNumber = phone,
+        firstName = "A",
+        lastName = "B"
+    )
 }
