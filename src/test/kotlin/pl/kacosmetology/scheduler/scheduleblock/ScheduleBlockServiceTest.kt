@@ -178,7 +178,7 @@ class ScheduleBlockServiceTest {
         every { scheduleBlockRepository.delete(block) } returns Unit
 
         // WHEN
-        scheduleBlockService.deleteBlock(blockId, requesterId = employeeId, isOwner = false, companyId = null)
+        scheduleBlockService.deleteBlock(blockId, requesterId = employeeId, isOwner = false, companyId = companyId)
 
         // THEN
         verify(exactly = 1) { scheduleBlockRepository.delete(block) }
@@ -192,8 +192,33 @@ class ScheduleBlockServiceTest {
 
         // WHEN & THEN
         assertThrows<NoSuchElementException> {
-            scheduleBlockService.deleteBlock(blockId, requesterId = employeeId, isOwner = false, companyId = null)
+            scheduleBlockService.deleteBlock(blockId, requesterId = employeeId, isOwner = false, companyId = companyId)
         }
+    }
+
+    @Test
+    fun `deleteBlock should throw when employee owns block in another company`() {
+        val blockId = 99L
+        val block = ScheduleBlock(
+            id = blockId,
+            companyId = 999L,
+            employeeId = employeeId,
+            startTime = startTime,
+            endTime = endTime
+        )
+        every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
+
+        val exception = assertThrows<IllegalStateException> {
+            scheduleBlockService.deleteBlock(
+                blockId,
+                requesterId = employeeId,
+                isOwner = false,
+                companyId = companyId
+            )
+        }
+
+        assertEquals("Brak dostępu do tej blokady", exception.message)
+        verify(exactly = 0) { scheduleBlockRepository.delete(any()) }
     }
 
     @Test
@@ -212,7 +237,7 @@ class ScheduleBlockServiceTest {
 
         // WHEN & THEN
         val exception = assertThrows<IllegalStateException> {
-            scheduleBlockService.deleteBlock(blockId, requesterId = employeeId, isOwner = false, companyId = null)
+            scheduleBlockService.deleteBlock(blockId, requesterId = employeeId, isOwner = false, companyId = companyId)
         }
         assertEquals("Nie możesz usunąć cudzej blokady", exception.message)
         verify(exactly = 0) { scheduleBlockRepository.delete(any()) }

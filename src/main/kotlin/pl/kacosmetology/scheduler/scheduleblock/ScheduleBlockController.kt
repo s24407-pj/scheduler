@@ -63,7 +63,7 @@ class ScheduleBlockController(
     ) {
         val requesterId = userDetails.id
         val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
-        val companyId = if (isOwner) userDetails.companyId else null
+        val companyId = userDetails.requireCompanyId()
         scheduleBlockService.deleteBlock(id, requesterId, isOwner, companyId)
     }
 

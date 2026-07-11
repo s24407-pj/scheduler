@@ -277,6 +277,30 @@ class ScheduleBlockIntegrationTest {
     }
 
     @Test
+    fun `DELETE schedule-blocks employee cannot delete own block from another company`() {
+        val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = employee.id!!, role = "EMPLOYEE")
+        )
+        val block = scheduleBlockRepository.save(
+            ScheduleBlock(
+                companyId = otherCompany.id!!,
+                employeeId = employee.id!!,
+                startTime = testDate.atTime(10, 0),
+                endTime = testDate.atTime(11, 0)
+            )
+        )
+
+        mockMvc.delete("/api/schedule-blocks/${block.id!!}") {
+            header("Authorization", "Bearer $employeeToken")
+        }.andExpect {
+            status { isConflict() }
+        }
+
+        assertTrue(scheduleBlockRepository.existsById(block.id!!))
+    }
+
+    @Test
     fun `GET schedule-blocks employee should return blocks in range`() {
         scheduleBlockRepository.save(
             ScheduleBlock(
