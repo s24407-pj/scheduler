@@ -126,6 +126,19 @@ class ReservationDashboardIntegrationTest {
     }
 
     @Test
+    fun `malformed start date should return bad request`() {
+        mockMvc.get("/api/reservations") {
+            header("Authorization", "Bearer $ownerToken")
+            param("employeeId", employee.id.toString())
+            param("start", "not-a-date")
+            param("end", rangeEnd.toString())
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.message") { value("Invalid value for parameter 'start'") }
+        }
+    }
+
+    @Test
     fun `employee should be able to query own reservations`() {
         mockMvc.get("/api/reservations") {
             header("Authorization", "Bearer $employeeToken")

@@ -71,6 +71,18 @@ class AvailabilityIntegrationTest {
     private var companyId: Long = 0
     private val testDate = LocalDate.now().plusDays(2) // Za dwa dni, by uniknąć filtrów przeszłości
 
+    @Test
+    fun `malformed date should return bad request`() {
+        mockMvc.get("/api/availability") {
+            param("employeeId", "1")
+            param("serviceId", "1")
+            param("date", "bad-date")
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.message") { value("Invalid value for parameter 'date'") }
+        }
+    }
+
     @BeforeEach
     fun setup() {
         reservationRepository.deleteAll()
