@@ -24,8 +24,13 @@ class EmployeeAvailabilityPolicy(
     private val reservationRepository: ReservationRepository,
     private val scheduleBlockRepository: ScheduleBlockRepository
 ) {
-    /** Returns all active reservations and schedule blocks overlapping [start, end). */
-    fun findConflicts(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<EmployeeAvailabilityConflict> {
+    /** Returns all active reservations and company-scoped schedule blocks overlapping [start, end). */
+    fun findConflicts(
+        companyId: Long,
+        employeeId: Long,
+        start: LocalDateTime,
+        end: LocalDateTime
+    ): List<EmployeeAvailabilityConflict> {
         val reservationConflicts = reservationRepository.findOverlapping(employeeId, start, end).map {
             EmployeeAvailabilityConflict(
                 source = EmployeeAvailabilityConflictSource.RESERVATION,
@@ -33,7 +38,7 @@ class EmployeeAvailabilityPolicy(
                 endTime = it.endTime
             )
         }
-        val blockConflicts = scheduleBlockRepository.findOverlapping(employeeId, start, end).map {
+        val blockConflicts = scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end).map {
             EmployeeAvailabilityConflict(
                 source = EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK,
                 startTime = it.startTime,
@@ -46,10 +51,11 @@ class EmployeeAvailabilityPolicy(
 
     /** Returns the first conflict for [start, end), preferring reservations over schedule blocks. */
     fun findFirstConflict(
+        companyId: Long,
         employeeId: Long,
         start: LocalDateTime,
         end: LocalDateTime
-    ): EmployeeAvailabilityConflict? = findConflicts(employeeId, start, end).firstOrNull()
+    ): EmployeeAvailabilityConflict? = findConflicts(companyId, employeeId, start, end).firstOrNull()
 
     /** Returns true when [start, end) overlaps any busy range in [conflicts]. */
     fun overlapsAny(
@@ -60,12 +66,13 @@ class EmployeeAvailabilityPolicy(
 
     /** Throws [IllegalStateException] when [start, end) is not available for [employeeId]. */
     fun assertAvailable(
+        companyId: Long,
         employeeId: Long,
         start: LocalDateTime,
         end: LocalDateTime,
         message: String = "Ten termin jest już zajęty"
     ) {
-        if (findFirstConflict(employeeId, start, end) != null) {
+        if (findFirstConflict(companyId, employeeId, start, end) != null) {
             throw IllegalStateException(message)
         }
     }

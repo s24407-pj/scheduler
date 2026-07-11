@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityConflict
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityConflictSource
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
+import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import java.time.LocalDateTime
 import java.util.*
 
@@ -25,6 +26,9 @@ class ScheduleBlockServiceTest {
     @MockK
     private lateinit var employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
 
+    @MockK
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+
     @InjectMockKs
     private lateinit var scheduleBlockService: ScheduleBlockService
 
@@ -36,7 +40,8 @@ class ScheduleBlockServiceTest {
     @Test
     fun `createBlock should save and return block when no overlaps exist`() {
         // GIVEN
-        every { employeeAvailabilityPolicy.findFirstConflict(employeeId, startTime, endTime) } returns null
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
+        every { employeeAvailabilityPolicy.findFirstConflict(companyId, employeeId, startTime, endTime) } returns null
         every { scheduleBlockRepository.save(any()) } answers { firstArg() }
 
         // WHEN
@@ -54,6 +59,7 @@ class ScheduleBlockServiceTest {
     fun `createBlock should throw when endTime is not after startTime`() {
         // GIVEN - end == start
         val sameTime = startTime
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
 
         // WHEN & THEN
         val exception = assertThrows<IllegalArgumentException> {
@@ -66,8 +72,9 @@ class ScheduleBlockServiceTest {
     @Test
     fun `createBlock should throw when existing reservation overlaps`() {
         // GIVEN
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
         every {
-            employeeAvailabilityPolicy.findFirstConflict(employeeId, startTime, endTime)
+            employeeAvailabilityPolicy.findFirstConflict(companyId, employeeId, startTime, endTime)
         } returns EmployeeAvailabilityConflict(
             source = EmployeeAvailabilityConflictSource.RESERVATION,
             startTime = startTime,
@@ -85,8 +92,9 @@ class ScheduleBlockServiceTest {
     @Test
     fun `createBlock should throw when another block overlaps`() {
         // GIVEN
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
         every {
-            employeeAvailabilityPolicy.findFirstConflict(employeeId, startTime, endTime)
+            employeeAvailabilityPolicy.findFirstConflict(companyId, employeeId, startTime, endTime)
         } returns EmployeeAvailabilityConflict(
             source = EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK,
             startTime = startTime,
@@ -99,6 +107,47 @@ class ScheduleBlockServiceTest {
         }
         assertEquals("W tym czasie istnieje już blokada", exception.message)
         verify(exactly = 0) { scheduleBlockRepository.save(any()) }
+    }
+
+    @Test
+    fun `createBlock should reject employee outside company before conflict query or save`() {
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
+
+        assertThrows<NoSuchElementException> {
+            scheduleBlockService.createBlock(employeeId, companyId, startTime, endTime, null)
+        }
+
+        verify(exactly = 0) { employeeAvailabilityPolicy.findFirstConflict(any(), any(), any(), any()) }
+        verify(exactly = 0) { scheduleBlockRepository.save(any()) }
+    }
+
+    @Test
+    fun `getEmployeeBlocks should return company scoped blocks for company employee`() {
+        val block = ScheduleBlock(
+            companyId = companyId,
+            employeeId = employeeId,
+            startTime = startTime,
+            endTime = endTime
+        )
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
+        every {
+            scheduleBlockRepository.findOverlapping(companyId, employeeId, startTime, endTime)
+        } returns listOf(block)
+
+        val result = scheduleBlockService.getEmployeeBlocks(companyId, employeeId, startTime, endTime)
+
+        assertEquals(listOf(block), result)
+    }
+
+    @Test
+    fun `getEmployeeBlocks should reject employee outside company before repository query`() {
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
+
+        assertThrows<NoSuchElementException> {
+            scheduleBlockService.getEmployeeBlocks(companyId, employeeId, startTime, endTime)
+        }
+
+        verify(exactly = 0) { scheduleBlockRepository.findOverlapping(any(), any(), any(), any()) }
     }
 
     @Test

@@ -123,7 +123,7 @@ class ReservationServiceTest {
         every { companyRepository.findById(companyId) } returns Optional.of(Company(id = companyId, name = "Salon"))
 
         every {
-            employeeAvailabilityPolicy.assertAvailable(employeeId, any(), any())
+            employeeAvailabilityPolicy.assertAvailable(companyId, employeeId, any(), any())
         } throws IllegalStateException("Ten termin jest już zajęty")
 
         // WHEN & THEN

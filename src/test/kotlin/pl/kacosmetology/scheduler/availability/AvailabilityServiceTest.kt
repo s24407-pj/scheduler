@@ -64,7 +64,7 @@ class AvailabilityServiceTest {
     @BeforeEach
     fun setupAvailabilityPolicy() {
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(any(), any()) } returns true
-        every { employeeAvailabilityPolicy.findConflicts(employeeId, any(), any()) } returns emptyList()
+        every { employeeAvailabilityPolicy.findConflicts(any(), employeeId, any(), any()) } returns emptyList()
         every { employeeAvailabilityPolicy.overlapsAny(any(), any(), any()) } answers {
             val start = firstArg<LocalDateTime>()
             val end = secondArg<LocalDateTime>()
@@ -137,7 +137,9 @@ class AvailabilityServiceTest {
             startTime = testDate.atTime(12, 0),
             endTime = testDate.atTime(13, 0)
         )
-        every { employeeAvailabilityPolicy.findConflicts(employeeId, any(), any()) } returns listOf(existingReservation)
+        every {
+            employeeAvailabilityPolicy.findConflicts(any(), employeeId, any(), any())
+        } returns listOf(existingReservation)
 
         // WHEN
         val availableSlots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
@@ -180,7 +182,7 @@ class AvailabilityServiceTest {
             startTime = testDate.atTime(14, 0),
             endTime = testDate.atTime(15, 0)
         )
-        every { employeeAvailabilityPolicy.findConflicts(employeeId, any(), any()) } returns listOf(block)
+        every { employeeAvailabilityPolicy.findConflicts(any(), employeeId, any(), any()) } returns listOf(block)
 
         // WHEN
         val availableSlots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)

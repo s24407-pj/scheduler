@@ -62,7 +62,12 @@ class AvailabilityService(
         val availableSlots = mutableListOf<AvailableSlotResponse>()
         var currentSlotStart = date.atTime(openingTime)
         val endOfWorkDay = date.atTime(closingTime)
-        val conflicts = employeeAvailabilityPolicy.findConflicts(employeeId, currentSlotStart, endOfWorkDay)
+        val conflicts = employeeAvailabilityPolicy.findConflicts(
+            offering.companyId,
+            employeeId,
+            currentSlotStart,
+            endOfWorkDay
+        )
         val earliestBookableTime =
             LocalDateTime.now(ZoneId.of("Europe/Warsaw")).plusMinutes(company.minBookingAdvanceMinutes.toLong())
 

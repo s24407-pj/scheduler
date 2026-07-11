@@ -3,12 +3,14 @@ package pl.kacosmetology.scheduler.scheduleblock
 import com.ninjasquad.springmockk.MockkBean
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
@@ -201,6 +203,9 @@ class ScheduleBlockIntegrationTest {
         val otherEmployee = userRepository.save(
             User(phoneNumber = "+48600100200", firstName = "Inny", lastName = "Pracownik")
         )
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = otherEmployee.id, role = "EMPLOYEE")
+        )
         val block = scheduleBlockRepository.save(
             ScheduleBlock(
                 companyId = companyId,
@@ -343,6 +348,143 @@ class ScheduleBlockIntegrationTest {
     }
 
     @Test
+    fun `POST schedule-blocks owner receives 404 for employee from another company`() {
+        val otherCompany = companyRepository.save(Company(name = "Obcy Salon POST"))
+        val otherEmployee = userRepository.save(
+            User(phoneNumber = "+48900100201", firstName = "Obcy", lastName = "Pracownik")
+        )
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id, role = "EMPLOYEE")
+        )
+        val body = mapOf(
+            "startTime" to testDate.atTime(12, 0).toString(),
+            "endTime" to testDate.atTime(13, 0).toString(),
+            "employeeId" to otherEmployee.id
+        )
+
+        mockMvc.post("/api/schedule-blocks") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isNotFound() }
+        }
+
+        assertTrue(scheduleBlockRepository.findAll().isEmpty())
+    }
+
+    @Test
+    fun `GET schedule-blocks owner receives 404 for employee from another company`() {
+        val otherCompany = companyRepository.save(Company(name = "Obcy Salon GET"))
+        val otherEmployee = userRepository.save(
+            User(phoneNumber = "+48900100202", firstName = "Obcy", lastName = "Pracownik")
+        )
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id, role = "EMPLOYEE")
+        )
+
+        mockMvc.get("/api/schedule-blocks/employee") {
+            header("Authorization", "Bearer $ownerToken")
+            param("employeeId", otherEmployee.id.toString())
+            param("start", testDate.atStartOfDay().toString())
+            param("end", testDate.plusDays(1).atStartOfDay().toString())
+        }.andExpect {
+            status { isNotFound() }
+        }
+    }
+
+    @Test
+    fun `blocks for shared employee are isolated between companies in reads and availability`() {
+        val otherCompany = companyRepository.save(Company(name = "Drugi Salon"))
+        val otherCompanyId = otherCompany.id!!
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompanyId, userId = employee.id, role = "EMPLOYEE")
+        )
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompanyId, userId = owner.id, role = "OWNER")
+        )
+        val otherCompanyOwnerToken = jwtService.generateToken(
+            CustomUserDetails(owner, otherCompanyId, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
+            otherCompanyId
+        )
+        scheduleBlockRepository.save(
+            ScheduleBlock(
+                companyId = companyId,
+                employeeId = employee.id,
+                startTime = testDate.atTime(10, 0),
+                endTime = testDate.atTime(11, 0)
+            )
+        )
+        val otherOffering = serviceRepository.save(
+            Offering(companyId = otherCompanyId, name = "Usługa drugiego salonu", durationMinutes = 60, price = 90)
+        )
+
+        mockMvc.get("/api/schedule-blocks/employee") {
+            header("Authorization", "Bearer $otherCompanyOwnerToken")
+            param("employeeId", employee.id.toString())
+            param("start", testDate.atStartOfDay().toString())
+            param("end", testDate.plusDays(1).atStartOfDay().toString())
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(0) }
+        }
+
+        mockMvc.get("/api/availability") {
+            param("employeeId", employee.id.toString())
+            param("serviceId", otherOffering.id.toString())
+            param("date", testDate.toString())
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$[?(@.time == '10:00:00')]") { exists() }
+        }
+    }
+
+    @Test
+    fun `database rejects schedule block for employee outside company`() {
+        val outsider = userRepository.save(
+            User(phoneNumber = "+48900100203", firstName = "Bez", lastName = "Firmy")
+        )
+
+        assertThrows<DataIntegrityViolationException> {
+            scheduleBlockRepository.saveAndFlush(
+                ScheduleBlock(
+                    companyId = companyId,
+                    employeeId = outsider.id,
+                    startTime = testDate.atTime(10, 0),
+                    endTime = testDate.atTime(11, 0)
+                )
+            )
+        }
+    }
+
+    @Test
+    fun `database allows overlapping blocks for shared employee in different companies`() {
+        val otherCompany = companyRepository.save(Company(name = "Salon współdzielony"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = employee.id, role = "EMPLOYEE")
+        )
+        scheduleBlockRepository.saveAndFlush(
+            ScheduleBlock(
+                companyId = companyId,
+                employeeId = employee.id,
+                startTime = testDate.atTime(10, 0),
+                endTime = testDate.atTime(11, 0)
+            )
+        )
+
+        scheduleBlockRepository.saveAndFlush(
+            ScheduleBlock(
+                companyId = otherCompany.id!!,
+                employeeId = employee.id,
+                startTime = testDate.atTime(10, 0),
+                endTime = testDate.atTime(11, 0)
+            )
+        )
+
+        assertEquals(2, scheduleBlockRepository.findAll().size)
+    }
+
+    @Test
     fun `DELETE schedule-blocks owner can delete another employee block in their company`() {
         val block = scheduleBlockRepository.save(
             ScheduleBlock(
@@ -367,6 +509,9 @@ class ScheduleBlockIntegrationTest {
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
         val otherEmployee =
             userRepository.save(User(phoneNumber = "+48999888777", firstName = "Obcy", lastName = "Pracownik"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id, role = "EMPLOYEE")
+        )
         val block = scheduleBlockRepository.save(
             ScheduleBlock(
                 companyId = otherCompany.id!!,

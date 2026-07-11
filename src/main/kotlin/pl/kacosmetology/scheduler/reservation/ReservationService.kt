@@ -90,7 +90,7 @@ class ReservationService(
 
         val endTime = startTime.plusMinutes(offering.durationMinutes.toLong())
 
-        employeeAvailabilityPolicy.assertAvailable(employeeId, startTime, endTime)
+        employeeAvailabilityPolicy.assertAvailable(offering.companyId, employeeId, startTime, endTime)
 
         val price = company.effectivePrice(offering.price, startTime)
 

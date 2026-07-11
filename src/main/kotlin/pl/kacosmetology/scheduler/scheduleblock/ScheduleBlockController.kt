@@ -81,8 +81,10 @@ class ScheduleBlockController(
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime
     ): List<ScheduleBlockResponse> {
         val requesterId = userDetails.id
+        val companyId = userDetails.companyId
+            ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
         val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
         val targetId = if (isOwner && employeeId != null) employeeId else requesterId
-        return scheduleBlockService.getEmployeeBlocks(targetId, start, end).map { it.toResponse() }
+        return scheduleBlockService.getEmployeeBlocks(companyId, targetId, start, end).map { it.toResponse() }
     }
 }

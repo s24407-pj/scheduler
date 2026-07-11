@@ -30,6 +30,7 @@ class EmployeeAvailabilityPolicyTest {
     @InjectMockKs
     private lateinit var policy: EmployeeAvailabilityPolicy
 
+    private val companyId = 1L
     private val employeeId = 10L
     private val start = LocalDateTime.of(2030, 1, 1, 10, 0)
     private val end = LocalDateTime.of(2030, 1, 1, 11, 0)
@@ -58,9 +59,9 @@ class EmployeeAvailabilityPolicyTest {
                 status = ReservationStatus.PENDING
             )
         )
-        every { scheduleBlockRepository.findOverlapping(employeeId, start, end) } returns emptyList()
+        every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end) } returns emptyList()
 
-        val conflicts = policy.findConflicts(employeeId, start, end)
+        val conflicts = policy.findConflicts(companyId, employeeId, start, end)
 
         assertEquals(1, conflicts.size)
         assertEquals(EmployeeAvailabilityConflictSource.RESERVATION, conflicts.first().source)
@@ -69,15 +70,15 @@ class EmployeeAvailabilityPolicyTest {
     @Test
     fun `findFirstConflict should return null when cancelled and no-show reservations are ignored by repository`() {
         every { reservationRepository.findOverlapping(employeeId, start, end) } returns emptyList()
-        every { scheduleBlockRepository.findOverlapping(employeeId, start, end) } returns emptyList()
+        every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end) } returns emptyList()
 
-        assertNull(policy.findFirstConflict(employeeId, start, end))
+        assertNull(policy.findFirstConflict(companyId, employeeId, start, end))
     }
 
     @Test
     fun `findConflicts should include overlapping schedule block`() {
         every { reservationRepository.findOverlapping(employeeId, start, end) } returns emptyList()
-        every { scheduleBlockRepository.findOverlapping(employeeId, start, end) } returns listOf(
+        every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end) } returns listOf(
             ScheduleBlock(
                 companyId = 1L,
                 employeeId = employeeId,
@@ -86,7 +87,7 @@ class EmployeeAvailabilityPolicyTest {
             )
         )
 
-        val conflicts = policy.findConflicts(employeeId, start, end)
+        val conflicts = policy.findConflicts(companyId, employeeId, start, end)
 
         assertEquals(1, conflicts.size)
         assertEquals(EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK, conflicts.first().source)
@@ -106,11 +107,11 @@ class EmployeeAvailabilityPolicyTest {
                 status = ReservationStatus.CONFIRMED
             )
         )
-        every { scheduleBlockRepository.findOverlapping(employeeId, start, end) } returns listOf(
+        every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end) } returns listOf(
             ScheduleBlock(companyId = 1L, employeeId = employeeId, startTime = start, endTime = end)
         )
 
-        val conflict = policy.findFirstConflict(employeeId, start, end)
+        val conflict = policy.findFirstConflict(companyId, employeeId, start, end)
 
         assertEquals(EmployeeAvailabilityConflictSource.RESERVATION, conflict?.source)
     }
@@ -118,12 +119,12 @@ class EmployeeAvailabilityPolicyTest {
     @Test
     fun `assertAvailable should throw when any conflict exists`() {
         every { reservationRepository.findOverlapping(employeeId, start, end) } returns emptyList()
-        every { scheduleBlockRepository.findOverlapping(employeeId, start, end) } returns listOf(
+        every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end) } returns listOf(
             ScheduleBlock(companyId = 1L, employeeId = employeeId, startTime = start, endTime = end)
         )
 
         assertThrows(IllegalStateException::class.java) {
-            policy.assertAvailable(employeeId, start, end)
+            policy.assertAvailable(companyId, employeeId, start, end)
         }
     }
 }
