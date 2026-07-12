@@ -5,7 +5,9 @@ import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
 import pl.kacosmetology.scheduler.company.dto.CompanyEmployeeResponse
+import pl.kacosmetology.scheduler.company.dto.CompanyPublicProfileResponse
 import pl.kacosmetology.scheduler.company.dto.CompanySettingsResponse
+import pl.kacosmetology.scheduler.company.dto.PublicEmployeeResponse
 import pl.kacosmetology.scheduler.company.dto.UpdateCompanySettingsRequest
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
@@ -18,6 +20,11 @@ import pl.kacosmetology.scheduler.security.CustomUserDetails
 class CompanyController(
     private val companyService: CompanyService
 ) {
+
+    /** Returns public company profile for customer booking pages. No authentication required. */
+    @GetMapping("/public/{companyId}")
+    fun getPublicProfile(@PathVariable companyId: Long): CompanyPublicProfileResponse =
+        companyService.getPublicProfile(companyId)
 
     /** Returns all employees (OWNER + EMPLOYEE) of the authenticated user's company. */
     @GetMapping("/employees")

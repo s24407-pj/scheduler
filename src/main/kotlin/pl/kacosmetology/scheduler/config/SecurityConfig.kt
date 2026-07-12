@@ -66,6 +66,8 @@ class SecurityConfig(
                     .requestMatchers("/api/auth/**").permitAll()
                     .requestMatchers("/api/availability").permitAll()
                     .requestMatchers("/api/offerings/public/**").permitAll()
+                    .requestMatchers("/api/company/public/**").permitAll()
+                    .requestMatchers("/api/employees/public/**").permitAll()
                     .requestMatchers("/api/whatsapp/webhook").permitAll()
                     .requestMatchers("/api/whatsapp/simulate", "/api/whatsapp/simulate/**").permitAll()
                     .anyRequest().authenticated()

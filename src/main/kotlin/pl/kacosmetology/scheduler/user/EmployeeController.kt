@@ -8,6 +8,7 @@ import org.springframework.web.multipart.MultipartFile
 import org.springframework.web.server.ResponseStatusException
 import pl.kacosmetology.scheduler.company.CompanyService
 import pl.kacosmetology.scheduler.company.dto.CompanyEmployeeResponse
+import pl.kacosmetology.scheduler.company.dto.PublicEmployeeResponse
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.user.dto.UserProfileResponse
 
@@ -21,6 +22,14 @@ class EmployeeController(
     private val employeePhotoService: EmployeePhotoService,
     private val companyService: CompanyService
 ) {
+
+    /** Returns employees eligible for [offeringId] at [companyId]. Public — no authentication required. */
+    @GetMapping("/public/company/{companyId}")
+    fun getPublicBookableEmployees(
+        @PathVariable companyId: Long,
+        @RequestParam offeringId: Long
+    ): List<PublicEmployeeResponse> =
+        companyService.getPublicBookableEmployees(companyId, offeringId)
 
     /**
      * Returns all employees belonging to the authenticated user's company.

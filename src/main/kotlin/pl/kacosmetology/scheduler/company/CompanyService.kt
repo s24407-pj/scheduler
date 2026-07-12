@@ -3,9 +3,14 @@ package pl.kacosmetology.scheduler.company
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.company.dto.CompanyEmployeeResponse
+import pl.kacosmetology.scheduler.company.dto.CompanyPublicProfileResponse
 import pl.kacosmetology.scheduler.company.dto.CompanySettingsResponse
+import pl.kacosmetology.scheduler.company.dto.PublicEmployeeResponse
 import pl.kacosmetology.scheduler.company.dto.UpdateCompanySettingsRequest
+import pl.kacosmetology.scheduler.company.dto.toPublicProfileResponse
 import pl.kacosmetology.scheduler.company.dto.toSettingsResponse
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.UserRepository
 
 /** Business logic for reading and updating company settings (business hours, slot interval). */
@@ -13,8 +18,58 @@ import pl.kacosmetology.scheduler.user.UserRepository
 class CompanyService(
     private val companyRepository: CompanyRepository,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val offeringRepository: OfferingRepository,
+    private val assignmentRepository: EmployeeOfferingAssignmentRepository
 ) {
+
+    /** Returns public company profile for customer booking. Throws [NoSuchElementException] if not found. */
+    @Transactional(readOnly = true)
+    fun getPublicProfile(companyId: Long): CompanyPublicProfileResponse {
+        val company = companyRepository.findById(companyId)
+            .orElseThrow { NoSuchElementException("Firma nie istnieje") }
+        return company.toPublicProfileResponse()
+    }
+
+    /**
+     * Returns employees eligible to perform [offeringId] at [companyId].
+     * Uses the same assignment filter as the WhatsApp booking bot.
+     */
+    @Transactional(readOnly = true)
+    fun getPublicBookableEmployees(companyId: Long, offeringId: Long): List<PublicEmployeeResponse> {
+        companyRepository.findById(companyId)
+            .orElseThrow { NoSuchElementException("Firma nie istnieje") }
+        val offering = offeringRepository.findById(offeringId)
+            .orElseThrow { NoSuchElementException("Usługa nie istnieje") }
+        if (offering.companyId != companyId) {
+            throw NoSuchElementException("Usługa nie istnieje")
+        }
+        if (!offering.active) {
+            throw NoSuchElementException("Usługa nie istnieje")
+        }
+
+        val memberships = companyEmployeeRepository.findAllByCompanyId(companyId)
+        val eligibleUserIds = memberships
+            .filter { emp ->
+                !assignmentRepository.existsByEmployeeId(emp.userId) ||
+                    assignmentRepository.existsByEmployeeIdAndOfferingId(emp.userId, offeringId)
+            }
+            .map { it.userId }
+
+        if (eligibleUserIds.isEmpty()) return emptyList()
+
+        val usersById = userRepository.findAllById(eligibleUserIds).associateBy { it.id }
+        return eligibleUserIds.mapNotNull { userId ->
+            usersById[userId]?.let { user ->
+                PublicEmployeeResponse(
+                    id = userId,
+                    firstName = user.firstName,
+                    lastName = user.lastName,
+                    photoUrl = user.photoUrl
+                )
+            }
+        }
+    }
 
     /** Returns company settings. Throws [NoSuchElementException] if the company does not exist. */
     @Transactional(readOnly = true)

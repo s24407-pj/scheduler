@@ -10,6 +10,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.company.dto.UpdateCompanySettingsRequest
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.LocalTime
@@ -26,6 +29,12 @@ class CompanyServiceTest {
 
     @MockK
     private lateinit var userRepository: UserRepository
+
+    @MockK
+    private lateinit var offeringRepository: OfferingRepository
+
+    @MockK
+    private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
     @InjectMockKs
     private lateinit var companyService: CompanyService
@@ -126,6 +135,41 @@ class CompanyServiceTest {
         val result = companyService.getEmployees(companyId)
 
         assertEquals(0, result.size)
+    }
+
+    @Test
+    fun `getPublicProfile should return public fields only`() {
+        company.lastMinuteDiscountPercent = 15
+        company.lastMinuteDiscountHours = 12
+        every { companyRepository.findById(companyId) } returns Optional.of(company)
+
+        val result = companyService.getPublicProfile(companyId)
+
+        assertEquals(companyId, result.id)
+        assertEquals("Test Salon", result.name)
+        assertEquals(15, result.lastMinuteDiscountPercent)
+        assertEquals(12, result.lastMinuteDiscountHours)
+    }
+
+    @Test
+    fun `getPublicBookableEmployees should filter by offering assignment`() {
+        val offeringId = 5L
+        val offering = Offering(id = offeringId, companyId = companyId, name = "Manicure", durationMinutes = 60, price = 100, active = true)
+        val user = User(id = 10L, phoneNumber = "+48100000001", firstName = "Anna", lastName = "Kowalska")
+        val ce = CompanyEmployee(id = 1L, companyId = companyId, userId = 10L, role = "EMPLOYEE")
+
+        every { companyRepository.findById(companyId) } returns Optional.of(company)
+        every { offeringRepository.findById(offeringId) } returns Optional.of(offering)
+        every { companyEmployeeRepository.findAllByCompanyId(companyId) } returns listOf(ce)
+        every { assignmentRepository.existsByEmployeeId(10L) } returns true
+        every { assignmentRepository.existsByEmployeeIdAndOfferingId(10L, offeringId) } returns true
+        every { userRepository.findAllById(listOf(10L)) } returns listOf(user)
+
+        val result = companyService.getPublicBookableEmployees(companyId, offeringId)
+
+        assertEquals(1, result.size)
+        assertEquals(10L, result.first().id)
+        assertEquals("Anna", result.first().firstName)
     }
 
     @Test
