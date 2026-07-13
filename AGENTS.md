@@ -75,13 +75,13 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 ## Key Design Decisions
 
-**Authentication:** Two flows merge into a single JWT standard:
-- Customers: `POST /api/auth/request-code` (OTP via SMS) → `POST /api/auth/verify-code` → JWT
-- Staff: `POST /api/auth/login-staff` (email + password) → JWT
+**Authentication:** Two flows issue role-specific JWTs:
+- Customers: `POST /api/auth/request-code` (OTP via SMS) → `POST /api/auth/verify-code` → an unscoped customer JWT (no company or employment claims).
+- Staff: `POST /api/auth/login-staff` accepts email, password, and optional `employmentId`. A user with one employment receives a JWT immediately. A user with multiple employments and no selection receives `EMPLOYMENT_SELECTION_REQUIRED` plus `employments` entries containing `employmentId`, `companyId`, `companyName`, and `role`; repeat the request with the selected `employmentId`.
 
-**Authorization roles:** `CUSTOMER`, `EMPLOYEE`, `OWNER` stored in `company_employees`. `CustomUserDetails` carries `companyId` and role as Spring authorities (`ROLE_OWNER`, etc.). Method-level security uses `@PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")`.
+**Authorization roles:** `CUSTOMER`, `EMPLOYEE`, `OWNER` stored in `company_employees`. Each staff JWT and `CustomUserDetails` is scoped to exactly one `employmentId`, its `companyId`, and one role (`ROLE_OWNER` or `ROLE_EMPLOYEE`). Customer JWTs carry only `ROLE_CUSTOMER` and remain unscoped. Method-level security uses `@PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")`.
 
-**OTP/Rate limiting:** `OtpStore` uses Redis with key prefixes `otp:<phone>` (TTL from config) and `rate:sms:<phone>` (sliding window counter). `SmsSender` has two methods: `sendOtp` (OTP flow) and `sendMessage` (general notifications). `ConsoleSmsSender` is the dev stub for both.
+**OTP/Rate limiting:** `OtpStore` uses Redis keys `otp:<phone>` (TTL from config) and `rate:sms:<phone>` (request counter). A Lua script atomically verifies and consumes a successful OTP, preserves the code TTL after failures, and limits failed attempts per code via `OTP_VERIFICATION_MAX_ATTEMPTS`. `OtpVerificationRateLimiter` separately limits verification requests per client IP via `OTP_VERIFICATION_IP_MAX_ATTEMPTS` and `OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES`. `SmsSender` has two methods: `sendOtp` (OTP flow) and `sendMessage` (general notifications). `ConsoleSmsSender` is the dev stub for both.
 
 **Login rate limiting:** `LoginRateLimiter` uses Redis key `rate:login:<ip>` to limit staff login attempts per client IP. Default: 10 attempts per 1-minute window. Configured via `LOGIN_MAX_ATTEMPTS` / `LOGIN_RATE_WINDOW_MINUTES`. The controller extracts IP from `X-Forwarded-For` (first value) or falls back to `remoteAddr`. Exceeding the limit throws `RateLimitExceededException` → HTTP 429.
 
@@ -93,7 +93,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **Employee offering assignments:** Owners assign which offerings each employee can perform via `POST /api/employees/{id}/offerings/{offeringId}`. If an employee has any assignments configured, `AvailabilityService` and `ReservationService` reject requests for unassigned offerings. Employees with no assignments at all can perform any offering within their own company (backward-compatible default).
 
-**Schedule blocks:** Employees can block time ranges (breaks, personal unavailability) via `POST /api/schedule-blocks`. Owners may create a block for another employee by supplying `employeeId` in the request body; employees always create for themselves (JWT identity). `DELETE /api/schedule-blocks/{id}`: owners can delete any block within their company (company isolation checked); employees can only delete their own. `ScheduleBlockService.deleteBlock()` signature: `(blockId, requesterId, isOwner, companyId)`. Blocks are validated with `@Future` on `startTime` (DTO layer) and checked for overlap with existing reservations and other blocks (service layer). Blocked slots are excluded from availability.
+**Schedule blocks:** Employees can block time ranges (breaks, personal unavailability) via `POST /api/schedule-blocks`. Owners may create a block for another employee by supplying `employeeId` in the request body; employees always create for themselves (JWT identity). The target must be employed by the authenticated company, enforced by service checks and the composite database foreign key `(company_id, employee_id)`. `DELETE /api/schedule-blocks/{id}`: owners can delete any block within their company; employees can only delete their own. `ScheduleBlockService.deleteBlock()` signature: `(blockId, requesterId, isOwner, companyId)`. Blocks are validated with `@Future` on `startTime`, checked against reservations in the service, and prevented from overlapping other blocks for the same company and employee in both service and database layers. Blocked slots are excluded from availability.
 
 **Offering categories:** Owners can group offerings into categories via `POST /api/offering-categories`. Categories are company-scoped; offerings carry an optional `category_id` (set to null on category deletion).
 
@@ -115,22 +115,22 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **No-show tracking:** Staff can mark a reservation as `NO_SHOW` via `PATCH /api/reservations/{id}/no-show` (OWNER or EMPLOYEE). This increments the customer's `no_show_count` in `company_customer_blocks` and auto-blocks the customer (`blocked = true`) at that company when the count reaches `companies.max_no_shows` (configured via `PUT /api/company/settings`; `maxNoShows = 0` disables auto-block). Block state is **company-scoped** — a block at Company A does not affect bookings at Company B. A blocked customer who calls `POST /api/reservations` for an offering belonging to the blocking company receives HTTP 400. Owners can manually block/unblock any customer via `PATCH /api/customers/{id}/block` and `PATCH /api/customers/{id}/unblock` (OWNER only, HTTP 204); unblocking resets `noShowCount` to 0. Customer status (name, noShowCount, blocked) is readable by staff at `GET /api/customers/{id}` (requires OWNER or EMPLOYEE; returns company-scoped values). The `blocked` guard runs in `ReservationService.createReservation()` after loading the offering (so `offering.companyId` is available), using `CompanyCustomerBlockRepository.findByCompanyIdAndCustomerId()`.
 
-**JWT role claim:** `JwtService.generateToken()` includes a `role` claim (lowercase: `owner`, `employee`, `customer`) so clients can distinguish OWNER from EMPLOYEE without an extra API call.
+**JWT claims:** `JwtService.generateCustomerToken()` includes only the lowercase `customer` role. `JwtService.generateStaffToken()` includes the selected `employmentId`, its `companyId`, and one lowercase `owner` or `employee` role.
 
 **Dev seed (`dev` profile):** `DataInitializer` creates owner `gabinet@kacosmetology.pl` / `admin123` and employee `pracownik@kacosmetology.pl` / `employee123`.
 
 ## Database Schema
 
-PostgreSQL with Flyway migrations in `src/main/resources/db/migration/`. Key tables (after V4):
+PostgreSQL with a consolidated pre-production baseline in `src/main/resources/db/migration/V1__init_schema.sql`. Key tables:
 - `users` — unified table for customers and staff (distinguished by `company_employees` membership); has `photo_url` column
 - `company_customer_blocks` — company-scoped block/no-show state per customer; columns: `company_id`, `customer_id`, `no_show_count`, `blocked`; UNIQUE `(company_id, customer_id)`
 - `company_employees` — join table assigning users to a company with a role (`OWNER`/`EMPLOYEE`)
 - `offerings` — offering catalog (`Offering` entity); has optional `category_id`
 - `offering_categories` — company-scoped groupings for offerings
 - `offering_images` — up to 5 images per offering, references `offerings(id)` ON DELETE CASCADE; column `offering_id`
-- `companies` — has `max_no_shows` column (auto-block threshold), `last_minute_discount_percent` and `last_minute_discount_hours`, `min_booking_advance_minutes` (V2)
+- `companies` — has `max_no_shows` (auto-block threshold), `last_minute_discount_percent`, `last_minute_discount_hours`, and `min_booking_advance_minutes`
 - `reservations` — stores price snapshot at booking time, has `@Version` for optimistic locking, `reminder_sent` flag for deduplication; status enum includes `NO_SHOW`
-- `schedule_blocks` — employee time blocks; checked by `AvailabilityService` alongside reservations
+- `schedule_blocks` — company-scoped employee time blocks with composite employment membership and overlap constraints; checked by `AvailabilityService` alongside reservations
 - `employee_work_schedules` — per-employee, per-day-of-week working hours
 - `employee_offerings` — which offerings each employee is allowed to perform; column `offering_id`
 
@@ -159,6 +159,7 @@ Environment variables override application YAML values. Key vars for docker-comp
 - `SPRING_DATA_REDIS_HOST/PORT`
 - `CORS_ORIGINS`
 - `OTP_TTL_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RATE_WINDOW_MINUTES`
+- `OTP_VERIFICATION_MAX_ATTEMPTS`, `OTP_VERIFICATION_IP_MAX_ATTEMPTS`, `OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES`
 - `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES`
 - `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`
 - `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_COMPANY_ID`, `WHATSAPP_SENDER`

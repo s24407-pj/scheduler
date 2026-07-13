@@ -10,7 +10,6 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
@@ -22,7 +21,6 @@ import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -77,17 +75,16 @@ class ReservationStaffIntegrationTest {
         companyId = company.id!!
 
         employee = userRepository.save(User(phoneNumber = "+48700111222", firstName = "Styl", lastName = "Pracownik"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
+        val employment = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
+        )
 
         val service = serviceRepository.save(
             Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 90, price = 300)
         )
         serviceId = service.id!!
 
-        staffToken = jwtService.generateToken(
-            CustomUserDetails(employee, companyId, listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE"))),
-            companyId
-        )
+        staffToken = jwtService.generateStaffToken(employee, employment)
     }
 
     @Test
@@ -98,7 +95,7 @@ class ReservationStaffIntegrationTest {
         )
 
         val body = mapOf(
-            "employeeId" to employee.id,
+            "employeeId" to employee.id!!,
             "serviceId" to serviceId,
             "startTime" to reservationTime.toString(),
             "customerPhone" to existingClient.phoneNumber
@@ -117,7 +114,7 @@ class ReservationStaffIntegrationTest {
 
         val reservations = reservationRepository.findAll()
         assertEquals(1, reservations.size)
-        assertEquals(existingClient.id, reservations.first().customerId)
+        assertEquals(existingClient.id!!, reservations.first().customerId)
     }
 
     @Test
@@ -125,7 +122,7 @@ class ReservationStaffIntegrationTest {
         val newClientPhone = "+48666777888"
 
         val body = mapOf(
-            "employeeId" to employee.id,
+            "employeeId" to employee.id!!,
             "serviceId" to serviceId,
             "startTime" to reservationTime.toString(),
             "customerPhone" to newClientPhone,
@@ -148,7 +145,7 @@ class ReservationStaffIntegrationTest {
 
         val reservations = reservationRepository.findAll()
         assertEquals(1, reservations.size)
-        assertEquals(newClient.id, reservations.first().customerId)
+        assertEquals(newClient.id!!, reservations.first().customerId)
     }
 
     @Test
@@ -156,7 +153,7 @@ class ReservationStaffIntegrationTest {
         val unknownPhone = "+48100200300"
 
         val body = mapOf(
-            "employeeId" to employee.id,
+            "employeeId" to employee.id!!,
             "serviceId" to serviceId,
             "startTime" to reservationTime.toString(),
             "customerPhone" to unknownPhone
@@ -184,7 +181,7 @@ class ReservationStaffIntegrationTest {
             User(phoneNumber = "+48777111222", firstName = "Obcy", lastName = "Pracownik")
         )
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE")
         )
         val otherService = serviceRepository.save(
             Offering(companyId = otherCompany.id!!, name = "Obca usługa", durationMinutes = 30, price = 90)
@@ -192,8 +189,8 @@ class ReservationStaffIntegrationTest {
         val unknownPhone = "+48123999888"
 
         val body = mapOf(
-            "employeeId" to otherEmployee.id,
-            "serviceId" to otherService.id,
+            "employeeId" to otherEmployee.id!!,
+            "serviceId" to otherService.id!!,
             "startTime" to reservationTime.toString(),
             "customerPhone" to unknownPhone,
             "customerFirstName" to "Nowy",
@@ -215,7 +212,7 @@ class ReservationStaffIntegrationTest {
     @Test
     fun `POST reservations-staff should return 403 without token`() {
         val body = mapOf(
-            "employeeId" to employee.id,
+            "employeeId" to employee.id!!,
             "serviceId" to serviceId,
             "startTime" to reservationTime.toString(),
             "customerPhone" to "+48000000000"
@@ -237,13 +234,13 @@ class ReservationStaffIntegrationTest {
         scheduleBlockRepository.save(
             ScheduleBlock(
                 companyId = companyId,
-                employeeId = employee.id,
+                employeeId = employee.id!!,
                 startTime = reservationTime,
                 endTime = reservationTime.plusHours(1)
             )
         )
         val body = mapOf(
-            "employeeId" to employee.id,
+            "employeeId" to employee.id!!,
             "serviceId" to serviceId,
             "startTime" to reservationTime.plusMinutes(30).toString(),
             "customerPhone" to existingClient.phoneNumber

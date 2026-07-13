@@ -7,9 +7,7 @@ import java.time.OffsetDateTime
 @Entity
 @Table(name = "offering_images")
 class OfferingImage(
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long? = null,
+    id: Long? = null,
 
     @Column(name = "offering_id", nullable = false)
     val offeringId: Long,
@@ -19,4 +17,8 @@ class OfferingImage(
 
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     val createdAt: OffsetDateTime? = null
-)
+) {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    var id: Long? = id
+        protected set
+}

@@ -10,7 +10,6 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.put
@@ -20,7 +19,6 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
@@ -81,29 +79,24 @@ class CustomerNotesIntegrationTest {
         companyId = company.id!!
 
         owner = userRepository.save(User(phoneNumber = "+48801111001", firstName = "Owner", lastName = "Notes"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER"))
-        ownerToken = jwtService.generateToken(
-            CustomUserDetails(owner, companyId, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
-            companyId
+        val ownerEmployment = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
         )
+        ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
 
         employee = userRepository.save(User(phoneNumber = "+48801222001", firstName = "Employee", lastName = "Notes"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
-        employeeToken = jwtService.generateToken(
-            CustomUserDetails(employee, companyId, listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE"))),
-            companyId
+        val employeeEmployment = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
         )
+        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
 
         customer = userRepository.save(User(phoneNumber = "+48801333001", firstName = "Klient", lastName = "Notes"))
-        customerToken = jwtService.generateToken(
-            CustomUserDetails(customer, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER"))),
-            null
-        )
+        customerToken = jwtService.generateCustomerToken(customer)
     }
 
     @Test
     fun `PUT notes as owner should return 204 and persist note`() {
-        mockMvc.put("/api/customers/${customer.id}/notes") {
+        mockMvc.put("/api/customers/${customer.id!!}/notes") {
             header("Authorization", "Bearer $ownerToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(mapOf("notes" to "VIP klient"))
@@ -111,13 +104,13 @@ class CustomerNotesIntegrationTest {
             status { isNoContent() }
         }
 
-        val record = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id)!!
+        val record = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!
         assertEquals("VIP klient", record.notes)
     }
 
     @Test
     fun `PUT notes as employee should return 204 and persist note`() {
-        mockMvc.put("/api/customers/${customer.id}/notes") {
+        mockMvc.put("/api/customers/${customer.id!!}/notes") {
             header("Authorization", "Bearer $employeeToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(mapOf("notes" to "Regularny klient"))
@@ -125,7 +118,7 @@ class CustomerNotesIntegrationTest {
             status { isNoContent() }
         }
 
-        val record = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id)!!
+        val record = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!
         assertEquals("Regularny klient", record.notes)
     }
 
@@ -134,12 +127,12 @@ class CustomerNotesIntegrationTest {
         companyCustomerRepository.save(
             CompanyCustomer(
                 companyId = companyId,
-                userId = customer.id,
+                userId = customer.id!!,
                 notes = "Notatka testowa"
             )
         )
 
-        mockMvc.get("/api/customers/${customer.id}") {
+        mockMvc.get("/api/customers/${customer.id!!}") {
             header("Authorization", "Bearer $ownerToken")
         }.andExpect {
             status { isOk() }
@@ -149,7 +142,7 @@ class CustomerNotesIntegrationTest {
 
     @Test
     fun `GET customer status returns null notes when no record`() {
-        mockMvc.get("/api/customers/${customer.id}") {
+        mockMvc.get("/api/customers/${customer.id!!}") {
             header("Authorization", "Bearer $ownerToken")
         }.andExpect {
             status { isOk() }
@@ -162,12 +155,12 @@ class CustomerNotesIntegrationTest {
         companyCustomerRepository.save(
             CompanyCustomer(
                 companyId = companyId,
-                userId = customer.id,
+                userId = customer.id!!,
                 notes = "Stara notatka"
             )
         )
 
-        mockMvc.put("/api/customers/${customer.id}/notes") {
+        mockMvc.put("/api/customers/${customer.id!!}/notes") {
             header("Authorization", "Bearer $ownerToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(mapOf("notes" to null))
@@ -175,13 +168,13 @@ class CustomerNotesIntegrationTest {
             status { isNoContent() }
         }
 
-        val record = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id)!!
+        val record = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!
         assertNull(record.notes)
     }
 
     @Test
     fun `PUT blank string clears note stored as null`() {
-        mockMvc.put("/api/customers/${customer.id}/notes") {
+        mockMvc.put("/api/customers/${customer.id!!}/notes") {
             header("Authorization", "Bearer $ownerToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(mapOf("notes" to "   "))
@@ -189,13 +182,13 @@ class CustomerNotesIntegrationTest {
             status { isNoContent() }
         }
 
-        val record = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id)!!
+        val record = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!
         assertNull(record.notes)
     }
 
     @Test
     fun `unauthenticated PUT notes should return 403`() {
-        mockMvc.put("/api/customers/${customer.id}/notes") {
+        mockMvc.put("/api/customers/${customer.id!!}/notes") {
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(mapOf("notes" to "Test"))
         }.andExpect {
@@ -205,7 +198,7 @@ class CustomerNotesIntegrationTest {
 
     @Test
     fun `customer-role PUT notes should return 403`() {
-        mockMvc.put("/api/customers/${customer.id}/notes") {
+        mockMvc.put("/api/customers/${customer.id!!}/notes") {
             header("Authorization", "Bearer $customerToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(mapOf("notes" to "Test"))
@@ -218,7 +211,7 @@ class CustomerNotesIntegrationTest {
     fun `notes exceeding 2000 chars should return 400`() {
         val longNote = "a".repeat(2001)
 
-        mockMvc.put("/api/customers/${customer.id}/notes") {
+        mockMvc.put("/api/customers/${customer.id!!}/notes") {
             header("Authorization", "Bearer $ownerToken")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(mapOf("notes" to longNote))

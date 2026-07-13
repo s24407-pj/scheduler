@@ -33,7 +33,7 @@ class CustomerService(
                 val block = blocksByCustomerId[id]
                 val companyCustomer = companyCustomersByUserId[id]
                 CustomerStatusResponse(
-                    id = user.id,
+                    id = requireNotNull(user.id) { "Persisted customer must have an ID" },
                     firstName = user.firstName,
                     lastName = user.lastName,
                     phoneNumber = user.phoneNumber,
@@ -56,7 +56,7 @@ class CustomerService(
         val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId)
         val companyCustomer = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
         return CustomerStatusResponse(
-            id = customer.id,
+            id = requireNotNull(customer.id) { "Persisted customer must have an ID" },
             firstName = customer.firstName,
             lastName = customer.lastName,
             phoneNumber = customer.phoneNumber,

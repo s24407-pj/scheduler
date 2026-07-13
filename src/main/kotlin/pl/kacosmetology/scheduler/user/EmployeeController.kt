@@ -84,7 +84,7 @@ class EmployeeController(
             ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisania do firmy")
 
     private fun User.toProfileResponse() = UserProfileResponse(
-        id = id,
+        id = requireNotNull(id) { "Persisted employee must have an ID" },
         phoneNumber = phoneNumber,
         firstName = firstName,
         lastName = lastName,

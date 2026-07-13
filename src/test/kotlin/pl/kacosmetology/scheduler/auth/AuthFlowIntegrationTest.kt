@@ -17,6 +17,8 @@ import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.put
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
@@ -31,6 +33,9 @@ import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -124,10 +129,48 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
+    fun `incomplete registration should preserve OTP for retry with names`() {
+        val phoneNumber = "+48111222444"
+
+        mockMvc.post("/api/auth/request-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(RequestCodeRequest(phoneNumber))
+        }.andExpect {
+            status { isOk() }
+        }
+
+        val otpCode = requireNotNull(redisTemplate.opsForValue().get("otp:$phoneNumber"))
+
+        mockMvc.post("/api/auth/verify-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                VerifyCodeRequest(phoneNumber, otpCode, firstName = null, lastName = "Kowalski")
+            )
+        }.andExpect {
+            status { isBadRequest() }
+        }
+
+        assertEquals(otpCode, redisTemplate.opsForValue().get("otp:$phoneNumber"))
+
+        mockMvc.post("/api/auth/verify-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                VerifyCodeRequest(phoneNumber, otpCode, firstName = "Jan", lastName = "Kowalski")
+            )
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.token") { exists() }
+        }
+
+        Assertions.assertNotNull(userRepository.findByPhoneNumber(phoneNumber))
+        Assertions.assertNull(redisTemplate.opsForValue().get("otp:$phoneNumber"))
+    }
+
+    @Test
     fun `staff login with email and password should return token`() {
         // 1. GIVEN - Mamy pracownika w bazie z ustawionym hasłem
         val rawPassword = "superSecretPassword"
-        userRepository.save(
+        val staff = userRepository.save(
             User(
                 phoneNumber = "+48999888777",
                 firstName = "Anna",
@@ -135,6 +178,10 @@ class AuthFlowIntegrationTest {
                 email = "anna@salon.pl",
                 passwordHash = passwordEncoder.encode(rawPassword)
             )
+        )
+        val company = companyRepository.save(Company(name = "Anna Salon"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = company.id!!, userId = staff.id!!, role = "EMPLOYEE")
         )
 
         // 2. WHEN - Pracownik próbuje się zalogować
@@ -149,7 +196,9 @@ class AuthFlowIntegrationTest {
             content = objectMapper.writeValueAsString(loginDto)
         }.andExpect {
             status { isOk() }
+            jsonPath("$.status") { value("AUTHENTICATED") }
             jsonPath("$.token") { exists() }
+            jsonPath("$.employments") { isEmpty() }
         }
     }
 
@@ -167,7 +216,7 @@ class AuthFlowIntegrationTest {
                 passwordHash = passwordEncoder.encode(rawPassword)
             )
         )
-        companyEmployeeRepository.save(CompanyEmployee(companyId = company.id!!, userId = owner.id, role = "OWNER"))
+        companyEmployeeRepository.save(CompanyEmployee(companyId = company.id!!, userId = owner.id!!, role = "OWNER"))
 
         // WHEN
         val result = mockMvc.post("/api/auth/login-staff") {
@@ -182,7 +231,90 @@ class AuthFlowIntegrationTest {
 
         // THEN
         assertEquals("owner", jwtService.extractRole(token), "Token powinien zawierać rolę owner")
-        assertEquals(company.id, jwtService.extractCompanyId(token))
+        assertEquals(company.id!!, jwtService.extractCompanyId(token))
+        Assertions.assertNotNull(jwtService.extractEmploymentId(token))
+    }
+
+    @Test
+    fun `multi-company staff login should bind authorization to selected employment`() {
+        val rawPassword = "securePassword1"
+        val companyB = companyRepository.save(Company(name = "Beta Salon"))
+        val companyA = companyRepository.save(Company(name = "Alpha Salon"))
+        val staff = userRepository.save(
+            User(
+                phoneNumber = "+48700111222",
+                firstName = "Multi",
+                lastName = "Staff",
+                email = "multi@salon.pl",
+                passwordHash = passwordEncoder.encode(rawPassword)
+            )
+        )
+        val ownerInB = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyB.id!!, userId = staff.id!!, role = "OWNER")
+        )
+        val employeeInA = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyA.id!!, userId = staff.id!!, role = "EMPLOYEE")
+        )
+
+        val selectionResult = mockMvc.post("/api/auth/login-staff") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                StaffLoginRequest(email = "multi@salon.pl", password = rawPassword)
+            )
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("EMPLOYMENT_SELECTION_REQUIRED") }
+            jsonPath("$.token") { doesNotExist() }
+            jsonPath("$.employments[0].employmentId") { value(employeeInA.id!!) }
+            jsonPath("$.employments[0].companyName") { value("Alpha Salon") }
+            jsonPath("$.employments[1].employmentId") { value(ownerInB.id!!) }
+            jsonPath("$.employments[1].companyName") { value("Beta Salon") }
+        }.andReturn()
+        Assertions.assertTrue(selectionResult.response.contentAsString.contains("EMPLOYMENT_SELECTION_REQUIRED"))
+
+        val employeeToken = loginForEmployment(rawPassword, employeeInA.id!!)
+        assertEquals("employee", jwtService.extractRole(employeeToken))
+        assertEquals(companyA.id!!, jwtService.extractCompanyId(employeeToken))
+        assertEquals(employeeInA.id!!, jwtService.extractEmploymentId(employeeToken))
+        mockMvc.put("/api/company/settings") {
+            header("Authorization", "Bearer $employeeToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = settingsBody()
+        }.andExpect { status { isForbidden() } }
+
+        val ownerToken = loginForEmployment(rawPassword, ownerInB.id!!)
+        assertEquals("owner", jwtService.extractRole(ownerToken))
+        assertEquals(companyB.id!!, jwtService.extractCompanyId(ownerToken))
+        mockMvc.get("/api/company/settings") {
+            header("Authorization", "Bearer $ownerToken")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(companyB.id!!) }
+        }
+
+        companyEmployeeRepository.delete(employeeInA)
+        mockMvc.get("/api/company/settings") {
+            header("Authorization", "Bearer $employeeToken")
+        }.andExpect { status { isForbidden() } }
+    }
+
+    @Test
+    fun `staff login should reject account without employment`() {
+        val password = "securePassword1"
+        userRepository.save(
+            User(
+                phoneNumber = "+48700999888",
+                firstName = "No",
+                lastName = "Employment",
+                email = "none@salon.pl",
+                passwordHash = passwordEncoder.encode(password)
+            )
+        )
+
+        mockMvc.post("/api/auth/login-staff") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(StaffLoginRequest("none@salon.pl", password))
+        }.andExpect { status { isBadRequest() } }
     }
 
     @Test
@@ -313,4 +445,133 @@ class AuthFlowIntegrationTest {
             status { isTooManyRequests() }
         }
     }
+
+    @Test
+    fun `verify-code should retain TTL lock after three failures and reset on replacement code`() {
+        val phoneNumber = "+48555111222"
+        val requestCode = RequestCodeRequest(phoneNumber)
+        mockMvc.post("/api/auth/request-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(requestCode)
+        }.andExpect { status { isOk() } }
+
+        val otpKey = "otp:$phoneNumber"
+        val firstCode = requireNotNull(redisTemplate.opsForValue().get(otpKey))
+        val initialTtl = requireNotNull(redisTemplate.getExpire(otpKey, TimeUnit.SECONDS))
+        val wrongCode = "000000"
+
+        repeat(2) {
+            mockMvc.post("/api/auth/verify-code") {
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, wrongCode))
+            }.andExpect { status { isBadRequest() } }
+        }
+
+        val ttlAfterFailures = requireNotNull(redisTemplate.getExpire(otpKey, TimeUnit.SECONDS))
+        Assertions.assertTrue(ttlAfterFailures > 0)
+        Assertions.assertTrue(ttlAfterFailures <= initialTtl)
+        assertEquals("$firstCode|2", redisTemplate.opsForValue().get(otpKey))
+
+        mockMvc.post("/api/auth/verify-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, wrongCode))
+        }.andExpect { status { isTooManyRequests() } }
+
+        mockMvc.post("/api/auth/verify-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, firstCode, "Jan", "Nowak"))
+        }.andExpect { status { isTooManyRequests() } }
+
+        mockMvc.post("/api/auth/request-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(requestCode)
+        }.andExpect { status { isOk() } }
+
+        val replacementCode = requireNotNull(redisTemplate.opsForValue().get(otpKey))
+        Assertions.assertFalse(replacementCode.contains('|'))
+        mockMvc.post("/api/auth/verify-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                VerifyCodeRequest(phoneNumber, replacementCode, "Jan", "Nowak")
+            )
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.token") { exists() }
+        }
+    }
+
+    @Test
+    fun `two concurrent correct verify-code requests should issue exactly one token`() {
+        val phoneNumber = "+48555222333"
+        mockMvc.post("/api/auth/request-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(RequestCodeRequest(phoneNumber))
+        }.andExpect { status { isOk() } }
+        val code = requireNotNull(redisTemplate.opsForValue().get("otp:$phoneNumber"))
+        val requestBody = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, code, "Jan", "Nowak"))
+
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val requests = List(2) {
+                executor.submit<Int> {
+                    start.await()
+                    mockMvc.post("/api/auth/verify-code") {
+                        contentType = MediaType.APPLICATION_JSON
+                        content = requestBody
+                    }.andReturn().response.status
+                }
+            }
+            start.countDown()
+            val statuses = requests.map { it.get(10, TimeUnit.SECONDS) }.sorted()
+
+            assertEquals(listOf(200, 400), statuses)
+            Assertions.assertNotNull(userRepository.findByPhoneNumber(phoneNumber))
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `verify-code should return 429 after ten requests from forwarded client IP`() {
+        val forwardedIp = "203.0.113.10"
+        repeat(10) { attempt ->
+            val phoneNumber = "+4860000${attempt.toString().padStart(4, '0')}"
+            mockMvc.post("/api/auth/verify-code") {
+                header("X-Forwarded-For", "$forwardedIp, 10.0.0.1")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, "123456"))
+            }.andExpect { status { isBadRequest() } }
+        }
+
+        mockMvc.post("/api/auth/verify-code") {
+            header("X-Forwarded-For", "$forwardedIp, 10.0.0.1")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(VerifyCodeRequest("+48699999999", "123456"))
+        }.andExpect { status { isTooManyRequests() } }
+
+        assertEquals("11", redisTemplate.opsForValue().get("rate:otp-verify:$forwardedIp"))
+    }
+
+    private fun loginForEmployment(password: String, employmentId: Long): String {
+        val result = mockMvc.post("/api/auth/login-staff") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                StaffLoginRequest("multi@salon.pl", password, employmentId)
+            )
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("AUTHENTICATED") }
+            jsonPath("$.employments") { isEmpty() }
+        }.andReturn()
+        return objectMapper.readTree(result.response.contentAsString)["token"].asString()
+    }
+
+    private fun settingsBody(): String = objectMapper.writeValueAsString(
+        mapOf(
+            "openingTime" to "08:00:00",
+            "closingTime" to "20:00:00",
+            "slotIntervalMinutes" to 15
+        )
+    )
 }

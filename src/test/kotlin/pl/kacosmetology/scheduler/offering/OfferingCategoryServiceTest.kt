@@ -6,6 +6,7 @@ import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
@@ -38,7 +39,7 @@ class OfferingCategoryServiceTest {
 
         val result = offeringCategoryService.createCategory(companyId, request)
 
-        assertEquals(categoryId, result.id)
+        assertEquals(categoryId, result.id!!)
         assertEquals("Koloryzacja", result.name)
         verify(exactly = 1) { categoryRepository.save(any()) }
     }
@@ -97,11 +98,10 @@ class OfferingCategoryServiceTest {
 
         every { offeringRepository.findById(offeringId) } returns Optional.of(offering)
         every { categoryRepository.findById(categoryId) } returns Optional.of(category)
-        every { offeringRepository.save(any()) } answers { firstArg() }
-
         offeringCategoryService.assignCategory(offeringId, companyId, categoryId)
 
-        verify(exactly = 1) { offeringRepository.save(match { it.categoryId == categoryId }) }
+        assertEquals(categoryId, offering.categoryId)
+        verify(exactly = 0) { offeringRepository.save(any()) }
     }
 
     @Test
@@ -116,11 +116,10 @@ class OfferingCategoryServiceTest {
         )
 
         every { offeringRepository.findById(offeringId) } returns Optional.of(offering)
-        every { offeringRepository.save(any()) } answers { firstArg() }
-
         offeringCategoryService.assignCategory(offeringId, companyId, null)
 
-        verify(exactly = 1) { offeringRepository.save(match { it.categoryId == null }) }
+        assertNull(offering.categoryId)
+        verify(exactly = 0) { offeringRepository.save(any()) }
     }
 
     @Test

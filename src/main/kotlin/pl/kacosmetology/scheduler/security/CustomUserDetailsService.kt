@@ -1,6 +1,5 @@
 package pl.kacosmetology.scheduler.security
 
-import org.springframework.security.core.GrantedAuthority
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.security.core.userdetails.UserDetailsService
@@ -10,9 +9,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.user.UserRepository
 
 /**
- * Loads user details by phone number for Spring Security authentication.
- * Builds authorities based on the user's company employment roles.
- * The companyId is left null here — it gets populated from the JWT in [JwtAuthenticationFilter].
+ * Loads customer-only details by phone number and exact employment-scoped staff details.
  */
 @Service
 class CustomUserDetailsService(
@@ -24,12 +21,29 @@ class CustomUserDetailsService(
         val user = userRepository.findByPhoneNumber(username)
             ?: throw UsernameNotFoundException("User not found with phone number: $username")
 
-        val authorities = mutableListOf<GrantedAuthority>(SimpleGrantedAuthority("ROLE_CUSTOMER"))
+        return CustomUserDetails(
+            user = user,
+            companyId = null,
+            authorities = listOf(SimpleGrantedAuthority("ROLE_CUSTOMER"))
+        )
+    }
 
-        companyEmployeeRepository.findAllByUserId(user.id).forEach { employment ->
-            authorities.add(SimpleGrantedAuthority("ROLE_${employment.role.uppercase()}"))
+    /** Loads a principal from one employment and grants only that employment's role. */
+    fun loadStaffByEmployment(username: String, employmentId: Long): CustomUserDetails {
+        val user = userRepository.findByPhoneNumber(username)
+            ?: throw UsernameNotFoundException("User not found with phone number: $username")
+        val employment = companyEmployeeRepository.findById(employmentId).orElseThrow {
+            UsernameNotFoundException("Employment not found: $employmentId")
+        }
+        if (employment.userId != user.id) {
+            throw UsernameNotFoundException("Employment does not belong to user: $username")
         }
 
-        return CustomUserDetails(user = user, companyId = null, authorities = authorities)
+        return CustomUserDetails(
+            user = user,
+            companyId = employment.companyId,
+            authorities = listOf(SimpleGrantedAuthority("ROLE_${employment.role.uppercase()}")),
+            employmentId = employment.id
+        )
     }
 }

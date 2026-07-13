@@ -6,6 +6,8 @@ import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
@@ -93,8 +95,6 @@ class OfferingServiceTest {
         val request = OfferingRequest(name = "Nowa", durationMinutes = 45, price = 150)
 
         every { offeringRepository.findById(1L) } returns Optional.of(existing)
-        every { offeringRepository.save(any()) } answers { firstArg() }
-
         // WHEN
         val result = offeringService.updateOffering(1L, companyId, request)
 
@@ -103,6 +103,8 @@ class OfferingServiceTest {
         assertEquals(45, result.durationMinutes)
         assertEquals(150, result.price)
         assertEquals(companyId, result.companyId)
+        assertSame(existing, result)
+        verify(exactly = 0) { offeringRepository.save(any()) }
     }
 
     @Test
@@ -127,15 +129,12 @@ class OfferingServiceTest {
         val existing =
             Offering(id = 1, companyId = companyId, name = "Do usunięcia", durationMinutes = 30, price = 50)
         every { offeringRepository.findById(1L) } returns Optional.of(existing)
-        every { offeringRepository.save(any()) } answers { firstArg() }
-
         // WHEN
         offeringService.deleteOffering(1L, companyId)
 
         // THEN
-        verify(exactly = 1) {
-            offeringRepository.save(match { it.id == 1L && !it.active })
-        }
+        assertFalse(existing.active)
+        verify(exactly = 0) { offeringRepository.save(any()) }
         verify(exactly = 0) { offeringRepository.deleteById(any()) }
     }
 

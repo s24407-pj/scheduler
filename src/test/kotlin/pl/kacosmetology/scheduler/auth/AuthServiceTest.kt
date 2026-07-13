@@ -8,6 +8,7 @@ import io.mockk.junit5.MockKExtension
 import io.mockk.just
 import io.mockk.verify
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
@@ -17,6 +18,9 @@ import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.company.Company
+import pl.kacosmetology.scheduler.company.CompanyEmployee
+import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -43,7 +47,13 @@ class AuthServiceTest {
     private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
     @MockK
+    private lateinit var companyRepository: CompanyRepository
+
+    @MockK
     private lateinit var loginRateLimiter: LoginRateLimiter
+
+    @MockK
+    private lateinit var otpVerificationRateLimiter: OtpVerificationRateLimiter
 
     @InjectMockKs
     private lateinit var authService: AuthService
@@ -85,11 +95,13 @@ class AuthServiceTest {
     fun `verifyCode should throw when code does not exist or expired`() {
         // GIVEN
         val request = VerifyCodeRequest(testPhone, "123456")
-        every { otpStore.getCode(testPhone) } returns null
+        every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
+        every { otpStore.verifyCode(testPhone, request.code) } returns
+            OtpVerificationResult.EXPIRED_OR_MISSING
 
         // WHEN & THEN
         val exception = assertThrows<IllegalArgumentException> {
-            authService.verifyCode(request)
+            authService.verifyCode(request, testIp)
         }
         assertEquals("Brak kodu dla tego numeru lub kod wygasł", exception.message)
     }
@@ -98,35 +110,64 @@ class AuthServiceTest {
     fun `verifyCode should throw when code is invalid`() {
         // GIVEN
         val request = VerifyCodeRequest(testPhone, "111111") // Zły kod
-        every { otpStore.getCode(testPhone) } returns "999999"
+        every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
+        every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.INVALID
 
         // WHEN & THEN
         val exception = assertThrows<IllegalArgumentException> {
-            authService.verifyCode(request)
+            authService.verifyCode(request, testIp)
         }
         assertEquals("Nieprawidłowy kod", exception.message)
+    }
+
+    @Test
+    fun `verifyCode should throw RateLimitExceededException when code attempts are exhausted`() {
+        val request = VerifyCodeRequest(testPhone, "111111")
+        every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
+        every { otpStore.verifyCode(testPhone, request.code) } returns
+            OtpVerificationResult.ATTEMPTS_EXCEEDED
+
+        val exception = assertThrows<RateLimitExceededException> {
+            authService.verifyCode(request, testIp)
+        }
+
+        assertEquals("Zbyt wiele nieudanych prób kodu. Poproś o nowy kod.", exception.message)
+        verify(exactly = 0) { userRepository.findByPhoneNumber(any()) }
+    }
+
+    @Test
+    fun `verifyCode should reject request when IP rate limit is exceeded`() {
+        val request = VerifyCodeRequest(testPhone, "123456")
+        every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns false
+
+        assertThrows<RateLimitExceededException> {
+            authService.verifyCode(request, testIp)
+        }
+
+        verify(exactly = 0) { otpStore.verifyAndConsumeCode(any(), any()) }
     }
 
     @Test
     fun `verifyCode should create new user and issue token when code is valid`() {
         // GIVEN
         val request = VerifyCodeRequest(testPhone, "123456", "Jan", "Kowalski")
-        every { otpStore.getCode(testPhone) } returns "123456"
+        every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
+        every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
+        every { otpStore.verifyAndConsumeCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
         every { userRepository.findByPhoneNumber(testPhone) } returns null // Użytkownika jeszcze nie ma
 
         val savedUser = User(id = 1, phoneNumber = testPhone, firstName = "Jan", lastName = "Kowalski")
         every { userRepository.save(any()) } returns savedUser
 
-        every { otpStore.deleteCode(testPhone) } just Runs
-        every { jwtService.generateToken(any(), null) } returns "DUMMY_JWT_TOKEN"
+        every { jwtService.generateCustomerToken(savedUser) } returns "DUMMY_JWT_TOKEN"
 
         // WHEN
-        val response = authService.verifyCode(request)
+        val response = authService.verifyCode(request, testIp)
 
         // THEN
         assertEquals("DUMMY_JWT_TOKEN", response.token)
         verify(exactly = 1) { userRepository.save(any()) }
-        verify(exactly = 1) { otpStore.deleteCode(testPhone) }
+        verify(exactly = 1) { otpStore.verifyAndConsumeCode(testPhone, request.code) }
     }
 
     @Test
@@ -231,13 +272,28 @@ class AuthServiceTest {
     fun `verifyCode should throw when firstName is missing on first registration`() {
         // GIVEN - nowy użytkownik (nie ma w bazie), ale nie podał firstName
         val request = VerifyCodeRequest(testPhone, "123456", firstName = null, lastName = "Kowalski")
-        every { otpStore.getCode(testPhone) } returns "123456"
+        every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
+        every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
         every { userRepository.findByPhoneNumber(testPhone) } returns null
 
         // WHEN & THEN
         assertThrows<IllegalArgumentException> {
-            authService.verifyCode(request)
+            authService.verifyCode(request, testIp)
         }
+        verify(exactly = 0) { otpStore.verifyAndConsumeCode(any(), any()) }
+    }
+
+    @Test
+    fun `verifyCode should not consume code when lastName is missing on first registration`() {
+        val request = VerifyCodeRequest(testPhone, "123456", firstName = "Jan", lastName = null)
+        every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
+        every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
+        every { userRepository.findByPhoneNumber(testPhone) } returns null
+
+        assertThrows<IllegalArgumentException> {
+            authService.verifyCode(request, testIp)
+        }
+        verify(exactly = 0) { otpStore.verifyAndConsumeCode(any(), any()) }
     }
 
     @Test
@@ -246,17 +302,110 @@ class AuthServiceTest {
         val request = VerifyCodeRequest(testPhone, "123456") // Bez firstName/lastName
         val existingUser = User(id = 1, phoneNumber = testPhone, firstName = "Jan", lastName = "Kowalski")
 
-        every { otpStore.getCode(testPhone) } returns "123456"
+        every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
+        every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
+        every { otpStore.verifyAndConsumeCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
         every { userRepository.findByPhoneNumber(testPhone) } returns existingUser // Użytkownik JUŻ istnieje!
-        every { otpStore.deleteCode(testPhone) } just Runs
-        every { jwtService.generateToken(any(), null) } returns "EXISTING_USER_TOKEN"
+        every { jwtService.generateCustomerToken(existingUser) } returns "EXISTING_USER_TOKEN"
 
         // WHEN
-        val response = authService.verifyCode(request)
+        val response = authService.verifyCode(request, testIp)
 
         // THEN
         assertEquals("EXISTING_USER_TOKEN", response.token)
         verify(exactly = 0) { userRepository.save(any()) } // NIE tworzymy duplikatu!
-        verify(exactly = 1) { otpStore.deleteCode(testPhone) }
+        verify(exactly = 1) { otpStore.verifyAndConsumeCode(testPhone, request.code) }
     }
+
+    @Test
+    fun `loginStaff should issue token for the only employment and exact role`() {
+        val request = StaffLoginRequest("owner@mail.com", "password123")
+        val user = staffUser()
+        val employment = CompanyEmployee(11L, 22L, user.id!!, "OWNER")
+        every { loginRateLimiter.checkAndIncrement(testIp) } returns true
+        every { userRepository.findByEmail(request.email) } returns user
+        every { passwordEncoder.matches(request.password, user.passwordHash) } returns true
+        every { companyEmployeeRepository.findAllByUserId(user.id!!) } returns listOf(employment)
+        every { jwtService.generateStaffToken(user, employment) } returns "SCOPED_TOKEN"
+
+        val response = authService.loginStaff(request, testIp)
+
+        assertEquals("AUTHENTICATED", response.status.name)
+        assertEquals("SCOPED_TOKEN", response.token)
+        assertEquals(emptyList<Any>(), response.employments)
+        verify { jwtService.generateStaffToken(user, employment) }
+    }
+
+    @Test
+    fun `loginStaff should return sorted options for multiple employments without selection`() {
+        val request = StaffLoginRequest("owner@mail.com", "password123")
+        val user = staffUser()
+        val employmentB = CompanyEmployee(12L, 32L, user.id!!, "OWNER")
+        val employmentA = CompanyEmployee(11L, 31L, user.id!!, "EMPLOYEE")
+        every { loginRateLimiter.checkAndIncrement(testIp) } returns true
+        every { userRepository.findByEmail(request.email) } returns user
+        every { passwordEncoder.matches(request.password, user.passwordHash) } returns true
+        every { companyEmployeeRepository.findAllByUserId(user.id!!) } returns listOf(employmentB, employmentA)
+        every { companyRepository.findAllById(listOf(32L, 31L)) } returns
+            listOf(Company(id = 32L, name = "Zulu"), Company(id = 31L, name = "Alpha"))
+
+        val response = authService.loginStaff(request, testIp)
+
+        assertEquals("EMPLOYMENT_SELECTION_REQUIRED", response.status.name)
+        assertNull(response.token)
+        assertEquals(listOf(11L, 12L), response.employments.map { it.employmentId })
+    }
+
+    @Test
+    fun `loginStaff should issue token only for selected employment`() {
+        val user = staffUser()
+        val employee = CompanyEmployee(11L, 31L, user.id!!, "EMPLOYEE")
+        val owner = CompanyEmployee(12L, 32L, user.id!!, "OWNER")
+        val request = StaffLoginRequest("owner@mail.com", "password123", employmentId = 11L)
+        every { loginRateLimiter.checkAndIncrement(testIp) } returns true
+        every { userRepository.findByEmail(request.email) } returns user
+        every { passwordEncoder.matches(request.password, user.passwordHash) } returns true
+        every { companyEmployeeRepository.findAllByUserId(user.id!!) } returns listOf(employee, owner)
+        every { jwtService.generateStaffToken(user, employee) } returns "EMPLOYEE_TOKEN"
+
+        val response = authService.loginStaff(request, testIp)
+
+        assertEquals("EMPLOYEE_TOKEN", response.token)
+        verify(exactly = 1) { jwtService.generateStaffToken(user, employee) }
+        verify(exactly = 0) { jwtService.generateStaffToken(user, owner) }
+    }
+
+    @Test
+    fun `loginStaff should reject unknown or foreign employment selection`() {
+        val user = staffUser()
+        val request = StaffLoginRequest("owner@mail.com", "password123", employmentId = 99L)
+        every { loginRateLimiter.checkAndIncrement(testIp) } returns true
+        every { userRepository.findByEmail(request.email) } returns user
+        every { passwordEncoder.matches(request.password, user.passwordHash) } returns true
+        every { companyEmployeeRepository.findAllByUserId(user.id!!) } returns
+            listOf(CompanyEmployee(11L, 31L, user.id!!, "EMPLOYEE"))
+
+        assertThrows<IllegalArgumentException> { authService.loginStaff(request, testIp) }
+    }
+
+    @Test
+    fun `loginStaff should reject user without employment`() {
+        val user = staffUser()
+        val request = StaffLoginRequest("owner@mail.com", "password123")
+        every { loginRateLimiter.checkAndIncrement(testIp) } returns true
+        every { userRepository.findByEmail(request.email) } returns user
+        every { passwordEncoder.matches(request.password, user.passwordHash) } returns true
+        every { companyEmployeeRepository.findAllByUserId(user.id!!) } returns emptyList()
+
+        assertThrows<IllegalArgumentException> { authService.loginStaff(request, testIp) }
+    }
+
+    private fun staffUser() = User(
+        id = 7L,
+        phoneNumber = testPhone,
+        firstName = "A",
+        lastName = "B",
+        email = "owner@mail.com",
+        passwordHash = "hash"
+    )
 }

@@ -43,7 +43,7 @@ class ReservationRepositoryTest {
         val company = companyRepository.save(Company(name = "Salon Testowy"))
 
         val employee = userRepository.save(User(phoneNumber = "+48111", firstName = "Pracownik", lastName = "Testowy"))
-        employeeId = employee.id
+        employeeId = employee.id!!
 
         val customer = userRepository.save(User(phoneNumber = "+48222", firstName = "Klient", lastName = "Testowy"))
 
@@ -57,8 +57,8 @@ class ReservationRepositoryTest {
         reservationRepository.save(
             Reservation(
                 companyId = company.id!!,
-                customerId = customer.id,
-                employeeId = employee.id,
+                customerId = customer.id!!,
+                employeeId = employee.id!!,
                 serviceId = service.id!!,
                 price = 100,
                 startTime = baseTime, // 12:00

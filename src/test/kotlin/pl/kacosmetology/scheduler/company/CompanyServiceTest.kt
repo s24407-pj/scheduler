@@ -39,7 +39,7 @@ class CompanyServiceTest {
 
         val result = companyService.getCompany(companyId)
 
-        assertEquals(companyId, result.id)
+        assertEquals(companyId, result.id!!)
         assertEquals("Test Salon", result.name)
         assertEquals(LocalTime.of(9, 0), result.openingTime)
         assertEquals(LocalTime.of(17, 0), result.closingTime)
@@ -54,26 +54,23 @@ class CompanyServiceTest {
     }
 
     @Test
-    fun `updateSettings should save updated company and return response`() {
+    fun `updateSettings should mutate managed company and return response`() {
         val request = UpdateCompanySettingsRequest(
             openingTime = LocalTime.of(8, 0),
             closingTime = LocalTime.of(18, 0),
             slotIntervalMinutes = 15
         )
-        val updated = Company(
-            id = companyId, name = "Test Salon",
-            openingTime = LocalTime.of(8, 0), closingTime = LocalTime.of(18, 0), slotIntervalMinutes = 15
-        )
-
         every { companyRepository.findById(companyId) } returns Optional.of(company)
-        every { companyRepository.save(any()) } returns updated
 
         val result = companyService.updateSettings(companyId, request)
 
         assertEquals(LocalTime.of(8, 0), result.openingTime)
         assertEquals(LocalTime.of(18, 0), result.closingTime)
         assertEquals(15, result.slotIntervalMinutes)
-        verify(exactly = 1) { companyRepository.save(any()) }
+        assertEquals(LocalTime.of(8, 0), company.openingTime)
+        assertEquals(LocalTime.of(18, 0), company.closingTime)
+        assertEquals(15, company.slotIntervalMinutes)
+        verify(exactly = 0) { companyRepository.save(any()) }
     }
 
     @Test

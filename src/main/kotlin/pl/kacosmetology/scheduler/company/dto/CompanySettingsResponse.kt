@@ -18,7 +18,7 @@ data class CompanySettingsResponse(
 
 /** Maps a [Company] entity to a [CompanySettingsResponse] DTO. */
 fun Company.toSettingsResponse() = CompanySettingsResponse(
-    id = id!!,
+    id = requireNotNull(id) { "Persisted company must have an ID" },
     name = name,
     openingTime = openingTime,
     closingTime = closingTime,

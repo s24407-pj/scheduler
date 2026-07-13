@@ -125,6 +125,6 @@ class EmployeeOfferingServiceTest {
         val result = service.getOfferingsForEmployee(employeeId)
 
         assertEquals(1, result.size)
-        assertEquals(offeringId, result.first().id)
+        assertEquals(offeringId, result.first().id!!)
     }
 }

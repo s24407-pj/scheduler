@@ -9,7 +9,6 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
@@ -22,7 +21,6 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -84,19 +82,17 @@ class EmployeeOfferingIntegrationTest {
         companyId = company.id!!
 
         val owner = userRepository.save(User(phoneNumber = "+48100100100", firstName = "Owner", lastName = "Test"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = owner.id, role = "OWNER"))
-        ownerToken = jwtService.generateToken(
-            CustomUserDetails(owner, companyId, listOf(SimpleGrantedAuthority("ROLE_OWNER"))),
-            companyId
+        val ownerEmployment = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
         )
+        ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
 
         val employee = userRepository.save(User(phoneNumber = "+48200200200", firstName = "Emp", lastName = "Test"))
-        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = employee.id, role = "EMPLOYEE"))
-        employeeId = employee.id
-        employeeToken = jwtService.generateToken(
-            CustomUserDetails(employee, companyId, listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE"))),
-            companyId
+        val employeeEmployment = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
         )
+        employeeId = employee.id!!
+        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
 
         val offering = offeringRepository.save(
             Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 60)
@@ -187,10 +183,7 @@ class EmployeeOfferingIntegrationTest {
     @Test
     fun `GET assignments should return 403 for customer`() {
         val customer = userRepository.save(User(phoneNumber = "+48300300300", firstName = "Customer", lastName = "Test"))
-        val customerToken = jwtService.generateToken(
-            CustomUserDetails(customer, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER"))),
-            null
-        )
+        val customerToken = jwtService.generateCustomerToken(customer)
 
         mockMvc.get("/api/employees/$employeeId/offerings") {
             header("Authorization", "Bearer $customerToken")
@@ -204,10 +197,10 @@ class EmployeeOfferingIntegrationTest {
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
         val otherEmployee = userRepository.save(User(phoneNumber = "+48400400400", firstName = "Other", lastName = "Employee"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE")
         )
 
-        mockMvc.get("/api/employees/${otherEmployee.id}/offerings") {
+        mockMvc.get("/api/employees/${otherEmployee.id!!}/offerings") {
             header("Authorization", "Bearer $ownerToken")
         }.andExpect {
             status { isNotFound() }
@@ -256,7 +249,7 @@ class EmployeeOfferingIntegrationTest {
 
         val body = mapOf(
             "employeeId" to employeeId,
-            "serviceId" to otherOffering.id,
+            "serviceId" to otherOffering.id!!,
             "startTime" to LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
                 .toString(),
             "customerPhone" to customer.phoneNumber

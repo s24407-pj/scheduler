@@ -27,5 +27,5 @@ class OfferingCategoryAssignmentController(
         @PathVariable offeringId: Long,
         @Valid @RequestBody request: AssignOfferingCategoryRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails
-    ) = offeringCategoryService.assignCategory(offeringId, userDetails.companyId!!, request.categoryId)
+    ) = offeringCategoryService.assignCategory(offeringId, userDetails.requireCompanyId(), request.categoryId)
 }

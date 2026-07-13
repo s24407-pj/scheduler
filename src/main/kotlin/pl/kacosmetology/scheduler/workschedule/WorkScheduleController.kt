@@ -24,7 +24,7 @@ class WorkScheduleController(
     fun getSchedule(
         @PathVariable employeeId: Long,
         @AuthenticationPrincipal userDetails: CustomUserDetails
-    ): List<WorkScheduleEntryResponse> = workScheduleService.getSchedule(userDetails.companyId!!, employeeId)
+    ): List<WorkScheduleEntryResponse> = workScheduleService.getSchedule(userDetails.requireCompanyId(), employeeId)
 
     /**
      * Replaces the employee's weekly work schedule.
@@ -38,5 +38,5 @@ class WorkScheduleController(
         @Valid @RequestBody request: SetWeeklyScheduleRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails
     ): List<WorkScheduleEntryResponse> =
-        workScheduleService.setSchedule(userDetails.companyId!!, employeeId, request)
+        workScheduleService.setSchedule(userDetails.requireCompanyId(), employeeId, request)
 }

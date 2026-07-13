@@ -46,6 +46,9 @@ otp:
   ttl-minutes: ${OTP_TTL_MINUTES:5}
   max-attempts: ${OTP_MAX_ATTEMPTS:3}
   rate-window-minutes: ${OTP_RATE_WINDOW_MINUTES:5}
+  verification-max-attempts: ${OTP_VERIFICATION_MAX_ATTEMPTS:3}
+  verification-ip-max-attempts: ${OTP_VERIFICATION_IP_MAX_ATTEMPTS:10}
+  verification-ip-rate-window-minutes: ${OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES:5}
 
 login:
   max-attempts: ${LOGIN_MAX_ATTEMPTS:10}

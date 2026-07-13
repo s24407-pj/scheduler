@@ -7,7 +7,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
@@ -17,7 +16,6 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -78,31 +76,16 @@ class ReservationListingIntegrationTest {
             userRepository.save(User(phoneNumber = "+48333000333", firstName = "Piotr", lastName = "KlientB"))
 
         // Nadajemy Pracownikowi odpowiednią rolę w bazie
-        companyEmployeeRepository.save(
+        val employeeEmployment = companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = company.id!!,
-                userId = employee.id,
+                userId = employee.id!!,
                 role = "EMPLOYEE"
             )
         )
 
-        // Generujemy tokeny
-        // Najpierw opakowujemy encje User w nasz nowy adapter (nadając im odpowiednie role testowe)
-        val employeeDetails = CustomUserDetails(
-            user = employee,
-            companyId = company.id!!,
-            authorities = listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE"))
-        )
-
-        val customerDetails = CustomUserDetails(
-            user = customerA,
-            companyId = null,
-            authorities = listOf(SimpleGrantedAuthority("ROLE_CUSTOMER"))
-        )
-
-// Następnie generujemy tokeny z użyciem adapterów
-        employeeToken = jwtService.generateToken(employeeDetails, company.id!!)
-        customerToken = jwtService.generateToken(customerDetails, null) // Klient nie ma companyId
+        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
+        customerToken = jwtService.generateCustomerToken(customerA)
 
         // 4. Tworzymy usługę
         val service = serviceRepository.save(
@@ -122,8 +105,8 @@ class ReservationListingIntegrationTest {
         reservationRepository.save(
             Reservation(
                 companyId = company.id!!,
-                customerId = customerA.id,
-                employeeId = employee.id,
+                customerId = customerA.id!!,
+                employeeId = employee.id!!,
                 serviceId = service.id!!,
                 price = 100,
                 startTime = todayStart.withHour(10),
@@ -136,8 +119,8 @@ class ReservationListingIntegrationTest {
         reservationRepository.save(
             Reservation(
                 companyId = company.id!!,
-                customerId = customerA.id,
-                employeeId = employee.id,
+                customerId = customerA.id!!,
+                employeeId = employee.id!!,
                 serviceId = service.id!!,
                 price = 100,
                 startTime = todayStart.withHour(12),
@@ -150,8 +133,8 @@ class ReservationListingIntegrationTest {
         reservationRepository.save(
             Reservation(
                 companyId = company.id!!,
-                customerId = customerB.id,
-                employeeId = employee.id,
+                customerId = customerB.id!!,
+                employeeId = employee.id!!,
                 serviceId = service.id!!,
                 price = 100,
                 startTime = todayStart.withHour(14),
@@ -231,8 +214,8 @@ class ReservationListingIntegrationTest {
         reservationRepository.save(
             Reservation(
                 companyId = service.companyId,
-                customerId = customer.id,
-                employeeId = employee.id,
+                customerId = customer.id!!,
+                employeeId = employee.id!!,
                 serviceId = service.id!!,
                 price = 100,
                 startTime = todayStart.minusMinutes(30),

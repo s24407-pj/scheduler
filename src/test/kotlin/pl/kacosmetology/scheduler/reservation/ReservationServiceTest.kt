@@ -5,6 +5,7 @@ import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.context.ApplicationEventPublisher
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
 import pl.kacosmetology.scheduler.company.Company
+import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
@@ -69,7 +71,9 @@ class ReservationServiceTest {
 
     @BeforeEach
     fun setupCompanyEmployeeMembership() {
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(any(), any()) } returns true
+        every {
+            companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(any(), any())
+        } returns CompanyEmployee(companyId = companyId, userId = employeeId, role = "EMPLOYEE")
     }
 
     @Test
@@ -107,6 +111,11 @@ class ReservationServiceTest {
         assertEquals(ReservationStatus.PENDING, result.status)
 
         verify(exactly = 1) { reservationRepository.save(any()) }
+        verifyOrder {
+            companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId)
+            employeeAvailabilityPolicy.assertAvailable(companyId, employeeId, startTime, startTime.plusMinutes(45))
+            reservationRepository.save(any())
+        }
     }
 
     @Test
@@ -123,7 +132,7 @@ class ReservationServiceTest {
         every { companyRepository.findById(companyId) } returns Optional.of(Company(id = companyId, name = "Salon"))
 
         every {
-            employeeAvailabilityPolicy.assertAvailable(employeeId, any(), any())
+            employeeAvailabilityPolicy.assertAvailable(companyId, employeeId, any(), any())
         } throws IllegalStateException("Ten termin jest już zajęty")
 
         // WHEN & THEN
@@ -176,7 +185,7 @@ class ReservationServiceTest {
         )
         every { userRepository.existsById(customerId) } returns true
         every { serviceRepository.findById(serviceId) } returns Optional.of(mockService)
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
+        every { companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId) } returns null
 
         // WHEN & THEN
         val exception = assertThrows<IllegalArgumentException> {
@@ -462,7 +471,7 @@ class ReservationServiceTest {
         )
 
         // THEN
-        assertEquals(newCustomer.id, result.customerId)
+        assertEquals(newCustomer.id!!, result.customerId)
         verify(exactly = 1) { userRepository.save(any()) }
     }
 
@@ -537,24 +546,19 @@ class ReservationServiceTest {
             endTime = startTime.plusMinutes(30),
             status = ReservationStatus.PENDING
         )
-        val block = CompanyCustomerBlock(companyId = companyId, customerId = customerId, noShowCount = 0)
-        val company = Company(id = companyId, name = "Salon", maxNoShows = 3)
-
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
         every { reservationRepository.save(any()) } answers { firstArg() }
-        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns block
-        every { companyRepository.findById(companyId) } returns Optional.of(company)
-        every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
+        every { companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(companyId, customerId) } returns 1
 
         // WHEN
         reservationService.markNoShow(reservationId, companyId)
 
         // THEN
         assertEquals(ReservationStatus.NO_SHOW, reservation.status)
-        assertEquals(1, block.noShowCount)
-        assertTrue(!block.blocked)
         verify(exactly = 1) { reservationRepository.save(reservation) }
-        verify(exactly = 1) { companyCustomerBlockRepository.save(block) }
+        verify(exactly = 1) {
+            companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(companyId, customerId)
+        }
     }
 
     @Test
@@ -572,20 +576,18 @@ class ReservationServiceTest {
             endTime = startTime.plusMinutes(30),
             status = ReservationStatus.PENDING
         )
-        val company = Company(id = companyId, name = "Salon", maxNoShows = 3)
-
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
         every { reservationRepository.save(any()) } answers { firstArg() }
-        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
-        every { companyRepository.findById(companyId) } returns Optional.of(company)
-        every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
+        every { companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(companyId, customerId) } returns 1
 
         // WHEN
         reservationService.markNoShow(reservationId, companyId)
 
         // THEN
         assertEquals(ReservationStatus.NO_SHOW, reservation.status)
-        verify(exactly = 1) { companyCustomerBlockRepository.save(any()) }
+        verify(exactly = 1) {
+            companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(companyId, customerId)
+        }
     }
 
     @Test
@@ -603,21 +605,17 @@ class ReservationServiceTest {
             endTime = startTime.plusMinutes(30),
             status = ReservationStatus.CONFIRMED
         )
-        val block = CompanyCustomerBlock(companyId = companyId, customerId = customerId, noShowCount = 2)
-        val company = Company(id = companyId, name = "Salon", maxNoShows = 3)
-
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
         every { reservationRepository.save(any()) } answers { firstArg() }
-        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns block
-        every { companyRepository.findById(companyId) } returns Optional.of(company)
-        every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
+        every { companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(companyId, customerId) } returns 3
 
         // WHEN
         reservationService.markNoShow(reservationId, companyId)
 
         // THEN
-        assertEquals(3, block.noShowCount)
-        assertTrue(block.blocked)
+        verify(exactly = 1) {
+            companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(companyId, customerId)
+        }
     }
 
     @Test
@@ -635,20 +633,17 @@ class ReservationServiceTest {
             endTime = startTime.plusMinutes(30),
             status = ReservationStatus.PENDING
         )
-        val block = CompanyCustomerBlock(companyId = companyId, customerId = customerId, noShowCount = 99)
-        val company = Company(id = companyId, name = "Salon", maxNoShows = 0)
-
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
         every { reservationRepository.save(any()) } answers { firstArg() }
-        every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns block
-        every { companyRepository.findById(companyId) } returns Optional.of(company)
-        every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
+        every { companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(companyId, customerId) } returns 100
 
         // WHEN
         reservationService.markNoShow(reservationId, companyId)
 
         // THEN
-        assertTrue(!block.blocked, "threshold=0 powinno wyłączyć automatyczne blokowanie")
+        verify(exactly = 1) {
+            companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(companyId, customerId)
+        }
     }
 
     @Test
@@ -822,7 +817,7 @@ class ReservationServiceTest {
 
         // THEN
         assertEquals(1, result.size)
-        assertEquals(1L, result[0].id)
+        assertEquals(1L, result[0].id!!)
         assertEquals("Jan", result[0].customerFirstName)
         assertEquals("Kowalski", result[0].customerLastName)
         verify(exactly = 1) {

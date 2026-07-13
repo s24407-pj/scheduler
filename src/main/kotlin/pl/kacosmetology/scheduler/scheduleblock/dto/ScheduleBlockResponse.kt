@@ -14,7 +14,7 @@ data class ScheduleBlockResponse(
 
 /** Maps a [ScheduleBlock] to its response DTO. */
 fun ScheduleBlock.toResponse() = ScheduleBlockResponse(
-    id = id!!,
+    id = requireNotNull(id) { "Persisted schedule block must have an ID" },
     startTime = startTime,
     endTime = endTime,
     reason = reason,

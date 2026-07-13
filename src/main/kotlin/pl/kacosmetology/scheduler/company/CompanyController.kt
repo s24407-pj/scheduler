@@ -22,12 +22,12 @@ class CompanyController(
     /** Returns all employees (OWNER + EMPLOYEE) of the authenticated user's company. */
     @GetMapping("/employees")
     fun getEmployees(@AuthenticationPrincipal userDetails: CustomUserDetails): List<CompanyEmployeeResponse> =
-        companyService.getEmployees(userDetails.companyId!!)
+        companyService.getEmployees(userDetails.requireCompanyId())
 
     /** Returns the current company settings for the authenticated user's company. */
     @GetMapping("/settings")
     fun getSettings(@AuthenticationPrincipal userDetails: CustomUserDetails): CompanySettingsResponse =
-        companyService.getCompany(userDetails.companyId!!)
+        companyService.getCompany(userDetails.requireCompanyId())
 
     /** Updates company business hours and slot interval. Requires OWNER role. */
     @PutMapping("/settings")
@@ -35,5 +35,5 @@ class CompanyController(
     fun updateSettings(
         @Valid @RequestBody request: UpdateCompanySettingsRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails
-    ): CompanySettingsResponse = companyService.updateSettings(userDetails.companyId!!, request)
+    ): CompanySettingsResponse = companyService.updateSettings(userDetails.requireCompanyId(), request)
 }

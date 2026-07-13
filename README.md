@@ -10,7 +10,7 @@ Spring Boot backend for a beauty and cosmetology salon scheduling system. Custom
 ## Features
 
 - Customer booking with SMS OTP login and JWT sessions
-- Staff login (email + password) with role-based access (`OWNER`, `EMPLOYEE`)
+- Staff login (email + password) with employment selection and role-based access (`OWNER`, `EMPLOYEE`)
 - Availability calculation from work schedules, reservations, and schedule blocks
 - Offering catalog with categories and image uploads (Cloudflare R2)
 - SMS notifications (confirmation, cancellation, reminders)
@@ -41,6 +41,12 @@ The API is available at `http://localhost:8080`. With the default `dev` profile,
 | Employee | `pracownik@kacosmetology.pl` | `employee123` |
 
 Customer OTP codes are logged to the console (`ConsoleSmsSender` in dev).
+
+### Authentication contracts
+
+Customer OTP verification returns a JWT with only the `customer` role; it is not scoped to a company or employment. OTP verification atomically consumes a successful code, limits failed attempts per code, and applies a separate verification limit per client IP.
+
+`POST /api/auth/login-staff` accepts `email`, `password`, and an optional `employmentId`. A staff member with one employment is authenticated immediately. If multiple employments exist and `employmentId` is omitted, the response has status `EMPLOYMENT_SELECTION_REQUIRED` and an `employments` list containing `employmentId`, `companyId`, `companyName`, and `role`; repeat the request with the selected `employmentId`. An authenticated staff JWT is scoped to exactly that `employmentId`, its `companyId`, and one role.
 
 ### Remote debugging
 
@@ -86,7 +92,9 @@ Environment variables override values in `application.yaml`. Key variables for D
 | `SPRING_DATASOURCE_URL/USERNAME/PASSWORD` | PostgreSQL |
 | `SPRING_DATA_REDIS_HOST/PORT` | Redis |
 | `CORS_ORIGINS` | Allowed frontend origins |
-| `OTP_TTL_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RATE_WINDOW_MINUTES` | SMS OTP limits |
+| `OTP_TTL_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RATE_WINDOW_MINUTES` | SMS OTP lifetime and request limits |
+| `OTP_VERIFICATION_MAX_ATTEMPTS` | Failed verification attempts allowed per OTP code |
+| `OTP_VERIFICATION_IP_MAX_ATTEMPTS`, `OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES` | OTP verification limits per client IP |
 | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` | Staff login rate limiting |
 | `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | Cloudflare R2 |
 | `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_COMPANY_ID`, `WHATSAPP_SENDER` | WhatsApp bot |

@@ -23,7 +23,7 @@ class OfferingCategoryController(
     /** Returns all categories for the authenticated user's company. */
     @GetMapping
     fun getCategories(@AuthenticationPrincipal userDetails: CustomUserDetails): List<OfferingCategoryResponse> =
-        offeringCategoryService.getCategories(userDetails.companyId!!)
+        offeringCategoryService.getCategories(userDetails.requireCompanyId())
             .map { it.toOfferingCategoryResponse() }
 
     /** Creates a new category. Requires OWNER role. */
@@ -34,7 +34,7 @@ class OfferingCategoryController(
         @Valid @RequestBody request: OfferingCategoryRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails
     ): OfferingCategoryResponse =
-        offeringCategoryService.createCategory(userDetails.companyId!!, request).toOfferingCategoryResponse()
+        offeringCategoryService.createCategory(userDetails.requireCompanyId(), request).toOfferingCategoryResponse()
 
     /** Deletes a category by ID. Requires OWNER role. */
     @DeleteMapping("/{id}")
@@ -43,5 +43,5 @@ class OfferingCategoryController(
     fun deleteCategory(
         @PathVariable id: Long,
         @AuthenticationPrincipal userDetails: CustomUserDetails
-    ) = offeringCategoryService.deleteCategory(id, userDetails.companyId!!)
+    ) = offeringCategoryService.deleteCategory(id, userDetails.requireCompanyId())
 }

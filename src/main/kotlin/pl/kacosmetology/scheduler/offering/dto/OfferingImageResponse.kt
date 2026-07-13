@@ -9,7 +9,7 @@ data class OfferingImageResponse(
 ) {
     companion object {
         fun from(image: OfferingImage) = OfferingImageResponse(
-            id = image.id!!,
+            id = requireNotNull(image.id) { "Persisted offering image must have an ID" },
             imageUrl = image.imageUrl
         )
     }

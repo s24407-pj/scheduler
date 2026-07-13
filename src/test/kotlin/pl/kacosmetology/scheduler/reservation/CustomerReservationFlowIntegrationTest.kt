@@ -97,7 +97,7 @@ class CustomerReservationFlowIntegrationTest {
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = company.id!!,
-                userId = employee.id,
+                userId = employee.id!!,
                 role = "EMPLOYEE"
             )
         )
@@ -108,7 +108,7 @@ class CustomerReservationFlowIntegrationTest {
             )
         )
 
-        employeeId = employee.id
+        employeeId = employee.id!!
         serviceId = service.id!!
     }
 
@@ -190,7 +190,7 @@ class CustomerReservationFlowIntegrationTest {
         // Weryfikacja czy nowo zarejestrowany klient jest poprawnie przypisany
         val customerInDb = userRepository.findByPhoneNumber(newCustomerPhone)
         assertNotNull(customerInDb)
-        assertEquals(customerInDb!!.id, savedReservation.customerId, "Rezerwacja powinna należeć do nowego klienta")
+        assertEquals(customerInDb!!.id!!, savedReservation.customerId, "Rezerwacja powinna należeć do nowego klienta")
     }
 
     @Test
@@ -286,14 +286,14 @@ class CustomerReservationFlowIntegrationTest {
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = otherCompany.id!!,
-                userId = otherEmployee.id,
+                userId = otherEmployee.id!!,
                 role = "EMPLOYEE"
             )
         )
         val reservationTime = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
 
         val createReservationReq = CreateReservationRequest(
-            employeeId = otherEmployee.id,
+            employeeId = otherEmployee.id!!,
             serviceId = serviceId,
             startTime = reservationTime
         )

@@ -49,7 +49,7 @@ class WorkScheduleService(
             throw IllegalArgumentException("Grafik zawiera zduplikowane dni tygodnia")
         }
 
-        for (entry in entries) {
+        val validatedEntries = entries.map { entry ->
             val day = entry.dayOfWeek
                 ?: throw IllegalArgumentException("Dzień tygodnia jest wymagany")
             val start = entry.startTime
@@ -59,19 +59,20 @@ class WorkScheduleService(
             if (!end.isAfter(start)) {
                 throw IllegalArgumentException("Godzina zakończenia musi być późniejsza niż godzina rozpoczęcia ($day)")
             }
+            Triple(day, start, end)
         }
 
         workScheduleRepository.deleteAllByEmployeeId(employeeId)
         workScheduleRepository.flush()
 
         val saved = workScheduleRepository.saveAll(
-            entries.map { entry ->
+            validatedEntries.map { (day, start, end) ->
                 EmployeeWorkSchedule(
                     companyId = companyId,
                     employeeId = employeeId,
-                    dayOfWeek = entry.dayOfWeek!!,
-                    startTime = entry.startTime!!,
-                    endTime = entry.endTime!!
+                    dayOfWeek = day,
+                    startTime = start,
+                    endTime = end
                 )
             }
         )

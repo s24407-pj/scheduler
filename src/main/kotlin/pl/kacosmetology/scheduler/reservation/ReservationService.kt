@@ -11,7 +11,6 @@ import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRep
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.dto.DashboardReservationResponse
 import pl.kacosmetology.scheduler.reservation.dto.toDashboardResponse
-import pl.kacosmetology.scheduler.user.CompanyCustomerBlock
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -60,7 +59,7 @@ class ReservationService(
             throw IllegalArgumentException("Ta usługa nie jest już dostępna")
         }
 
-        if (!companyEmployeeRepository.existsByCompanyIdAndUserId(offering.companyId, employeeId)) {
+        if (companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(offering.companyId, employeeId) == null) {
             throw IllegalArgumentException("Pracownik nie należy do firmy wybranej usługi")
         }
 
@@ -90,7 +89,7 @@ class ReservationService(
 
         val endTime = startTime.plusMinutes(offering.durationMinutes.toLong())
 
-        employeeAvailabilityPolicy.assertAvailable(employeeId, startTime, endTime)
+        employeeAvailabilityPolicy.assertAvailable(offering.companyId, employeeId, startTime, endTime)
 
         val price = company.effectivePrice(offering.price, startTime)
 
@@ -157,18 +156,10 @@ class ReservationService(
         reservation.markNoShow()
         reservationRepository.save(reservation)
 
-        val block = companyCustomerBlockRepository
-            .findByCompanyIdAndCustomerId(reservation.companyId, reservation.customerId)
-            ?: CompanyCustomerBlock(companyId = reservation.companyId, customerId = reservation.customerId)
-        block.noShowCount++
-
-        val company = companyRepository.findById(reservation.companyId)
-            .orElseThrow { NoSuchElementException("Firma nie istnieje") }
-        if (company.maxNoShows > 0 && block.noShowCount >= company.maxNoShows) {
-            block.blocked = true
-        }
-
-        companyCustomerBlockRepository.save(block)
+        companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(
+            reservation.companyId,
+            reservation.customerId
+        )
     }
 
     /** Returns all reservations for a customer, ordered by start time descending. */
@@ -263,7 +254,7 @@ class ReservationService(
             }
 
         return createReservation(
-            customerId = customer.id,
+            customerId = requireNotNull(customer.id) { "Persisted customer must have an ID" },
             employeeId = employeeId,
             offeringId = serviceId,
             startTime = startTime,

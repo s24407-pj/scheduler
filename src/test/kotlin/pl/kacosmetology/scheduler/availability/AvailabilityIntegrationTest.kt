@@ -71,6 +71,18 @@ class AvailabilityIntegrationTest {
     private var companyId: Long = 0
     private val testDate = LocalDate.now().plusDays(2) // Za dwa dni, by uniknąć filtrów przeszłości
 
+    @Test
+    fun `malformed date should return bad request`() {
+        mockMvc.get("/api/availability") {
+            param("employeeId", "1")
+            param("serviceId", "1")
+            param("date", "bad-date")
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.message") { value("Invalid value for parameter 'date'") }
+        }
+    }
+
     @BeforeEach
     fun setup() {
         reservationRepository.deleteAll()
@@ -91,7 +103,7 @@ class AvailabilityIntegrationTest {
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = company.id!!,
-                userId = employee.id,
+                userId = employee.id!!,
                 role = "EMPLOYEE"
             )
         )
@@ -105,7 +117,7 @@ class AvailabilityIntegrationTest {
             )
         )
 
-        employeeId = employee.id
+        employeeId = employee.id!!
         serviceId = service.id!!
 
         // Grafik pracownika: 9:00-17:00 dla dnia testu
@@ -123,8 +135,8 @@ class AvailabilityIntegrationTest {
         reservationRepository.save(
             Reservation(
                 companyId = company.id!!,
-                customerId = customer.id,
-                employeeId = employee.id,
+                customerId = customer.id!!,
+                employeeId = employee.id!!,
                 serviceId = service.id!!,
                 price = 250,
                 startTime = testDate.atTime(10, 0),
@@ -241,7 +253,7 @@ class AvailabilityIntegrationTest {
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = newCompanyId,
-                userId = newEmployee.id,
+                userId = newEmployee.id!!,
                 role = "EMPLOYEE"
             )
         )
@@ -251,7 +263,7 @@ class AvailabilityIntegrationTest {
         workScheduleRepository.save(
             EmployeeWorkSchedule(
                 companyId = newCompanyId,
-                employeeId = newEmployee.id,
+                employeeId = newEmployee.id!!,
                 dayOfWeek = testDate.dayOfWeek,
                 startTime = LocalTime.of(9, 0),
                 endTime = LocalTime.of(11, 0)
@@ -259,7 +271,7 @@ class AvailabilityIntegrationTest {
         )
 
         mockMvc.get("/api/availability") {
-            param("employeeId", newEmployee.id.toString())
+            param("employeeId", newEmployee.id!!.toString())
             param("serviceId", newService.id!!.toString())
             param("date", testDate.toString())
         }.andExpect {
@@ -302,14 +314,14 @@ class AvailabilityIntegrationTest {
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = otherCompany.id!!,
-                userId = otherEmployee.id,
+                userId = otherEmployee.id!!,
                 role = "EMPLOYEE"
             )
         )
         workScheduleRepository.save(
             EmployeeWorkSchedule(
                 companyId = otherCompany.id!!,
-                employeeId = otherEmployee.id,
+                employeeId = otherEmployee.id!!,
                 dayOfWeek = testDate.dayOfWeek,
                 startTime = LocalTime.of(9, 0),
                 endTime = LocalTime.of(17, 0)
@@ -317,7 +329,7 @@ class AvailabilityIntegrationTest {
         )
 
         mockMvc.get("/api/availability") {
-            param("employeeId", otherEmployee.id.toString())
+            param("employeeId", otherEmployee.id!!.toString())
             param("serviceId", serviceId.toString())
             param("date", testDate.toString())
         }.andExpect {

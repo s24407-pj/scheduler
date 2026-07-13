@@ -62,10 +62,10 @@ class AutoCompleteIntegrationTest {
         companyId = company.id!!
 
         val employee = userRepository.save(User(phoneNumber = "+48100", firstName = "Jan", lastName = "Kowal"))
-        employeeId = employee.id
+        employeeId = employee.id!!
 
         val customer = userRepository.save(User(phoneNumber = "+48200", firstName = "Anna", lastName = "Nowak"))
-        customerId = customer.id
+        customerId = customer.id!!
 
         val offering = offeringRepository.save(
             Offering(companyId = companyId, name = "Haircut", durationMinutes = 60, price = 100)

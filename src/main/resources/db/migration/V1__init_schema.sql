@@ -116,19 +116,22 @@ CREATE INDEX idx_reservations_employee_time ON reservations (employee_id, start_
 CREATE TABLE schedule_blocks
 (
     id          BIGSERIAL PRIMARY KEY,
-    company_id  BIGINT                   NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
-    employee_id BIGINT                   NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    company_id  BIGINT                   NOT NULL,
+    employee_id BIGINT                   NOT NULL,
     start_time  TIMESTAMP WITH TIME ZONE NOT NULL,
     end_time    TIMESTAMP WITH TIME ZONE NOT NULL,
     reason      VARCHAR(255),
     created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (company_id, employee_id)
+        REFERENCES company_employees (company_id, user_id) ON DELETE CASCADE,
     EXCLUDE USING gist (
+        company_id WITH =,
         employee_id WITH =,
         tstzrange(start_time, end_time) WITH &&
     )
 );
-CREATE INDEX idx_schedule_blocks_employee_id ON schedule_blocks (employee_id);
-CREATE INDEX idx_schedule_blocks_start_time ON schedule_blocks (start_time);
+CREATE INDEX idx_schedule_blocks_company_employee_time
+    ON schedule_blocks (company_id, employee_id, start_time);
 
 -- 10. Employee weekly work schedules
 CREATE TABLE employee_work_schedules

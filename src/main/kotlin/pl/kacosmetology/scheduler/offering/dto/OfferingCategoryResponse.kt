@@ -9,4 +9,7 @@ data class OfferingCategoryResponse(
 )
 
 /** Maps an [OfferingCategory] entity to an [OfferingCategoryResponse] DTO. */
-fun OfferingCategory.toOfferingCategoryResponse() = OfferingCategoryResponse(id = id!!, name = name)
+fun OfferingCategory.toOfferingCategoryResponse() = OfferingCategoryResponse(
+    id = requireNotNull(id) { "Persisted offering category must have an ID" },
+    name = name
+)
