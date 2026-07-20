@@ -1,10 +1,10 @@
 // Wersje bibliotek są definiowane w gradle.properties
 plugins {
-    kotlin("jvm") version "2.4.0"
-    kotlin("plugin.spring") version "2.4.0"
+    kotlin("jvm") version "2.4.10"
+    kotlin("plugin.spring") version "2.4.10"
     id("org.springframework.boot") version "4.1.0"
     id("io.spring.dependency-management") version "1.1.7"
-    kotlin("plugin.jpa") version "2.4.0"
+    kotlin("plugin.jpa") version "2.4.10"
 }
 
 // Zmienne dla dependencies
@@ -13,7 +13,7 @@ val postgresqlVersion = "42.7.10"
 val mockkVersion = "1.14.11"
 val springmockkVersion = "5.0.1"
 val testcontainersVersion = "2.0.5"
-val awsSdkVersion = "2.46.21"
+val awsSdkVersion = "2.48.3"
 
 group = "pl.kacosmetology"
 version = "0.0.1-SNAPSHOT"
