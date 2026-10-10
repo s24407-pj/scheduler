@@ -3,8 +3,10 @@ package pl.kacosmetology.scheduler.security
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.slf4j.LoggerFactory
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.core.userdetails.UsernameNotFoundException
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
@@ -21,6 +23,8 @@ class JwtAuthenticationFilter(
     private val sessionStore: SessionStore,
 ) : OncePerRequestFilter() {
 
+    private val log = LoggerFactory.getLogger(JwtAuthenticationFilter::class.java)
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
@@ -36,7 +40,8 @@ class JwtAuthenticationFilter(
         val claims =
             try {
                 jwtService.parse(authHeader.substring(7))
-            } catch (_: Exception) {
+            } catch (ex: Exception) {
+                log.debug("Rejected unparseable JWT: {}", ex.message)
                 null
             }
 
@@ -44,7 +49,11 @@ class JwtAuthenticationFilter(
             val userDetails =
                 try {
                     loadScopedUserDetails(claims)
-                } catch (_: Exception) {
+                } catch (_: UsernameNotFoundException) {
+                    log.debug("Rejected JWT for unknown user or employment")
+                    null
+                } catch (ex: Exception) {
+                    log.error("Failed to load principal for JWT; treating request as unauthenticated", ex)
                     null
                 }
 

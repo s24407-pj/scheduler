@@ -10,6 +10,7 @@ import java.time.LocalDateTime
 import java.util.*
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.company.Company
@@ -106,11 +107,19 @@ class NotificationServiceTest {
     }
 
     @Test
-    fun `sendBookingConfirmation should not throw when customer not found`() {
+    fun `sendBookingConfirmation should throw when customer not found`() {
         every { userRepository.findById(1L) } returns Optional.empty()
 
-        notificationService.sendBookingConfirmation(reservation)
+        assertThrows<NoSuchElementException> { notificationService.sendBookingConfirmation(reservation) }
 
         verify(exactly = 0) { smsSender.sendMessage(any(), any()) }
+    }
+
+    @Test
+    fun `sendReminder should propagate SMS sender failure so the reminder is not flagged as sent`() {
+        setupMocks()
+        every { smsSender.sendMessage(any(), any()) } throws RuntimeException("SMS failed")
+
+        assertThrows<RuntimeException> { notificationService.sendReminder(reservation) }
     }
 }

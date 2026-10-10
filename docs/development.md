@@ -94,8 +94,10 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 
 Profiles:
 
-- `dev` (`application-dev.yaml`): SQL logging, DEBUG for the app and Spring Security, extra actuator endpoints, seed data, Swagger UI.
-- `prod` (`application-prod.yaml`): INFO/WARN logging, no SQL logging.
+- `dev` (`application-dev.yaml`): SQL logging (`org.hibernate.SQL` at DEBUG), DEBUG for the app and Spring Security, extra actuator endpoints, seed data, Swagger UI.
+- `prod` (`application-prod.yaml`): INFO/WARN logging as ECS JSON on the console, no SQL logging. `ConsoleSmsSender` is disabled, so a real `SmsSender` is required.
+
+Every request gets an ID (`RequestIdFilter`): a valid incoming `X-Request-Id` (up to 64 characters of `[A-Za-z0-9-]`) is reused, otherwise a UUID is generated. It is returned in the `X-Request-Id` response header and stored in the log MDC as `requestId`, so plain-text log lines show it in brackets and ECS logs carry it as a field.
 - `test`: set by Gradle for every test run; allows the dev `JWT_SECRET` default.
 
 ## Testing

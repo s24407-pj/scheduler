@@ -68,6 +68,10 @@ r2:
   bucket-name: ${R2_BUCKET_NAME:scheduler}
   public-url: ${R2_PUBLIC_URL:https://pub-e2e7a57b5ea74031a70f3c42d58af33f.r2.dev}
 
+logging:
+  pattern:
+    correlation: "[%X{requestId:-}] "
+
 springdoc:
   api-docs:
     enabled: false

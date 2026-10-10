@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.config
 
 import java.sql.SQLException
+import org.hibernate.exception.ConstraintViolationException
 import org.slf4j.LoggerFactory
 import org.springframework.beans.TypeMismatchException
 import org.springframework.dao.DataIntegrityViolationException
@@ -48,7 +49,7 @@ class RestExceptionHandler : ResponseEntityExceptionHandler() {
         if (ex.sqlState() == EXCLUSION_VIOLATION) {
             problem(ErrorCode.SLOT_UNAVAILABLE, "Ten termin jest już zajęty")
         } else {
-            log.warn("Data integrity violation: {}", ex.mostSpecificCause.message)
+            log.warn("Data integrity violation: sqlState={}, constraint={}", ex.sqlState(), ex.constraintName())
             problem(ErrorCode.DATA_CONFLICT, "Operacja narusza spójność danych")
         }
 
@@ -84,8 +85,10 @@ class RestExceptionHandler : ResponseEntityExceptionHandler() {
 
     /** Fallback for uncoded state conflicts. */
     @ExceptionHandler(IllegalStateException::class)
-    fun handleIllegalState(ex: IllegalStateException): ResponseEntity<ProblemDetail> =
-        problem(ErrorCode.CONFLICT, ex.message ?: "Konflikt")
+    fun handleIllegalState(ex: IllegalStateException): ResponseEntity<ProblemDetail> {
+        log.warn("Uncoded IllegalStateException: {}", ex.message)
+        return problem(ErrorCode.CONFLICT, ex.message ?: "Konflikt")
+    }
 
     /** Fallback for uncoded missing entities. */
     @ExceptionHandler(NoSuchElementException::class)
@@ -153,4 +156,10 @@ class RestExceptionHandler : ResponseEntityExceptionHandler() {
 
     private fun DataIntegrityViolationException.sqlState(): String? =
         generateSequence(cause) { it.cause }.filterIsInstance<SQLException>().firstOrNull()?.sqlState
+
+    private fun DataIntegrityViolationException.constraintName(): String? =
+        generateSequence(cause) { it.cause }
+            .filterIsInstance<ConstraintViolationException>()
+            .firstOrNull()
+            ?.constraintName
 }

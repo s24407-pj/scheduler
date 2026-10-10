@@ -84,7 +84,8 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 - **Time:** API date-times are Europe/Warsaw local time without offset. Get "now" from the injected `Clock` bean (`LocalDateTime.now(clock)`); never call `now()` without it or hardcode `ZoneId.of(...)`.
 - **Errors:** throw `ApiException(ErrorCode.X, "<Polish detail>")` for business errors; responses are ProblemDetail with a stable `code`. Another company's resource is 404, not 403/409. Add new codes to `ErrorCode` and `docs/api/errors.md`.
 - **Money:** prices are `Int` whole złoty. No grosze, no decimals.
-- **Side effects:** SMS is sent after commit via `@TransactionalEventListener`; failures are logged and never propagate.
+- **Side effects:** SMS is sent after commit via `@TransactionalEventListener`; failures are logged and never propagate. `NotificationService` itself throws on failure so callers (listener, reminder job) can log it and skip flagging the reminder as sent.
+- **Logging:** never log OTP codes, passwords, tokens, or raw constraint-violation messages (they contain row values). `ConsoleSmsSender` logs OTPs and is therefore disabled in `prod`. Log lines carry the MDC `requestId` from `RequestIdFilter`; prod logs are ECS JSON.
 - **Deployment:** single instance; scheduled jobs have no distributed lock.
 
 ## Development Checklist

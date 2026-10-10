@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.auth
 
 import java.security.SecureRandom
+import org.slf4j.LoggerFactory
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -40,6 +41,8 @@ class AuthService(
         private const val INVALID_CREDENTIALS_MESSAGE = "Nieprawidłowy email lub hasło"
     }
 
+    private val log = LoggerFactory.getLogger(AuthService::class.java)
+
     private val secureRandom = SecureRandom()
 
     /**
@@ -55,10 +58,10 @@ class AuthService(
      */
     fun requestCode(request: RequestCodeRequest, clientIp: String) {
         if (!otpRequestRateLimiter.checkAndIncrement(clientIp)) {
-            throw RateLimitExceededException()
+            rateLimited("otp-request", clientIp)
         }
         if (!otpStore.checkAndIncrementRateLimit(request.phoneNumber)) {
-            throw RateLimitExceededException()
+            rateLimited("otp-phone", clientIp)
         }
 
         val code = (100000 + secureRandom.nextInt(900000)).toString()
@@ -73,10 +76,10 @@ class AuthService(
     @Transactional
     fun verifyCode(request: VerifyCodeRequest, clientIp: String): AuthResponse {
         if (!otpVerificationRateLimiter.checkAndIncrement(clientIp)) {
-            throw RateLimitExceededException()
+            rateLimited("otp-verify", clientIp)
         }
 
-        requireVerified(otpStore.verifyCode(request.phoneNumber, request.code))
+        requireVerified(otpStore.verifyCode(request.phoneNumber, request.code), clientIp)
 
         val existingUser = userRepository.findByPhoneNumber(request.phoneNumber)
 
@@ -85,7 +88,7 @@ class AuthService(
             requireNotNull(request.lastName) { "Nazwisko jest wymagane przy pierwszej rejestracji" }
         }
 
-        requireVerified(otpStore.verifyAndConsumeCode(request.phoneNumber, request.code))
+        requireVerified(otpStore.verifyAndConsumeCode(request.phoneNumber, request.code), clientIp)
 
         val user =
             existingUser
@@ -100,7 +103,15 @@ class AuthService(
         return AuthResponse(jwtService.generateCustomerToken(user))
     }
 
-    private fun requireVerified(result: OtpVerificationResult) {
+    private fun rateLimited(limiter: String, clientIp: String): Nothing {
+        log.warn("Rate limit exceeded: limiter={}, ip={}", limiter, clientIp)
+        throw RateLimitExceededException()
+    }
+
+    private fun requireVerified(result: OtpVerificationResult, clientIp: String) {
+        if (result != OtpVerificationResult.VERIFIED) {
+            log.info("OTP verification failed: result={}, ip={}", result, clientIp)
+        }
         when (result) {
             OtpVerificationResult.EXPIRED_OR_MISSING ->
                 throw IllegalArgumentException("Brak kodu dla tego numeru lub kod wygasł")
@@ -119,16 +130,18 @@ class AuthService(
     @Transactional(readOnly = true)
     fun loginStaff(request: StaffLoginRequest, clientIp: String): StaffLoginResponse {
         if (!loginRateLimiter.checkAndIncrement(clientIp)) {
-            throw RateLimitExceededException()
+            rateLimited("login", clientIp)
         }
         val user = userRepository.findByEmail(request.email)
         val passwordHash = user?.passwordHash
         if (user == null || passwordHash == null) {
             passwordEncoder.matches(request.password, dummyPasswordHash)
+            log.info("Staff login failed: unknown account or no password, ip={}", clientIp)
             throw IllegalArgumentException(INVALID_CREDENTIALS_MESSAGE)
         }
 
         if (!passwordEncoder.matches(request.password, passwordHash)) {
+            log.info("Staff login failed: wrong password, userId={}, ip={}", user.id, clientIp)
             throw IllegalArgumentException(INVALID_CREDENTIALS_MESSAGE)
         }
 
@@ -165,6 +178,7 @@ class AuthService(
                 employments.find { it.id == request.employmentId }
                     ?: throw IllegalArgumentException("Nieprawidłowy wybór zatrudnienia")
             }
+        log.info("Staff login succeeded: userId={}, employmentId={}, ip={}", userId, selected.id, clientIp)
         return StaffLoginResponse(
             status = StaffLoginStatus.AUTHENTICATED,
             token = jwtService.generateStaffToken(user, selected),

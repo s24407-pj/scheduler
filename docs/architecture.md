@@ -81,7 +81,7 @@ Block state is **per company** in `company_customer_blocks` (`no_show_count`, `b
   - **Reminders:** reservations starting in 23–25 hours with `reminder_sent = false` get an SMS; successfully sent ones are flagged.
 - Jobs assume a single instance; see [ADR-0007](./adr/0007-single-instance-deployment.md).
 
-> **Known gap:** `ConsoleSmsSender` is the only `SmsSender` implementation and is active in every profile, including `prod`. OTP codes and notifications are written to the application log, not sent. Its OTP log line also hardcodes "Valid for 5 minutes" regardless of `OTP_TTL_MINUTES`.
+> **Known gap:** `ConsoleSmsSender` is the only `SmsSender` implementation. It writes OTP codes and notifications to the application log instead of sending them, and is disabled in the `prod` profile (`@Profile("!prod")`), so `prod` fails at startup until a real `SmsSender` exists.
 
 ## Caching
 

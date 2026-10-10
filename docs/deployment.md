@@ -42,4 +42,4 @@ A production compose file (for example `docker-compose.prod.yml`) should:
 - **Set `SPRING_PROFILE=prod`.** The compose default is `dev`, which seeds the `admin123` / `employee123` accounts and accepts the dev `JWT_SECRET`.
 - **Set a unique `JWT_SECRET`** (`openssl rand -base64 48`). With `prod` and the default secret, startup fails by design.
 - Set `TRUSTED_PROXIES` and `SERVER_TOMCAT_REMOTEIP_REMOTE_IP_HEADER` as above, and `CORS_ORIGINS` to the real frontend origins.
-- Use strong `DB_PASSWORD`, and configure a real `SmsSender` (`ConsoleSmsSender` only logs, see the known gap in [architecture.md](./architecture.md#notifications-and-scheduled-jobs)).
+- Use strong `DB_PASSWORD`, and add a real `SmsSender`. `ConsoleSmsSender` only logs and is disabled in `prod`, so startup fails without one (see the known gap in [architecture.md](./architecture.md#notifications-and-scheduled-jobs)).
