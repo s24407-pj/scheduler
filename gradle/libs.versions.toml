@@ -10,6 +10,8 @@ springmockk = "5.0.1"
 testcontainers = "2.0.5"
 testcontainersRedis = "2.2.4"
 konsist = "0.18.0"
+spotless = "8.10.4"
+ktfmt = "0.65"
 
 [libraries]
 jjwt-api = { module = "io.jsonwebtoken:jjwt-api", version.ref = "jjwt" }
@@ -23,6 +25,8 @@ testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-jun
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql", version.ref = "testcontainers" }
 testcontainers-redis = { module = "com.redis:testcontainers-redis", version.ref = "testcontainersRedis" }
 konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
+# Not a dependency: declared so Dependabot tracks the ktfmt version used by Spotless.
+ktfmt = { module = "org.jetbrains.kotlinx:ktfmt", version.ref = "ktfmt" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
@@ -30,3 +34,4 @@ kotlin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotl
 kotlin-jpa = { id = "org.jetbrains.kotlin.plugin.jpa", version.ref = "kotlin" }
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
 spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }

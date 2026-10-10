@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.spring.boot)
     alias(libs.plugins.spring.dependency.management)
     alias(libs.plugins.kotlin.jpa)
+    alias(libs.plugins.spotless)
 }
 
 group = "pl.kacosmetology"
@@ -74,6 +75,15 @@ dependencies {
 
     // Test - Architecture
     testImplementation(libs.konsist)
+}
+
+spotless {
+    kotlin {
+        ktfmt(libs.versions.ktfmt.get()).kotlinlangStyle().configure { it.setMaxWidth(120) }
+    }
+    kotlinGradle {
+        ktfmt(libs.versions.ktfmt.get()).kotlinlangStyle().configure { it.setMaxWidth(120) }
+    }
 }
 
 kotlin {
