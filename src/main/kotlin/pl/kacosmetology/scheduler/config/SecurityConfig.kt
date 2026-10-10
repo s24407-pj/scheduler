@@ -68,8 +68,6 @@ class SecurityConfig(
                     .requestMatchers("/api/offerings/public/**").permitAll()
                     .requestMatchers("/api/company/public/**").permitAll()
                     .requestMatchers("/api/employees/public/**").permitAll()
-                    .requestMatchers("/api/whatsapp/webhook").permitAll()
-                    .requestMatchers("/api/whatsapp/simulate", "/api/whatsapp/simulate/**").permitAll()
                     .anyRequest().authenticated()
             }
             .sessionManagement { session ->

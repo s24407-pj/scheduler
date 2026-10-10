@@ -47,7 +47,7 @@ A beauty/barber salon scheduling system with a Spring Boot backend. Customers au
 
 - **Kotlin** + **Spring Boot 4** (Web MVC, Security, Data JPA, Validation, Actuator)
 - **PostgreSQL** with **Flyway** migrations (`src/main/resources/db/migration/`)
-- **Redis** — OTP storage, rate limiting, WhatsApp conversation state
+- **Redis** — OTP storage, rate limiting
 - **JWT** auth (customers via SMS OTP, staff via email/password)
 - **Cloudflare R2** (S3-compatible) for offering images and employee photos
 - **Testcontainers** (PostgreSQL + Redis) + **MockK** / **SpringMockK** for tests
@@ -58,7 +58,7 @@ A beauty/barber salon scheduling system with a Spring Boot backend. Customers au
 src/main/kotlin/pl/kacosmetology/scheduler/
 ├── auth/             # SMS OTP + staff login → JWT issuance
 ├── availability/     # Available time slot calculation (public endpoint)
-├── company/          # Company entity, settings CRUD (hours, slot interval)
+├── company/          # Company entity, settings CRUD (hours, slot interval), public booking profile
 ├── config/           # Security, CORS, Redis, DataInitializer (dev seed)
 ├── employeeoffering/ # Employee–offering assignments (which offerings an employee performs)
 ├── reservation/      # Booking lifecycle (PENDING → CONFIRMED → COMPLETED/CANCELLED/NO_SHOW)
@@ -67,7 +67,6 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 ├── notification/     # SMS notifications (booking confirmation, cancellation, reminders)
 ├── offering/         # Offering catalog (Offering entity) and offering categories
 ├── user/             # User profile management; CustomerService/CustomerController for block/unblock
-├── whatsapp/         # WhatsApp booking bot (webhook, conversation state machine, Meta sender)
 └── workschedule/     # Employee weekly work schedules (per-day hours)
 ```
 
@@ -111,7 +110,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 **Employee photos:** Owners can upload a single profile photo per employee via `POST /api/employees/{id}/photo` (multipart field `photo`; max 5 MB; JPEG/PNG/WebP). Uploading replaces any existing photo (old R2 object deleted). Delete via `DELETE /api/employees/{id}/photo`. Photo URL is stored as `photo_url` on the `users` table (in V1 schema). `EmployeePhotoService` handles R2 operations. `EmployeeController` at `/api/employees` serves both endpoints (OWNER only). `photoUrl` is included in `UserProfileResponse` and `CompanyEmployeeResponse`.
 
-**WhatsApp booking bot:** Clients can book via WhatsApp without logging in — Meta verifies the phone number. `WhatsAppWebhookController` at `GET/POST /api/whatsapp/webhook` (public, no auth) handles Meta webhook subscription and message ingestion. `ConversationHandler` is a Redis-backed state machine (`ConversationStore`, key `whatsapp:conv:<phone>`, TTL 30 min) that guides clients through service → employee → date → time → confirmation. New clients go through a name-collection sub-flow (`AWAITING_FIRST_NAME` → `AWAITING_LAST_NAME`); existing clients (looked up by phone) skip it. Reservation is created via `ReservationService.createReservationByStaff()`. Sending is abstracted behind `WhatsAppSender`: `ConsoleWhatsAppSender` (dev default, `whatsapp.sender=console`) logs to SLF4J; `MetaWhatsAppSender` (`whatsapp.sender=meta`) calls the Meta Graph API v21.0 using `RestClient`. `WhatsAppProperties` holds `verifyToken`, `accessToken`, `phoneNumberId`, `companyId`, `sender`. Errors are logged but never propagated (200 always returned to Meta). Phone numbers are normalised to E.164 (`+` prepended if missing).
+**Public booking endpoints:** Customer booking pages read salon data without authentication (permitted in `SecurityConfig`). `GET /api/company/public/{companyId}` returns `CompanyPublicProfileResponse` (`id`, `name`, `openingTime`, `closingTime`, `lastMinuteDiscountPercent`, `lastMinuteDiscountHours`); internal settings such as `maxNoShows` are not exposed. `GET /api/employees/public/company/{companyId}?offeringId={id}` returns `PublicEmployeeResponse` entries (`id` = user ID used by reservation and availability APIs, `firstName`, `lastName`, `photoUrl`) for staff eligible to perform the offering, using the same assignment rule as `AvailabilityService`. Unknown companies, and offerings that are inactive or belong to another company, return 404. Both are served by `CompanyService`.
 
 **No-show tracking:** Staff can mark a reservation as `NO_SHOW` via `PATCH /api/reservations/{id}/no-show` (OWNER or EMPLOYEE). This increments the customer's `no_show_count` in `company_customer_blocks` and auto-blocks the customer (`blocked = true`) at that company when the count reaches `companies.max_no_shows` (configured via `PUT /api/company/settings`; `maxNoShows = 0` disables auto-block). Block state is **company-scoped** — a block at Company A does not affect bookings at Company B. A blocked customer who calls `POST /api/reservations` for an offering belonging to the blocking company receives HTTP 400. Owners can manually block/unblock any customer via `PATCH /api/customers/{id}/block` and `PATCH /api/customers/{id}/unblock` (OWNER only, HTTP 204); unblocking resets `noShowCount` to 0. Customer status (name, noShowCount, blocked) is readable by staff at `GET /api/customers/{id}` (requires OWNER or EMPLOYEE; returns company-scoped values). The `blocked` guard runs in `ReservationService.createReservation()` after loading the offering (so `offering.companyId` is available), using `CompanyCustomerBlockRepository.findByCompanyIdAndCustomerId()`.
 
@@ -162,7 +161,6 @@ Environment variables override application YAML values. Key vars for docker-comp
 - `OTP_VERIFICATION_MAX_ATTEMPTS`, `OTP_VERIFICATION_IP_MAX_ATTEMPTS`, `OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES`
 - `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES`
 - `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`
-- `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_COMPANY_ID`, `WHATSAPP_SENDER`
 
 Dev profile (`application-dev.yaml`) enables SQL logging and DEBUG-level logging for the app and Spring Security.
 

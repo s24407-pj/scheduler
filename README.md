@@ -14,7 +14,7 @@ Spring Boot backend for a beauty and cosmetology salon scheduling system. Custom
 - Availability calculation from work schedules, reservations, and schedule blocks
 - Offering catalog with categories and image uploads (Cloudflare R2)
 - SMS notifications (confirmation, cancellation, reminders)
-- WhatsApp booking bot (Meta webhook + Redis conversation state)
+- Public booking endpoints (salon profile, bookable employees per offering)
 - No-show tracking with company-scoped customer blocking
 - Last-minute discounts and minimum booking advance settings
 
@@ -97,7 +97,6 @@ Environment variables override values in `application.yaml`. Key variables for D
 | `OTP_VERIFICATION_IP_MAX_ATTEMPTS`, `OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES` | OTP verification limits per client IP |
 | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` | Staff login rate limiting |
 | `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | Cloudflare R2 |
-| `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_COMPANY_ID`, `WHATSAPP_SENDER` | WhatsApp bot |
 
 ## Performance Tests
 

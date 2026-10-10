@@ -33,7 +33,7 @@ class CompanyService(
 
     /**
      * Returns employees eligible to perform [offeringId] at [companyId].
-     * Uses the same assignment filter as the WhatsApp booking bot.
+     * Employees without any offering assignments are eligible for every offering in their company.
      */
     @Transactional(readOnly = true)
     fun getPublicBookableEmployees(companyId: Long, offeringId: Long): List<PublicEmployeeResponse> {
