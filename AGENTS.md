@@ -8,6 +8,7 @@ Instructions for AI coding agents working in this repository. Detailed documenta
 ./gradlew test # All tests (requires Docker for Testcontainers)
 ./gradlew build # Build including tests
 ./gradlew build -x test # Build without tests
+./gradlew spotlessApply # Format Kotlin sources (ktfmt); spotlessCheck runs in build
 docker compose up --build # Full stack (PostgreSQL + Redis + app)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build # Dev profile + debugger on :5005
 ```

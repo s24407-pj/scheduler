@@ -117,3 +117,13 @@ Every feature needs a service unit test and an HTTP integration test. Test names
 `TestcontainersConfiguration` starts `postgres:18-alpine` and `redis:8-alpine` with `@ServiceConnection`, so no connection properties are needed. Flyway runs the real migrations against the container.
 
 Load tests (k6, Prometheus, Grafana) are described in [`perf-tests/README.md`](../perf-tests/README.md).
+
+## Formatting
+
+Kotlin sources and Gradle scripts are formatted with ktfmt (kotlinlang style, 120 columns) through Spotless. `./gradlew build` runs `spotlessCheck` and fails on unformatted code; run `./gradlew spotlessApply` to fix it. For format-on-save, install the IntelliJ ktfmt plugin and set it to the kotlinlang style with a max line length of 120.
+
+The initial whole-repo reformat is listed in `.git-blame-ignore-revs`. GitHub skips it automatically; for local `git blame`, run once:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
