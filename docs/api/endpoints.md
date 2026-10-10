@@ -31,7 +31,7 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | GET | `/api/company/settings` | Authenticated | Caller's company settings |
 | PUT | `/api/company/settings` | OWNER | |
 
-## Employees — `EmployeeController`, `WorkScheduleController`, `EmployeeOfferingController`
+## Employees — `CompanyEmployeeController`, `EmployeeController`, `WorkScheduleController`, `EmployeeOfferingController`
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |

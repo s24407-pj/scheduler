@@ -1,20 +1,11 @@
-// Wersje bibliotek są definiowane w gradle.properties
+// Wersje bibliotek i pluginów są definiowane w gradle/libs.versions.toml
 plugins {
-    kotlin("jvm") version "2.4.20"
-    kotlin("plugin.spring") version "2.4.20"
-    id("org.springframework.boot") version "4.1.1"
-    id("io.spring.dependency-management") version "1.1.7"
-    kotlin("plugin.jpa") version "2.4.20"
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.spring)
+    alias(libs.plugins.spring.boot)
+    alias(libs.plugins.spring.dependency.management)
+    alias(libs.plugins.kotlin.jpa)
 }
-
-// Zmienne dla dependencies
-val jjwtVersion = "0.13.0"
-val postgresqlVersion = "42.7.10"
-val mockkVersion = "1.14.11"
-val springmockkVersion = "5.0.1"
-val testcontainersVersion = "2.0.5"
-val awsSdkVersion = "2.55.5"
-val springdocVersion = "3.1.1"
 
 group = "pl.kacosmetology"
 version = "0.0.1-SNAPSHOT"
@@ -50,15 +41,15 @@ dependencies {
     implementation("tools.jackson.module:jackson-module-kotlin")
 
     // AWS SDK (for Cloudflare R2 — S3-compatible)
-    implementation("software.amazon.awssdk:s3:$awsSdkVersion")
+    implementation(libs.aws.s3)
 
     // OpenAPI spec + Swagger UI (enabled only in the dev profile)
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:$springdocVersion")
+    implementation(libs.springdoc.openapi.webmvc.ui)
 
     // JWT
-    implementation("io.jsonwebtoken:jjwt-api:$jjwtVersion")
-    runtimeOnly("io.jsonwebtoken:jjwt-impl:$jjwtVersion")
-    runtimeOnly("io.jsonwebtoken:jjwt-jackson:$jjwtVersion")
+    implementation(libs.jjwt.api)
+    runtimeOnly(libs.jjwt.impl)
+    runtimeOnly(libs.jjwt.jackson)
 
     // Test - Spring Boot
     testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
@@ -72,14 +63,17 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 
     // Test - Testcontainers
-    testImplementation("org.testcontainers:testcontainers-junit-jupiter:$testcontainersVersion")
-    testImplementation("org.testcontainers:testcontainers-postgresql:$testcontainersVersion")
-    testImplementation("com.redis:testcontainers-redis:2.2.4")
+    testImplementation(libs.testcontainers.junit.jupiter)
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.testcontainers.redis)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
     // Test - Mocking
-    testImplementation("io.mockk:mockk:$mockkVersion")
-    testImplementation("com.ninja-squad:springmockk:$springmockkVersion")
+    testImplementation(libs.mockk)
+    testImplementation(libs.springmockk)
+
+    // Test - Architecture
+    testImplementation(libs.konsist)
 }
 
 kotlin {

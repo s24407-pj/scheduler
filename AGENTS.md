@@ -73,7 +73,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 ## Invariants
 
-- **Layering:** Controller → Service → Repository. No cross-module service calls; modules communicate through IDs. `EmployeeAvailabilityPolicy` and `BookableSlotPolicy` (slot grid shared by availability and customer booking) are the shared exceptions.
+- **Layering:** Controller → Service → Repository. No cross-module service calls; modules communicate through IDs. `EmployeeAvailabilityPolicy` and `BookableSlotPolicy` (slot grid shared by availability and customer booking) are the shared exceptions. `ArchitectureTest` (Konsist) enforces this: no `*Service` imports from another module (except `security`/`config`) and no repositories in controllers.
 - **Company scoping:** staff JWTs carry exactly one `employmentId`, `companyId`, and role (`ROLE_OWNER`/`ROLE_EMPLOYEE`). Every staff operation must verify the target belongs to `userDetails.companyId`. Customer JWTs carry only `ROLE_CUSTOMER`.
 - **Sessions:** issue tokens only through `JwtService`, which registers the `jti` in `SessionStore` (Redis). A token whose session is gone is rejected, so logout and `logout-all` take effect immediately ([ADR-0009](./docs/adr/0009-revocable-sessions.md)).
 - **Client IP:** use `request.remoteAddr` for rate limiting; never parse `X-Forwarded-For` by hand (Tomcat applies it only for `TRUSTED_PROXIES`).

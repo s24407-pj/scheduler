@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - **Docker or rootless Podman** with Compose. Integration tests need it too (Testcontainers).
-- **JDK 25**, pinned in `mise.toml`. Run `mise install` once; mise activates it inside the repo. The Gradle wrapper downloads Gradle.
+- **JDK 25**, pinned in `mise.toml`. Run `mise install` once; mise activates it inside the repo. The Gradle wrapper downloads Gradle. Plugin and library versions live in `gradle/libs.versions.toml`; Spring Boot-managed dependencies take their version from the Boot BOM.
 - With rootless Podman, export `DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock` (for example in `~/.zshrc`). Non-interactive shells that do not load `~/.zshrc` need `zsh -ic '<command>'`.
 
 ## Running
