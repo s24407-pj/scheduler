@@ -48,7 +48,7 @@ class CompanyServiceTest {
 
         val result = companyService.getCompany(companyId)
 
-        assertEquals(companyId, result.id!!)
+        assertEquals(companyId, result.id)
         assertEquals("Test Salon", result.name)
         assertEquals(LocalTime.of(9, 0), result.openingTime)
         assertEquals(LocalTime.of(17, 0), result.closingTime)
