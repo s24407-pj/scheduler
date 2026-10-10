@@ -35,7 +35,7 @@ curl -sf http://localhost:8080/actuator/health
 
 Dev accounts: owner `gabinet@kacosmetology.pl` / `admin123`, employee `pracownik@kacosmetology.pl` / `employee123`.
 
-In distrobox, `DOCKER_HOST` is set via `~/.bashrc.d/distrobox-podman.sh`. For non-interactive shells use `bash -lc 'docker compose ...'`.
+JDK 25 is pinned in `mise.toml` (`mise install` once; mise switches to it inside the repo). Testcontainers and `docker compose` use rootless Podman via `DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock`, exported in `~/.zshrc`; non-interactive shells need `zsh -ic '...'` to pick up both. Distrobox is no longer required.
 
 ## Project Overview
 

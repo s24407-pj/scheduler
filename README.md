@@ -21,9 +21,9 @@ Spring Boot backend for a beauty and cosmetology salon scheduling system. Custom
 ## Prerequisites
 
 - [Docker](https://www.docker.com/) and Docker Compose (recommended)
-- [Java 25](https://adoptium.net/) and Gradle (for local development without Docker)
+- [Java 25](https://adoptium.net/) (for local development without Docker). With [mise](https://mise.jdx.dev/), run `mise install` — the version is pinned in `mise.toml`. The Gradle wrapper downloads Gradle itself.
 
-Integration tests require Docker — Testcontainers starts PostgreSQL and Redis automatically.
+Integration tests require Docker — Testcontainers starts PostgreSQL and Redis automatically. With rootless Podman, export `DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock`.
 
 ## Quick Start
 
