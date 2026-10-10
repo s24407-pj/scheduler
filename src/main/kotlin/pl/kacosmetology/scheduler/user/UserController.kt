@@ -13,14 +13,13 @@ import pl.kacosmetology.scheduler.user.dto.UserProfileResponse
 @RestController
 @RequestMapping("/api/users")
 class UserController(
-    private val userService: UserService
+    private val userService: UserService,
 ) {
 
     /** Returns the authenticated user's profile. */
     @GetMapping("/me")
     fun getMyProfile(@AuthenticationPrincipal principal: CustomUserDetails?): UserProfileResponse {
-        val user = principal?.user
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
+        val user = principal?.user ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
         return user.toProfileResponse()
     }
 
@@ -28,19 +27,19 @@ class UserController(
     @PutMapping("/me")
     fun updateMyProfile(
         @Valid @RequestBody request: UpdateUserProfileRequest,
-        @AuthenticationPrincipal principal: CustomUserDetails?
+        @AuthenticationPrincipal principal: CustomUserDetails?,
     ): UserProfileResponse {
-        val userId = principal?.id
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
+        val userId = principal?.id ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
         return userService.updateProfile(userId, request).toProfileResponse()
     }
 
-    private fun User.toProfileResponse() = UserProfileResponse(
-        id = requireNotNull(id) { "Persisted user must have an ID" },
-        phoneNumber = phoneNumber,
-        firstName = firstName,
-        lastName = lastName,
-        email = email,
-        photoUrl = photoUrl
-    )
+    private fun User.toProfileResponse() =
+        UserProfileResponse(
+            id = requireNotNull(id) { "Persisted user must have an ID" },
+            phoneNumber = phoneNumber,
+            firstName = firstName,
+            lastName = lastName,
+            email = email,
+            photoUrl = photoUrl,
+        )
 }

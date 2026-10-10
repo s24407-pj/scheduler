@@ -7,5 +7,5 @@ data class CompanyEmployeeResponse(
     val firstName: String,
     val lastName: String,
     val role: String,
-    val photoUrl: String?
+    val photoUrl: String?,
 )

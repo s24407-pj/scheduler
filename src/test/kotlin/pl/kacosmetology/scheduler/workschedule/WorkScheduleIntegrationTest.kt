@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.workschedule
 
 import com.ninjasquad.springmockk.MockkBean
+import java.time.DayOfWeek
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -24,34 +25,23 @@ import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
-import java.time.DayOfWeek
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
 class WorkScheduleIntegrationTest {
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
-    @Autowired
-    private lateinit var objectMapper: ObjectMapper
-    @Autowired
-    private lateinit var jwtService: JwtService
-    @Autowired
-    private lateinit var userRepository: UserRepository
-    @Autowired
-    private lateinit var companyRepository: CompanyRepository
-    @Autowired
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired
-    private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
-    @Autowired
-    private lateinit var reservationRepository: ReservationRepository
-    @Autowired
-    private lateinit var serviceRepository: OfferingRepository
+    @Autowired private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var objectMapper: ObjectMapper
+    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var companyRepository: CompanyRepository
+    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
+    @Autowired private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var serviceRepository: OfferingRepository
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
     private var companyId: Long = 0
     private var employeeId: Long = 0
@@ -71,38 +61,91 @@ class WorkScheduleIntegrationTest {
         companyId = company.id!!
 
         val owner = userRepository.save(User(phoneNumber = "+48111222333", firstName = "Owner", lastName = "Test"))
-        val ownerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
-        )
+        val ownerEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
+            )
         ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
 
         val employee = userRepository.save(User(phoneNumber = "+48333222111", firstName = "Emp", lastName = "Test"))
-        val employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
-        )
+        val employeeEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
+            )
         employeeId = employee.id!!
         employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
     }
 
     @Test
     fun `PUT work-schedule should return 200 for owner and save entries`() {
-        val body = mapOf(
-            "entries" to listOf(
-                mapOf("dayOfWeek" to "MONDAY", "startTime" to "09:00:00", "endTime" to "17:00:00"),
-                mapOf("dayOfWeek" to "TUESDAY", "startTime" to "10:00:00", "endTime" to "18:00:00")
+        val body =
+            mapOf(
+                "entries" to
+                    listOf(
+                        mapOf("dayOfWeek" to "MONDAY", "startTime" to "09:00:00", "endTime" to "17:00:00"),
+                        mapOf("dayOfWeek" to "TUESDAY", "startTime" to "10:00:00", "endTime" to "18:00:00"),
+                    ),
             )
+
+        mockMvc
+            .put("/api/employees/$employeeId/work-schedule") {
+                header("Authorization", "Bearer $ownerToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(2) }
+            }
+
+        assertEquals(2, workScheduleRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId).size)
+    }
+
+    @Test
+    fun `PUT work-schedule at one company should keep the employee's schedule at another company`() {
+        val otherCompany = companyRepository.save(Company(name = "Drugi Salon Grafik"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = employeeId, role = "EMPLOYEE"),
         )
+        workScheduleRepository.save(
+            EmployeeWorkSchedule(
+                companyId = otherCompany.id!!,
+                employeeId = employeeId,
+                dayOfWeek = DayOfWeek.MONDAY,
+                startTime = java.time.LocalTime.of(12, 0),
+                endTime = java.time.LocalTime.of(20, 0),
+            ),
+        )
+        val body =
+            mapOf(
+                "entries" to
+                    listOf(
+                        mapOf("dayOfWeek" to "MONDAY", "startTime" to "08:00:00", "endTime" to "12:00:00"),
+                    ),
+            )
 
-        mockMvc.put("/api/employees/$employeeId/work-schedule") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(2) }
-        }
+        mockMvc
+            .put("/api/employees/$employeeId/work-schedule") {
+                header("Authorization", "Bearer $ownerToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isOk() }
+            }
+        mockMvc
+            .get("/api/employees/$employeeId/work-schedule") {
+                header("Authorization", "Bearer $ownerToken")
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].startTime") { value("08:00:00") }
+            }
 
-        assertEquals(2, workScheduleRepository.findAllByEmployeeId(employeeId).size)
+        val otherSchedule = workScheduleRepository.findAllByCompanyIdAndEmployeeId(otherCompany.id!!, employeeId)
+        assertEquals(1, otherSchedule.size)
+        assertEquals(java.time.LocalTime.of(12, 0), otherSchedule.first().startTime)
     }
 
     @Test
@@ -113,27 +156,31 @@ class WorkScheduleIntegrationTest {
                 employeeId = employeeId,
                 dayOfWeek = DayOfWeek.MONDAY,
                 startTime = java.time.LocalTime.of(9, 0),
-                endTime = java.time.LocalTime.of(17, 0)
-            )
+                endTime = java.time.LocalTime.of(17, 0),
+            ),
         )
 
-        val body = mapOf(
-            "entries" to listOf(
-                mapOf("dayOfWeek" to "WEDNESDAY", "startTime" to "08:00:00", "endTime" to "16:00:00")
+        val body =
+            mapOf(
+                "entries" to
+                    listOf(
+                        mapOf("dayOfWeek" to "WEDNESDAY", "startTime" to "08:00:00", "endTime" to "16:00:00"),
+                    ),
             )
-        )
 
-        mockMvc.put("/api/employees/$employeeId/work-schedule") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].dayOfWeek") { value("WEDNESDAY") }
-        }
+        mockMvc
+            .put("/api/employees/$employeeId/work-schedule") {
+                header("Authorization", "Bearer $ownerToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].dayOfWeek") { value("WEDNESDAY") }
+            }
 
-        assertEquals(1, workScheduleRepository.findAllByEmployeeId(employeeId).size)
+        assertEquals(1, workScheduleRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId).size)
     }
 
     @Test
@@ -144,76 +191,90 @@ class WorkScheduleIntegrationTest {
                 employeeId = employeeId,
                 dayOfWeek = DayOfWeek.MONDAY,
                 startTime = java.time.LocalTime.of(9, 0),
-                endTime = java.time.LocalTime.of(17, 0)
-            )
+                endTime = java.time.LocalTime.of(17, 0),
+            ),
         )
 
-        val body = mapOf(
-            "entries" to listOf(
-                mapOf("dayOfWeek" to "MONDAY", "startTime" to "10:00:00", "endTime" to "18:00:00")
+        val body =
+            mapOf(
+                "entries" to
+                    listOf(
+                        mapOf("dayOfWeek" to "MONDAY", "startTime" to "10:00:00", "endTime" to "18:00:00"),
+                    ),
             )
-        )
 
-        mockMvc.put("/api/employees/$employeeId/work-schedule") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].dayOfWeek") { value("MONDAY") }
-            jsonPath("$[0].startTime") { value("10:00:00") }
-        }
+        mockMvc
+            .put("/api/employees/$employeeId/work-schedule") {
+                header("Authorization", "Bearer $ownerToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].dayOfWeek") { value("MONDAY") }
+                jsonPath("$[0].startTime") { value("10:00:00") }
+            }
 
-        assertEquals(1, workScheduleRepository.findAllByEmployeeId(employeeId).size)
+        assertEquals(1, workScheduleRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId).size)
     }
 
     @Test
     fun `PUT work-schedule should return 403 for employee`() {
         val body = mapOf("entries" to emptyList<Any>())
 
-        mockMvc.put("/api/employees/$employeeId/work-schedule") {
-            header("Authorization", "Bearer $employeeToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isForbidden() }
-        }
+        mockMvc
+            .put("/api/employees/$employeeId/work-schedule") {
+                header("Authorization", "Bearer $employeeToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isForbidden() }
+            }
     }
 
     @Test
     fun `PUT work-schedule should return 400 when duplicate days provided`() {
-        val body = mapOf(
-            "entries" to listOf(
-                mapOf("dayOfWeek" to "MONDAY", "startTime" to "09:00:00", "endTime" to "17:00:00"),
-                mapOf("dayOfWeek" to "MONDAY", "startTime" to "10:00:00", "endTime" to "18:00:00")
+        val body =
+            mapOf(
+                "entries" to
+                    listOf(
+                        mapOf("dayOfWeek" to "MONDAY", "startTime" to "09:00:00", "endTime" to "17:00:00"),
+                        mapOf("dayOfWeek" to "MONDAY", "startTime" to "10:00:00", "endTime" to "18:00:00"),
+                    ),
             )
-        )
 
-        mockMvc.put("/api/employees/$employeeId/work-schedule") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isBadRequest() }
-        }
+        mockMvc
+            .put("/api/employees/$employeeId/work-schedule") {
+                header("Authorization", "Bearer $ownerToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isBadRequest() }
+            }
     }
 
     @Test
     fun `PUT work-schedule should return 400 when endTime is not after startTime`() {
-        val body = mapOf(
-            "entries" to listOf(
-                mapOf("dayOfWeek" to "FRIDAY", "startTime" to "17:00:00", "endTime" to "09:00:00")
+        val body =
+            mapOf(
+                "entries" to
+                    listOf(
+                        mapOf("dayOfWeek" to "FRIDAY", "startTime" to "17:00:00", "endTime" to "09:00:00"),
+                    ),
             )
-        )
 
-        mockMvc.put("/api/employees/$employeeId/work-schedule") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isBadRequest() }
-        }
+        mockMvc
+            .put("/api/employees/$employeeId/work-schedule") {
+                header("Authorization", "Bearer $ownerToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isBadRequest() }
+            }
     }
 
     @Test
@@ -224,17 +285,19 @@ class WorkScheduleIntegrationTest {
                 employeeId = employeeId,
                 dayOfWeek = DayOfWeek.THURSDAY,
                 startTime = java.time.LocalTime.of(9, 0),
-                endTime = java.time.LocalTime.of(17, 0)
-            )
+                endTime = java.time.LocalTime.of(17, 0),
+            ),
         )
 
-        mockMvc.get("/api/employees/$employeeId/work-schedule") {
-            header("Authorization", "Bearer $ownerToken")
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].dayOfWeek") { value("THURSDAY") }
-        }
+        mockMvc
+            .get("/api/employees/$employeeId/work-schedule") {
+                header("Authorization", "Bearer $ownerToken")
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].dayOfWeek") { value("THURSDAY") }
+            }
     }
 
     @Test
@@ -245,43 +308,51 @@ class WorkScheduleIntegrationTest {
                 employeeId = employeeId,
                 dayOfWeek = DayOfWeek.MONDAY,
                 startTime = java.time.LocalTime.of(9, 0),
-                endTime = java.time.LocalTime.of(17, 0)
-            )
+                endTime = java.time.LocalTime.of(17, 0),
+            ),
         )
 
-        mockMvc.get("/api/employees/$employeeId/work-schedule") {
-            header("Authorization", "Bearer $employeeToken")
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].dayOfWeek") { value("MONDAY") }
-        }
+        mockMvc
+            .get("/api/employees/$employeeId/work-schedule") {
+                header("Authorization", "Bearer $employeeToken")
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].dayOfWeek") { value("MONDAY") }
+            }
     }
 
     @Test
     fun `GET work-schedule should return 403 for customer`() {
-        val customer = userRepository.save(User(phoneNumber = "+48300300300", firstName = "Customer", lastName = "Test"))
+        val customer =
+            userRepository.save(User(phoneNumber = "+48300300300", firstName = "Customer", lastName = "Test"))
         val customerToken = jwtService.generateCustomerToken(customer)
 
-        mockMvc.get("/api/employees/$employeeId/work-schedule") {
-            header("Authorization", "Bearer $customerToken")
-        }.andExpect {
-            status { isForbidden() }
-        }
+        mockMvc
+            .get("/api/employees/$employeeId/work-schedule") {
+                header("Authorization", "Bearer $customerToken")
+            }
+            .andExpect {
+                status { isForbidden() }
+            }
     }
 
     @Test
     fun `GET work-schedule should return 404 for employee outside owner company`() {
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
-        val otherEmployee = userRepository.save(User(phoneNumber = "+48400400400", firstName = "Other", lastName = "Employee"))
+        val otherEmployee =
+            userRepository.save(User(phoneNumber = "+48400400400", firstName = "Other", lastName = "Employee"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE"),
         )
 
-        mockMvc.get("/api/employees/${otherEmployee.id!!}/work-schedule") {
-            header("Authorization", "Bearer $ownerToken")
-        }.andExpect {
-            status { isNotFound() }
-        }
+        mockMvc
+            .get("/api/employees/${otherEmployee.id!!}/work-schedule") {
+                header("Authorization", "Bearer $ownerToken")
+            }
+            .andExpect {
+                status { isNotFound() }
+            }
     }
 }

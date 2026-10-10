@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.reservation
 
 import com.ninjasquad.springmockk.MockkBean
+import java.time.LocalDateTime
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -20,36 +21,27 @@ import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
-import java.time.LocalDateTime
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
 class ReservationListingIntegrationTest {
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var mockMvc: MockMvc
 
-    @Autowired
-    private lateinit var companyRepository: CompanyRepository
+    @Autowired private lateinit var companyRepository: CompanyRepository
 
-    @Autowired
-    private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: UserRepository
 
-    @Autowired
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @Autowired
-    private lateinit var serviceRepository: OfferingRepository
+    @Autowired private lateinit var serviceRepository: OfferingRepository
 
-    @Autowired
-    private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var reservationRepository: ReservationRepository
 
-    @Autowired
-    private lateinit var jwtService: JwtService
+    @Autowired private lateinit var jwtService: JwtService
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
     private lateinit var customerToken: String
     private lateinit var employeeToken: String
@@ -76,26 +68,28 @@ class ReservationListingIntegrationTest {
             userRepository.save(User(phoneNumber = "+48333000333", firstName = "Piotr", lastName = "KlientB"))
 
         // Nadajemy Pracownikowi odpowiednią rolę w bazie
-        val employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(
-                companyId = company.id!!,
-                userId = employee.id!!,
-                role = "EMPLOYEE"
+        val employeeEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(
+                    companyId = company.id!!,
+                    userId = employee.id!!,
+                    role = "EMPLOYEE",
+                ),
             )
-        )
 
         employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
         customerToken = jwtService.generateCustomerToken(customerA)
 
         // 4. Tworzymy usługę
-        val service = serviceRepository.save(
-            Offering(
-                companyId = company.id!!,
-                name = "Strzyżenie",
-                durationMinutes = 60,
-                price = 100
+        val service =
+            serviceRepository.save(
+                Offering(
+                    companyId = company.id!!,
+                    name = "Strzyżenie",
+                    durationMinutes = 60,
+                    price = 100,
+                ),
             )
-        )
 
         // 5. Tworzymy Rezerwacje na dzisiaj
         todayStart = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0)
@@ -111,8 +105,8 @@ class ReservationListingIntegrationTest {
                 price = 100,
                 startTime = todayStart.withHour(10),
                 endTime = todayStart.withHour(11),
-                status = ReservationStatus.CONFIRMED
-            )
+                status = ReservationStatus.CONFIRMED,
+            ),
         )
 
         // Rezerwacja 2: Klient A na 12:00 (Późniejsza)
@@ -125,8 +119,8 @@ class ReservationListingIntegrationTest {
                 price = 100,
                 startTime = todayStart.withHour(12),
                 endTime = todayStart.withHour(13),
-                status = ReservationStatus.CONFIRMED
-            )
+                status = ReservationStatus.CONFIRMED,
+            ),
         )
 
         // Rezerwacja 3: Klient B na 14:00 (Cudza rezerwacja)
@@ -139,71 +133,76 @@ class ReservationListingIntegrationTest {
                 price = 100,
                 startTime = todayStart.withHour(14),
                 endTime = todayStart.withHour(15),
-                status = ReservationStatus.CONFIRMED
-            )
+                status = ReservationStatus.CONFIRMED,
+            ),
         )
     }
 
     @Test
     fun `customer should see only own reservations sorted descending by newest (200)`() {
-        mockMvc.get("/api/reservations/me") {
-            header("Authorization", "Bearer $customerToken")
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(2) }
+        mockMvc
+            .get("/api/reservations/me") {
+                header("Authorization", "Bearer $customerToken")
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(2) }
 
-            // Ponieważ użyliśmy OrderByStartTimeDesc, wizyta z 12:00 (Późniejsza) powinna być pierwsza na liście [0]
-            // Uwaga: używamy substring(0, 19) w teście, by zignorować ułamki sekund dodawane przez bazę/Javę
-            jsonPath("$[0].startTime") {
-                value(
-                    org.hamcrest.Matchers.startsWith(
-                        todayStart.withHour(12).toString().substring(0, 16)
+                // Ponieważ użyliśmy OrderByStartTimeDesc, wizyta z 12:00 (Późniejsza) powinna być pierwsza na liście
+                // [0]
+                // Uwaga: używamy substring(0, 19) w teście, by zignorować ułamki sekund dodawane przez bazę/Javę
+                jsonPath("$[0].startTime") {
+                    value(
+                        org.hamcrest.Matchers.startsWith(
+                            todayStart.withHour(12).toString().substring(0, 16),
+                        ),
                     )
-                )
-            }
-            jsonPath("$[1].startTime") {
-                value(
-                    org.hamcrest.Matchers.startsWith(
-                        todayStart.withHour(10).toString().substring(0, 16)
+                }
+                jsonPath("$[1].startTime") {
+                    value(
+                        org.hamcrest.Matchers.startsWith(
+                            todayStart.withHour(10).toString().substring(0, 16),
+                        ),
                     )
-                )
+                }
             }
-        }
     }
 
     @Test
     fun `employee should see full schedule for a given day sorted ascending (200)`() {
-        mockMvc.get("/api/reservations/employee") {
-            header("Authorization", "Bearer $employeeToken")
-            param("start", todayStart.toString())
-            param("end", todayEnd.toString())
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(3) }
+        mockMvc
+            .get("/api/reservations/employee") {
+                header("Authorization", "Bearer $employeeToken")
+                param("start", todayStart.toString())
+                param("end", todayEnd.toString())
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(3) }
 
-            // W grafiku pracownika ma być chronologicznie (OrderByStartTimeAsc)
-            jsonPath("$[0].startTime") {
-                value(
-                    org.hamcrest.Matchers.startsWith(
-                        todayStart.withHour(10).toString().substring(0, 16)
+                // W grafiku pracownika ma być chronologicznie (OrderByStartTimeAsc)
+                jsonPath("$[0].startTime") {
+                    value(
+                        org.hamcrest.Matchers.startsWith(
+                            todayStart.withHour(10).toString().substring(0, 16),
+                        ),
                     )
-                )
-            }
-            jsonPath("$[1].startTime") {
-                value(
-                    org.hamcrest.Matchers.startsWith(
-                        todayStart.withHour(12).toString().substring(0, 16)
+                }
+                jsonPath("$[1].startTime") {
+                    value(
+                        org.hamcrest.Matchers.startsWith(
+                            todayStart.withHour(12).toString().substring(0, 16),
+                        ),
                     )
-                )
-            }
-            jsonPath("$[2].startTime") {
-                value(
-                    org.hamcrest.Matchers.startsWith(
-                        todayStart.withHour(14).toString().substring(0, 16)
+                }
+                jsonPath("$[2].startTime") {
+                    value(
+                        org.hamcrest.Matchers.startsWith(
+                            todayStart.withHour(14).toString().substring(0, 16),
+                        ),
                     )
-                )
+                }
             }
-        }
     }
 
     @Test
@@ -220,35 +219,39 @@ class ReservationListingIntegrationTest {
                 price = 100,
                 startTime = todayStart.minusMinutes(30),
                 endTime = todayStart.plusMinutes(30),
-                status = ReservationStatus.CONFIRMED
-            )
+                status = ReservationStatus.CONFIRMED,
+            ),
         )
 
-        mockMvc.get("/api/reservations/employee") {
-            header("Authorization", "Bearer $employeeToken")
-            param("start", todayStart.toString())
-            param("end", todayStart.plusHours(1).toString())
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].startTime") {
-                value(
-                    org.hamcrest.Matchers.startsWith(
-                        todayStart.minusMinutes(30).toString().substring(0, 16)
-                    )
-                )
+        mockMvc
+            .get("/api/reservations/employee") {
+                header("Authorization", "Bearer $employeeToken")
+                param("start", todayStart.toString())
+                param("end", todayStart.plusHours(1).toString())
             }
-        }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].startTime") {
+                    value(
+                        org.hamcrest.Matchers.startsWith(
+                            todayStart.minusMinutes(30).toString().substring(0, 16),
+                        ),
+                    )
+                }
+            }
     }
 
     @Test
     fun `customer cannot access employee schedule (403)`() {
-        mockMvc.get("/api/reservations/employee") {
-            header("Authorization", "Bearer $customerToken")
-            param("start", todayStart.toString())
-            param("end", todayEnd.toString())
-        }.andExpect {
-            status { isForbidden() }
-        }
+        mockMvc
+            .get("/api/reservations/employee") {
+                header("Authorization", "Bearer $customerToken")
+                param("start", todayStart.toString())
+                param("end", todayEnd.toString())
+            }
+            .andExpect {
+                status { isForbidden() }
+            }
     }
 }

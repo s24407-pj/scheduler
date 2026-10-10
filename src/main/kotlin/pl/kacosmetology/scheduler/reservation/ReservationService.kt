@@ -1,21 +1,26 @@
 package pl.kacosmetology.scheduler.reservation
 
+import java.time.Clock
+import java.time.LocalDateTime
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import pl.kacosmetology.scheduler.availability.BookableSlotPolicy
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.company.effectivePrice
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.dto.DashboardReservationResponse
 import pl.kacosmetology.scheduler.reservation.dto.toDashboardResponse
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
-import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
-import java.time.LocalDateTime
-import java.time.ZoneId
+
+/** How long after a visit's end a COMPLETED reservation can still be corrected to NO_SHOW. */
+const val NO_SHOW_CORRECTION_HOURS = 24L
 
 /** Core business logic for reservation lifecycle: create, cancel, complete, and no-show marking. */
 @Service
@@ -28,17 +33,23 @@ class ReservationService(
     private val companyRepository: CompanyRepository,
     private val applicationEventPublisher: ApplicationEventPublisher,
     private val companyCustomerBlockRepository: CompanyCustomerBlockRepository,
-    private val employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
+    private val employeeAvailabilityPolicy: EmployeeAvailabilityPolicy,
+    private val bookableSlotPolicy: BookableSlotPolicy,
+    private val clock: Clock,
 ) {
     /**
-     * Creates a new reservation with a price snapshot from the offering catalog.
-     * Validates that the requested time slot is available and the customer is not blocked at the offering's company.
-     * Throws [IllegalArgumentException] if the customer is blocked, the employee is not part of the offering's company,
-     * has offering assignments but not for this offering, or [enforceAdvanceCheck] is true and the slot starts sooner
-     * than the company's
-     * [pl.kacosmetology.scheduler.company.Company.minBookingAdvanceMinutes] setting.
+     * Creates a new reservation with a price snapshot from the offering catalog, or returns the customer's existing
+     * active reservation for the same employee, offering, and [startTime] so retried requests are idempotent. The
+     * existing-booking check runs under the employment row lock, so concurrent retries cannot both create.
+     *
+     * Throws [ApiException] when [startTime] does not exist in the business time zone (daylight-saving gap), the
+     * offering is unknown or inactive, the employee is not part of the offering's company or does not perform it, the
+     * customer is blocked, the slot is taken, [enforceAdvanceCheck] is true and the slot starts sooner than the
+     * company's [pl.kacosmetology.scheduler.company.Company.minBookingAdvanceMinutes] setting, or [enforceSlotGrid] is
+     * true and [startTime] is not a slot offered by [BookableSlotPolicy].
      *
      * @param enforceAdvanceCheck when false (staff bookings) the minimum-advance-time check is skipped.
+     * @param enforceSlotGrid when false (staff bookings) work hours and the slot grid are not enforced.
      */
     @Transactional
     fun createReservation(
@@ -46,93 +57,129 @@ class ReservationService(
         employeeId: Long,
         offeringId: Long,
         startTime: LocalDateTime,
-        enforceAdvanceCheck: Boolean = true
-    ): Reservation {
-        if (!userRepository.existsById(customerId)) {
-            throw NoSuchElementException("Klient nie istnieje")
+        enforceAdvanceCheck: Boolean = true,
+        enforceSlotGrid: Boolean = true,
+    ): BookingResult {
+        if (clock.zone.rules.getValidOffsets(startTime).isEmpty()) {
+            throw ApiException(ErrorCode.INVALID_LOCAL_TIME, "Podana godzina nie istnieje z powodu zmiany czasu")
         }
 
-        val offering = offeringRepository.findById(offeringId)
-            .orElseThrow { IllegalArgumentException("Usługa nie istnieje") }
+        if (!userRepository.existsById(customerId)) {
+            throw ApiException(ErrorCode.CUSTOMER_NOT_FOUND, "Klient nie istnieje")
+        }
+
+        val offering =
+            offeringRepository.findById(offeringId).orElseThrow {
+                ApiException(ErrorCode.OFFERING_UNAVAILABLE, "Usługa nie istnieje")
+            }
 
         if (!offering.active) {
-            throw IllegalArgumentException("Ta usługa nie jest już dostępna")
+            throw ApiException(ErrorCode.OFFERING_UNAVAILABLE, "Ta usługa nie jest już dostępna")
         }
 
         if (companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(offering.companyId, employeeId) == null) {
-            throw IllegalArgumentException("Pracownik nie należy do firmy wybranej usługi")
+            throw ApiException(ErrorCode.EMPLOYEE_NOT_IN_COMPANY, "Pracownik nie należy do firmy wybranej usługi")
         }
 
-        if (assignmentRepository.existsByEmployeeId(employeeId) &&
-            !assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId)
+        reservationRepository.findActiveBooking(customerId, employeeId, offeringId, startTime)?.let {
+            return BookingResult(it, created = false)
+        }
+
+        if (
+            assignmentRepository.existsByCompanyIdAndEmployeeId(offering.companyId, employeeId) &&
+                !assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId)
         ) {
-            throw IllegalArgumentException("Ten pracownik nie wykonuje wybranej usługi")
+            throw ApiException(ErrorCode.EMPLOYEE_OFFERING_NOT_ASSIGNED, "Ten pracownik nie wykonuje wybranej usługi")
         }
 
         val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(offering.companyId, customerId)
         if (block?.blocked == true) {
-            throw IllegalArgumentException("Klient jest zablokowany w tej firmie i nie może rezerwować online")
+            throw ApiException(
+                ErrorCode.CUSTOMER_BLOCKED,
+                "Klient jest zablokowany w tej firmie i nie może rezerwować online",
+            )
         }
 
-        val company = companyRepository.findById(offering.companyId)
-            .orElseThrow { NoSuchElementException("Firma nie istnieje") }
+        val company =
+            companyRepository.findById(offering.companyId).orElseThrow { NoSuchElementException("Firma nie istnieje") }
 
+        val now = LocalDateTime.now(clock)
         if (enforceAdvanceCheck && company.minBookingAdvanceMinutes > 0) {
-            val earliestAllowed =
-                LocalDateTime.now(ZoneId.of("Europe/Warsaw")).plusMinutes(company.minBookingAdvanceMinutes.toLong())
+            val earliestAllowed = now.plusMinutes(company.minBookingAdvanceMinutes.toLong())
             if (!startTime.isAfter(earliestAllowed)) {
-                throw IllegalArgumentException(
-                    "Rezerwację można złożyć co najmniej ${company.minBookingAdvanceMinutes} minut przed wizytą"
+                throw ApiException(
+                    ErrorCode.BOOKING_ADVANCE_REQUIRED,
+                    "Rezerwację można złożyć co najmniej ${company.minBookingAdvanceMinutes} minut przed wizytą",
                 )
             }
+        }
+
+        if (
+            enforceSlotGrid &&
+                !bookableSlotPolicy.isOnGrid(
+                    offering.companyId,
+                    employeeId,
+                    startTime,
+                    offering.durationMinutes,
+                    company.slotIntervalMinutes,
+                )
+        ) {
+            throw ApiException(ErrorCode.SLOT_UNAVAILABLE, "Ten termin nie jest dostępny do rezerwacji")
         }
 
         val endTime = startTime.plusMinutes(offering.durationMinutes.toLong())
 
         employeeAvailabilityPolicy.assertAvailable(offering.companyId, employeeId, startTime, endTime)
 
-        val price = company.effectivePrice(offering.price, startTime)
+        val price = company.effectivePrice(offering.price, startTime, now)
 
-        val saved = reservationRepository.save(
-            Reservation(
-                companyId = offering.companyId,
-                customerId = customerId,
-                employeeId = employeeId,
-                serviceId = offeringId,
-                price = price,
-                startTime = startTime,
-                endTime = endTime,
-                status = ReservationStatus.PENDING
+        val saved =
+            reservationRepository.save(
+                Reservation(
+                    companyId = offering.companyId,
+                    customerId = customerId,
+                    employeeId = employeeId,
+                    serviceId = offeringId,
+                    price = price,
+                    startTime = startTime,
+                    endTime = endTime,
+                    status = ReservationStatus.PENDING,
+                ),
             )
-        )
         applicationEventPublisher.publishEvent(ReservationCreatedEvent(saved))
-        return saved
+        return BookingResult(saved, created = true)
     }
 
-    /** Cancels a reservation. Only the owning customer can cancel, and only if not already completed. */
+    /**
+     * Cancels a reservation on behalf of its owning customer. Allowed only before the visit starts and only if the
+     * reservation is not already in a terminal state. Another customer's reservation is reported as not found.
+     */
     @Transactional
     fun cancelReservation(reservationId: Long, customerId: Long) {
-        val reservation = reservationRepository.findById(reservationId)
-            .orElseThrow { IllegalArgumentException("Rezerwacja nie istnieje") }
+        val reservation = findReservation(reservationId) { it.customerId == customerId }
 
-        if (reservation.customerId != customerId) {
-            throw IllegalStateException("Nie możesz anulować nie swojej rezerwacji")
-        }
+        reservation.cancel(onlyBeforeStartAt = LocalDateTime.now(clock))
+        reservationRepository.save(reservation)
+        applicationEventPublisher.publishEvent(ReservationCancelledEvent(reservation))
+    }
+
+    /**
+     * Cancels a reservation on behalf of staff of [companyId]. Allowed at any time, including after the visit started,
+     * as long as the reservation is not in a terminal state. Other companies' reservations are not found.
+     */
+    @Transactional
+    fun cancelReservationByStaff(reservationId: Long, companyId: Long) {
+        val reservation = findReservation(reservationId) { it.companyId == companyId }
 
         reservation.cancel()
         reservationRepository.save(reservation)
         applicationEventPublisher.publishEvent(ReservationCancelledEvent(reservation))
     }
 
-    /** Marks a reservation as completed. Called by staff members. */
+    /** Marks a reservation as completed. Called by staff members; other companies' reservations are not found. */
     @Transactional
     fun completeReservation(reservationId: Long, companyId: Long) {
-        val reservation = reservationRepository.findById(reservationId)
-            .orElseThrow { IllegalArgumentException("Rezerwacja nie istnieje") }
-
-        if (reservation.companyId != companyId) {
-            throw IllegalStateException("Brak dostępu do tej rezerwacji")
-        }
+        val reservation = findReservation(reservationId) { it.companyId == companyId }
 
         reservation.complete()
         reservationRepository.save(reservation)
@@ -140,25 +187,21 @@ class ReservationService(
 
     /**
      * Marks a reservation as [ReservationStatus.NO_SHOW] and increments the customer's company-scoped no-show counter.
-     * If the counter reaches the company's [pl.kacosmetology.scheduler.company.Company.maxNoShows] threshold
-     * (and it is greater than zero), the customer is automatically blocked from online booking at that company.
-     * Only PENDING or CONFIRMED reservations can be marked as no-show.
+     * If the counter reaches the company's [pl.kacosmetology.scheduler.company.Company.maxNoShows] threshold (and it is
+     * greater than zero), the customer is automatically blocked from online booking at that company. PENDING or
+     * CONFIRMED reservations can be marked once the visit has started; COMPLETED reservations (by staff or the
+     * auto-complete job) can be corrected to no-show until [NO_SHOW_CORRECTION_HOURS] after the visit ended.
      */
     @Transactional
     fun markNoShow(reservationId: Long, companyId: Long) {
-        val reservation = reservationRepository.findById(reservationId)
-            .orElseThrow { NoSuchElementException("Rezerwacja nie istnieje") }
+        val reservation = findReservation(reservationId) { it.companyId == companyId }
 
-        if (reservation.companyId != companyId) {
-            throw IllegalStateException("Brak dostępu do tej rezerwacji")
-        }
-
-        reservation.markNoShow()
+        reservation.markNoShow(LocalDateTime.now(clock))
         reservationRepository.save(reservation)
 
         companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(
             reservation.companyId,
-            reservation.customerId
+            reservation.customerId,
         )
     }
 
@@ -169,16 +212,16 @@ class ReservationService(
     }
 
     /**
-     * Returns reservations for a given employee within a company and date range, enriched with customer names.
-     * Used by the owner dashboard — the authorization check (OWNER can see any employee,
-     * EMPLOYEE can only see their own) is performed in the controller before calling this method.
+     * Returns reservations for a given employee within a company and date range, enriched with customer names. Used by
+     * the owner dashboard — the authorization check (OWNER can see any employee, EMPLOYEE can only see their own) is
+     * performed in the controller before calling this method.
      */
     @Transactional(readOnly = true)
     fun getCompanyReservations(
         companyId: Long,
         employeeId: Long,
         start: LocalDateTime,
-        end: LocalDateTime
+        end: LocalDateTime,
     ): List<DashboardReservationResponse> {
         val reservations =
             reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end)
@@ -188,38 +231,40 @@ class ReservationService(
             val customer = usersById[r.customerId]
             r.toDashboardResponse(
                 customerFirstName = customer?.firstName ?: "",
-                customerLastName = customer?.lastName ?: ""
+                customerLastName = customer?.lastName ?: "",
             )
         }
     }
 
-    /** Returns an employee's schedule within a given time range. */
+    /** Returns an employee's schedule at [companyId] within a given time range. */
     @Transactional(readOnly = true)
-    fun getEmployeeSchedule(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<Reservation> {
-        return reservationRepository.findEmployeeSchedule(employeeId, start, end)
+    fun getEmployeeSchedule(
+        companyId: Long,
+        employeeId: Long,
+        start: LocalDateTime,
+        end: LocalDateTime,
+    ): List<Reservation> {
+        return reservationRepository.findEmployeeSchedule(companyId, employeeId, start, end)
     }
 
     /**
-     * Permanently deletes a reservation.
-     * Only the owning company may delete; throws [IllegalStateException] (→409) on mismatch.
+     * Permanently deletes a reservation. Only the owning company may delete; other companies' reservations are reported
+     * as not found.
      */
     @Transactional
     fun deleteReservation(reservationId: Long, companyId: Long) {
-        val reservation = reservationRepository.findById(reservationId)
-            .orElseThrow { NoSuchElementException("Rezerwacja nie istnieje") }
-        if (reservation.companyId != companyId) {
-            throw IllegalStateException("Brak dostępu do tej rezerwacji")
-        }
+        val reservation = findReservation(reservationId) { it.companyId == companyId }
         reservationRepository.delete(reservation)
     }
 
     /**
-     * Creates a reservation on behalf of a client, identified by phone number.
-     * If no user with [customerPhone] exists, a new account is created using [customerFirstName] and [customerLastName].
-     * Both name fields are required when the client does not exist yet.
+     * Creates a reservation on behalf of a client, identified by phone number, with the same idempotency as
+     * [createReservation]. If no user with [customerPhone] exists, a new account is created using [customerFirstName]
+     * and [customerLastName]; both are required in that case. A concurrent request creating the same phone number
+     * resolves to the account that won the insert.
      *
-     * @param requesterCompanyId authenticated staff member's company; the selected offering must belong to that
-     * company before any customer account is created.
+     * @param requesterCompanyId authenticated staff member's company; the selected offering must belong to that company
+     *   before any customer account is created.
      */
     @Transactional
     fun createReservationByStaff(
@@ -229,61 +274,89 @@ class ReservationService(
         customerPhone: String,
         customerFirstName: String?,
         customerLastName: String?,
-        requesterCompanyId: Long
-    ): Reservation {
-        val offering = offeringRepository.findById(serviceId)
-            .orElseThrow { IllegalArgumentException("Usługa nie istnieje") }
+        requesterCompanyId: Long,
+    ): BookingResult {
+        val offering =
+            offeringRepository.findById(serviceId).orElseThrow {
+                ApiException(ErrorCode.OFFERING_UNAVAILABLE, "Usługa nie istnieje")
+            }
         if (offering.companyId != requesterCompanyId) {
-            throw IllegalArgumentException("Usługa nie należy do firmy pracownika")
+            throw ApiException(ErrorCode.OFFERING_UNAVAILABLE, "Usługa nie należy do firmy pracownika")
         }
 
-        val customer = userRepository.findByPhoneNumber(customerPhone)
-            ?: run {
-                if (customerFirstName.isNullOrBlank() || customerLastName.isNullOrBlank()) {
-                    throw IllegalArgumentException(
-                        "Imię i nazwisko klienta są wymagane przy tworzeniu nowego konta"
-                    )
+        val customer =
+            userRepository.findByPhoneNumber(customerPhone)
+                ?: run {
+                    if (customerFirstName.isNullOrBlank() || customerLastName.isNullOrBlank()) {
+                        throw ApiException(
+                            ErrorCode.CUSTOMER_NAME_REQUIRED,
+                            "Imię i nazwisko klienta są wymagane przy tworzeniu nowego konta",
+                        )
+                    }
+                    userRepository.insertIfPhoneAbsent(customerPhone, customerFirstName, customerLastName)
+                    checkNotNull(userRepository.findByPhoneNumber(customerPhone)) {
+                        "Customer must exist after insertIfPhoneAbsent"
+                    }
                 }
-                userRepository.save(
-                    User(
-                        phoneNumber = customerPhone,
-                        firstName = customerFirstName,
-                        lastName = customerLastName
-                    )
-                )
-            }
 
         return createReservation(
             customerId = requireNotNull(customer.id) { "Persisted customer must have an ID" },
             employeeId = employeeId,
             offeringId = serviceId,
             startTime = startTime,
-            enforceAdvanceCheck = false
+            enforceAdvanceCheck = false,
+            enforceSlotGrid = false,
         )
     }
+
+    private fun findReservation(reservationId: Long, isVisible: (Reservation) -> Boolean): Reservation =
+        reservationRepository.findById(reservationId).orElse(null)?.takeIf(isVisible)
+            ?: throw ApiException(ErrorCode.RESERVATION_NOT_FOUND, "Rezerwacja nie istnieje")
 }
 
-private fun Reservation.cancel() {
+private fun invalidTransition(message: String): Nothing =
+    throw ApiException(ErrorCode.INVALID_STATUS_TRANSITION, message)
+
+/**
+ * Cancels an active reservation; when [onlyBeforeStartAt] is given, that moment must be before [Reservation.startTime].
+ */
+private fun Reservation.cancel(onlyBeforeStartAt: LocalDateTime? = null) {
     when (status) {
-        ReservationStatus.CANCELLED -> error("Rezerwacja jest już anulowana")
-        ReservationStatus.COMPLETED -> error("Nie można anulować wizyty, która już się odbyła")
-        ReservationStatus.NO_SHOW -> error("Nie można anulować rezerwacji oznaczonej jako nieobecność")
-        else -> status = ReservationStatus.CANCELLED
+        ReservationStatus.CANCELLED -> invalidTransition("Rezerwacja jest już anulowana")
+        ReservationStatus.COMPLETED -> invalidTransition("Nie można anulować wizyty, która już się odbyła")
+        ReservationStatus.NO_SHOW -> invalidTransition("Nie można anulować rezerwacji oznaczonej jako nieobecność")
+        else -> {
+            if (onlyBeforeStartAt != null && !onlyBeforeStartAt.isBefore(startTime)) {
+                invalidTransition("Nie można anulować wizyty, która już się rozpoczęła")
+            }
+            status = ReservationStatus.CANCELLED
+        }
     }
 }
 
 private fun Reservation.complete() {
     when (status) {
-        ReservationStatus.CANCELLED -> error("Nie można zakończyć odwołanej wizyty")
-        ReservationStatus.COMPLETED -> error("Wizyta jest już zakończona")
-        ReservationStatus.NO_SHOW -> error("Nie można zakończyć wizyty oznaczonej jako nieobecność")
+        ReservationStatus.CANCELLED -> invalidTransition("Nie można zakończyć odwołanej wizyty")
+        ReservationStatus.COMPLETED -> invalidTransition("Wizyta jest już zakończona")
+        ReservationStatus.NO_SHOW -> invalidTransition("Nie można zakończyć wizyty oznaczonej jako nieobecność")
         else -> status = ReservationStatus.COMPLETED
     }
 }
 
-private fun Reservation.markNoShow() {
+private fun Reservation.markNoShow(now: LocalDateTime) {
     when (status) {
-        ReservationStatus.PENDING, ReservationStatus.CONFIRMED -> status = ReservationStatus.NO_SHOW
-        else -> error("Tylko aktywna rezerwacja może być oznaczona jako nieobecność")
+        ReservationStatus.PENDING,
+        ReservationStatus.CONFIRMED ->
+            if (now.isBefore(startTime)) {
+                invalidTransition("Nie można oznaczyć nieobecności przed rozpoczęciem wizyty")
+            }
+
+        ReservationStatus.COMPLETED ->
+            if (now.isAfter(endTime.plusHours(NO_SHOW_CORRECTION_HOURS))) {
+                invalidTransition("Minął czas na oznaczenie nieobecności dla zakończonej wizyty")
+            }
+
+        else -> invalidTransition("Tej rezerwacji nie można oznaczyć jako nieobecność")
     }
+    status = ReservationStatus.NO_SHOW
 }

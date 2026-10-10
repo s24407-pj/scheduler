@@ -1,26 +1,27 @@
 package pl.kacosmetology.scheduler.security
 
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import java.time.Duration
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.user.User
 
 class JwtServiceTest {
 
+    private val secret = "BardzoTajnyKluczKtoryMusiMiecPrzynajmniej256BitowZebyZadzialac!!!"
+    private val sessionStore = mockk<SessionStore>()
     private lateinit var jwtService: JwtService
 
     @BeforeEach
     fun setUp() {
-        jwtService = JwtService(
-            "BardzoTajnyKluczKtoryMusiMiecPrzynajmniej256BitowZebyZadzialac!!!",
-            86_400_000L
-        )
+        every { sessionStore.create(any(), any()) } returns "session-1"
+        jwtService = JwtService(secret, 86_400_000L, sessionStore)
     }
 
     @Test
@@ -59,46 +60,47 @@ class JwtServiceTest {
     }
 
     @Test
-    fun `isTokenValid should reject token of another user`() {
-        val realUser = user(1L, "+48111222333")
-        val fakeUser = user(2L, "+48999999999")
-        val token = jwtService.generateCustomerToken(realUser)
-        val fakeDetails = CustomUserDetails(
-            fakeUser,
-            null,
-            listOf(SimpleGrantedAuthority("ROLE_CUSTOMER"))
-        )
+    fun `every token should register a session for its user with the token lifetime`() {
+        val user = user(5L, "+48111222333")
 
-        assertFalse(jwtService.isTokenValid(token, fakeDetails))
+        val token = jwtService.generateCustomerToken(user)
+
+        assertEquals("session-1", jwtService.extractSessionId(token))
+        verify(exactly = 1) { sessionStore.create(5L, Duration.ofMillis(86_400_000L)) }
     }
 
     @Test
-    fun `expired token should fail validation`() {
-        val shortLived = JwtService(
-            "BardzoTajnyKluczKtoryMusiMiecPrzynajmniej256BitowZebyZadzialac!!!",
-            1L
-        )
-        val user = user(1L, "+48111222333")
-        val token = shortLived.generateCustomerToken(user)
-        val details = CustomUserDetails(user, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")))
+    fun `parse should return all claims in one pass`() {
+        val user = user(7L, "+48999888777")
+        val employment = CompanyEmployee(id = 12L, companyId = 34L, userId = user.id!!, role = "OWNER")
+
+        val claims = jwtService.parse(jwtService.generateStaffToken(user, employment))
+
+        assertEquals(TokenClaims("+48999888777", "owner", 34L, 12L, "session-1"), claims)
+    }
+
+    @Test
+    fun `expired token should fail parsing`() {
+        val shortLived = JwtService(secret, 1L, sessionStore)
+        val token = shortLived.generateCustomerToken(user(1L, "+48111222333"))
         Thread.sleep(50)
 
-        assertThrows<Exception> { shortLived.isTokenValid(token, details) }
+        assertThrows<Exception> { shortLived.parse(token) }
     }
 
     @Test
-    fun `valid customer token should validate for its user`() {
-        val user = user(1L, "+48111222333")
-        val token = jwtService.generateCustomerToken(user)
-        val details = CustomUserDetails(user, null, listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")))
+    fun `token signed with another secret should fail parsing`() {
+        val other = JwtService("InnyBardzoTajnyKluczKtoryMaPrzynajmniej256BitowDlugosci!!!", 86_400_000L, sessionStore)
+        val token = other.generateCustomerToken(user(1L, "+48111222333"))
 
-        assertTrue(jwtService.isTokenValid(token, details))
+        assertThrows<Exception> { jwtService.parse(token) }
     }
 
-    private fun user(id: Long, phone: String) = User(
-        id = id,
-        phoneNumber = phone,
-        firstName = "A",
-        lastName = "B"
-    )
+    private fun user(id: Long, phone: String) =
+        User(
+            id = id,
+            phoneNumber = phone,
+            firstName = "A",
+            lastName = "B",
+        )
 }

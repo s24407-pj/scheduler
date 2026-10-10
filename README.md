@@ -1,11 +1,11 @@
 # Scheduler
 
-Spring Boot backend for a beauty and cosmetology salon scheduling system. Customers book via SMS OTP authentication; owners and employees manage reservations through a separate admin dashboard.
+Spring Boot backend for a beauty and cosmetology salon scheduling system. Customers book via SMS OTP authentication; owners and employees manage reservations through a separate dashboard.
 
 **Related projects:**
 
-- [scheduler-dashboard](../scheduler-dashboard) — React admin UI for owners and employees
-- [kacosmetology](../kacosmetology) — public salon website
+- [scheduler-dashboard-start](../scheduler-dashboard-start) — TanStack Start app: public booking pages and the staff studio (recommended)
+- [scheduler-dashboard](../scheduler-dashboard) — legacy React admin UI for owners and employees
 
 ## Features
 
@@ -14,95 +14,42 @@ Spring Boot backend for a beauty and cosmetology salon scheduling system. Custom
 - Availability calculation from work schedules, reservations, and schedule blocks
 - Offering catalog with categories and image uploads (Cloudflare R2)
 - SMS notifications (confirmation, cancellation, reminders)
-- WhatsApp booking bot (Meta webhook + Redis conversation state)
+- Public booking endpoints (salon profile, bookable employees per offering)
 - No-show tracking with company-scoped customer blocking
 - Last-minute discounts and minimum booking advance settings
 
-## Prerequisites
-
-- [Docker](https://www.docker.com/) and Docker Compose (recommended)
-- [Java 25](https://adoptium.net/) and Gradle (for local development without Docker)
-
-Integration tests require Docker — Testcontainers starts PostgreSQL and Redis automatically.
-
 ## Quick Start
+
+Requires Docker (or rootless Podman) with Compose.
 
 ```bash
 docker compose up --build
+curl -sf http://localhost:8080/actuator/health
 ```
 
-The API is available at `http://localhost:8080`. With the default `dev` profile, sample data is seeded on startup.
-
-### Dev accounts
+The API runs at `http://localhost:8080` with the `dev` profile, which seeds a company, a catalog, and two staff accounts:
 
 | Role     | Email                        | Password      |
 | -------- | ---------------------------- | ------------- |
 | Owner    | `gabinet@kacosmetology.pl`   | `admin123`    |
 | Employee | `pracownik@kacosmetology.pl` | `employee123` |
 
-Customer OTP codes are logged to the console (`ConsoleSmsSender` in dev).
+Customer OTP codes are written to the app log. The seed has no work schedules, so set one before expecting available slots.
 
-### Authentication contracts
-
-Customer OTP verification returns a JWT with only the `customer` role; it is not scoped to a company or employment. OTP verification atomically consumes a successful code, limits failed attempts per code, and applies a separate verification limit per client IP.
-
-`POST /api/auth/login-staff` accepts `email`, `password`, and an optional `employmentId`. A staff member with one employment is authenticated immediately. If multiple employments exist and `employmentId` is omitted, the response has status `EMPLOYMENT_SELECTION_REQUIRED` and an `employments` list containing `employmentId`, `companyId`, `companyName`, and `role`; repeat the request with the selected `employmentId`. An authenticated staff JWT is scoped to exactly that `employmentId`, its `companyId`, and one role.
-
-### Remote debugging
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
-
-Attaches a JDWP debugger on port `5005`.
-
-## Local Development (without Docker)
-
-Start PostgreSQL and Redis locally, then:
-
-```bash
-./gradlew bootRun --args='--spring.profiles.active=dev'
-```
-
-Default connection settings are in `src/main/resources/application.yaml`.
+Running on the host, configuration, seed details, and testing: [docs/development.md](./docs/development.md).
 
 ## Commands
 
 | Command | Description |
 | ------- | ----------- |
-| `./gradlew test` | Run all tests |
+| `./gradlew test` | Run all tests (needs Docker/Podman for Testcontainers) |
 | `./gradlew build` | Build including tests |
 | `./gradlew build -x test` | Build without tests |
 | `docker compose up --build` | Run full stack |
-| `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` | Dev profile + debugger |
+| `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` | Dev profile + debugger on `:5005` |
 
-Run a single test class:
+## Documentation
 
-```bash
-./gradlew test --tests "pl.kacosmetology.scheduler.auth.AuthFlowIntegrationTest"
-```
-
-## Configuration
-
-Environment variables override values in `application.yaml`. Key variables for Docker Compose:
-
-| Variable | Description |
-| -------- | ----------- |
-| `JWT_SECRET`, `JWT_EXPIRATION_MS` | JWT signing |
-| `SPRING_DATASOURCE_URL/USERNAME/PASSWORD` | PostgreSQL |
-| `SPRING_DATA_REDIS_HOST/PORT` | Redis |
-| `CORS_ORIGINS` | Allowed frontend origins |
-| `OTP_TTL_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RATE_WINDOW_MINUTES` | SMS OTP lifetime and request limits |
-| `OTP_VERIFICATION_MAX_ATTEMPTS` | Failed verification attempts allowed per OTP code |
-| `OTP_VERIFICATION_IP_MAX_ATTEMPTS`, `OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES` | OTP verification limits per client IP |
-| `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` | Staff login rate limiting |
-| `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | Cloudflare R2 |
-| `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_COMPANY_ID`, `WHATSAPP_SENDER` | WhatsApp bot |
-
-## Performance Tests
-
-Load and stress tests using [k6](https://grafana.com/docs/k6/) are in [`perf-tests/`](./perf-tests/README.md).
-
-## AI Agents
-
-For AI coding agents, see [AGENTS.md](./AGENTS.md).
+- [docs/](./docs/README.md) — architecture, reservations, availability, time handling, API reference, decision records
+- [perf-tests/](./perf-tests/README.md) — k6 load and stress tests
+- [AGENTS.md](./AGENTS.md) — instructions for AI coding agents

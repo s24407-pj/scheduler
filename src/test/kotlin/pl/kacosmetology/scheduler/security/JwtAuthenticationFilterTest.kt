@@ -25,6 +25,7 @@ class JwtAuthenticationFilterTest {
 
     @MockK private lateinit var jwtService: JwtService
     @MockK private lateinit var userDetailsService: CustomUserDetailsService
+    @MockK private lateinit var sessionStore: SessionStore
     @MockK(relaxed = true) private lateinit var request: HttpServletRequest
     @MockK(relaxed = true) private lateinit var response: HttpServletResponse
     @MockK(relaxed = true) private lateinit var filterChain: FilterChain
@@ -36,10 +37,10 @@ class JwtAuthenticationFilterTest {
         every { request.getAttribute(any()) } returns null
         every { request.setAttribute(any(), any()) } just Runs
         every { request.removeAttribute(any()) } just Runs
+        every { sessionStore.isActive("session-1", 1L) } returns true
     }
 
-    @AfterEach
-    fun teardown() = SecurityContextHolder.clearContext()
+    @AfterEach fun teardown() = SecurityContextHolder.clearContext()
 
     @Test
     fun `missing header should remain anonymous`() {
@@ -51,17 +52,27 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    fun `customer token should load customer-only principal`() {
+    fun `invalid or expired token should remain anonymous`() {
+        every { request.getHeader("Authorization") } returns "Bearer token"
+        every { jwtService.parse("token") } throws IllegalStateException("expired")
+
+        filter.doFilter(request, response, filterChain)
+
+        assertNull(SecurityContextHolder.getContext().authentication)
+    }
+
+    @Test
+    fun `customer token should load customer-only principal bound to its session`() {
         val details = customerDetails()
         stubToken(role = "customer", companyId = null, employmentId = null)
         every { userDetailsService.loadUserByUsername(details.username) } returns details
-        every { jwtService.isTokenValid("token", details) } returns true
 
         filter.doFilter(request, response, filterChain)
 
         val authentication = SecurityContextHolder.getContext().authentication
         assertNotNull(authentication)
         assertEquals(listOf("ROLE_CUSTOMER"), authentication!!.authorities.map { it.authority })
+        assertEquals("session-1", (authentication.principal as CustomUserDetails).sessionId)
     }
 
     @Test
@@ -69,13 +80,34 @@ class JwtAuthenticationFilterTest {
         val details = staffDetails()
         stubToken(role = "employee", companyId = 20L, employmentId = 10L)
         every { userDetailsService.loadStaffByEmployment(details.username, 10L) } returns details
-        every { jwtService.isTokenValid("token", details) } returns true
 
         filter.doFilter(request, response, filterChain)
 
         val principal = SecurityContextHolder.getContext().authentication?.principal as CustomUserDetails
         assertEquals(10L, principal.employmentId)
+        assertEquals("session-1", principal.sessionId)
         assertEquals(listOf("ROLE_EMPLOYEE"), principal.authorities.map { it.authority })
+    }
+
+    @Test
+    fun `revoked session should remain anonymous`() {
+        val details = customerDetails()
+        stubToken(role = "customer", companyId = null, employmentId = null)
+        every { userDetailsService.loadUserByUsername(details.username) } returns details
+        every { sessionStore.isActive("session-1", 1L) } returns false
+
+        filter.doFilter(request, response, filterChain)
+
+        assertNull(SecurityContextHolder.getContext().authentication)
+    }
+
+    @Test
+    fun `token without session id should remain anonymous`() {
+        stubToken(role = "customer", companyId = null, employmentId = null, sessionId = null)
+
+        filter.doFilter(request, response, filterChain)
+
+        assertNull(SecurityContextHolder.getContext().authentication)
     }
 
     @Test
@@ -121,12 +153,9 @@ class JwtAuthenticationFilterTest {
         assertNull(SecurityContextHolder.getContext().authentication)
     }
 
-    private fun stubToken(role: String, companyId: Long?, employmentId: Long?) {
+    private fun stubToken(role: String, companyId: Long?, employmentId: Long?, sessionId: String? = "session-1") {
         every { request.getHeader("Authorization") } returns "Bearer token"
-        every { jwtService.extractUsername("token") } returns "+48111"
-        every { jwtService.extractRole("token") } returns role
-        every { jwtService.extractCompanyId("token") } returns companyId
-        every { jwtService.extractEmploymentId("token") } returns employmentId
+        every { jwtService.parse("token") } returns TokenClaims("+48111", role, companyId, employmentId, sessionId)
     }
 
     private fun customerDetails(): CustomUserDetails {
@@ -140,7 +169,7 @@ class JwtAuthenticationFilterTest {
             user,
             20L,
             listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE")),
-            employmentId = 10L
+            employmentId = 10L,
         )
     }
 }

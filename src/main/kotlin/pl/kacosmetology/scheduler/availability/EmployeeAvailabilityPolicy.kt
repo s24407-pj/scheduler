@@ -1,50 +1,54 @@
 package pl.kacosmetology.scheduler.availability
 
+import java.time.LocalDateTime
 import org.springframework.stereotype.Service
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
-import java.time.LocalDateTime
 
 /** Source of a time-range conflict in an employee's availability. */
 enum class EmployeeAvailabilityConflictSource {
     RESERVATION,
-    SCHEDULE_BLOCK
+    SCHEDULE_BLOCK,
 }
 
 /** A busy time range that makes an employee unavailable. */
 data class EmployeeAvailabilityConflict(
     val source: EmployeeAvailabilityConflictSource,
     val startTime: LocalDateTime,
-    val endTime: LocalDateTime
+    val endTime: LocalDateTime,
 )
 
 /** Shared policy for checking whether an employee is available in a given time range. */
 @Service
 class EmployeeAvailabilityPolicy(
     private val reservationRepository: ReservationRepository,
-    private val scheduleBlockRepository: ScheduleBlockRepository
+    private val scheduleBlockRepository: ScheduleBlockRepository,
 ) {
-    /** Returns all active reservations and company-scoped schedule blocks overlapping [start, end). */
+    /** Returns all active reservations and schedule blocks of [employeeId] at [companyId] overlapping [start, end). */
     fun findConflicts(
         companyId: Long,
         employeeId: Long,
         start: LocalDateTime,
-        end: LocalDateTime
+        end: LocalDateTime,
     ): List<EmployeeAvailabilityConflict> {
-        val reservationConflicts = reservationRepository.findOverlapping(employeeId, start, end).map {
-            EmployeeAvailabilityConflict(
-                source = EmployeeAvailabilityConflictSource.RESERVATION,
-                startTime = it.startTime,
-                endTime = it.endTime
-            )
-        }
-        val blockConflicts = scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end).map {
-            EmployeeAvailabilityConflict(
-                source = EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK,
-                startTime = it.startTime,
-                endTime = it.endTime
-            )
-        }
+        val reservationConflicts =
+            reservationRepository.findOverlapping(companyId, employeeId, start, end).map {
+                EmployeeAvailabilityConflict(
+                    source = EmployeeAvailabilityConflictSource.RESERVATION,
+                    startTime = it.startTime,
+                    endTime = it.endTime,
+                )
+            }
+        val blockConflicts =
+            scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end).map {
+                EmployeeAvailabilityConflict(
+                    source = EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK,
+                    startTime = it.startTime,
+                    endTime = it.endTime,
+                )
+            }
 
         return reservationConflicts + blockConflicts
     }
@@ -54,26 +58,26 @@ class EmployeeAvailabilityPolicy(
         companyId: Long,
         employeeId: Long,
         start: LocalDateTime,
-        end: LocalDateTime
+        end: LocalDateTime,
     ): EmployeeAvailabilityConflict? = findConflicts(companyId, employeeId, start, end).firstOrNull()
 
     /** Returns true when [start, end) overlaps any busy range in [conflicts]. */
     fun overlapsAny(
         start: LocalDateTime,
         end: LocalDateTime,
-        conflicts: List<EmployeeAvailabilityConflict>
+        conflicts: List<EmployeeAvailabilityConflict>,
     ): Boolean = conflicts.any { start.isBefore(it.endTime) && end.isAfter(it.startTime) }
 
-    /** Throws [IllegalStateException] when [start, end) is not available for [employeeId]. */
+    /** Throws [ApiException] with [ErrorCode.SLOT_UNAVAILABLE] when [start, end) is not available for [employeeId]. */
     fun assertAvailable(
         companyId: Long,
         employeeId: Long,
         start: LocalDateTime,
         end: LocalDateTime,
-        message: String = "Ten termin jest już zajęty"
+        message: String = "Ten termin jest już zajęty",
     ) {
         if (findFirstConflict(companyId, employeeId, start, end) != null) {
-            throw IllegalStateException(message)
+            throw ApiException(ErrorCode.SLOT_UNAVAILABLE, message)
         }
     }
 }

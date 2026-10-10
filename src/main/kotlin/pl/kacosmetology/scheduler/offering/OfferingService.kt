@@ -5,14 +5,33 @@ import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
+import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 
 /** Business logic for managing salon offerings (CRUD). Results are cached per company. */
 @Service
 class OfferingService(
     private val offeringRepository: OfferingRepository,
-    private val offeringImageService: OfferingImageService
+    private val offeringImageService: OfferingImageService,
+    private val companyEmployeeRepository: CompanyEmployeeRepository,
+    private val assignmentRepository: EmployeeOfferingAssignmentRepository,
 ) {
+    /**
+     * Returns the active offerings [employeeId] can perform at [companyId], following the booking rules: the offerings
+     * assigned to the employee at that company, or every active offering of the company when the employee has no
+     * assignments there. Throws [NoSuchElementException] when the employee is not employed at [companyId].
+     */
+    @Transactional(readOnly = true)
+    fun getPublicEmployeeOfferings(companyId: Long, employeeId: Long): List<Offering> {
+        if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
+            throw NoSuchElementException("Pracownik nie istnieje")
+        }
+        val assignedIds =
+            assignmentRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId).map { it.offeringId }.toSet()
+        val activeOfferings = offeringRepository.findAllByCompanyIdAndActiveTrue(companyId)
+        return if (assignedIds.isEmpty()) activeOfferings else activeOfferings.filter { it.id in assignedIds }
+    }
 
     /** Returns only active offerings for a company. Used by public endpoints and booking. Cached in Redis. */
     @Transactional(readOnly = true)
@@ -30,8 +49,7 @@ class OfferingService(
     /** Returns a single offering by ID or throws [IllegalArgumentException]. */
     @Transactional(readOnly = true)
     fun getOfferingById(id: Long): Offering {
-        return offeringRepository.findById(id)
-            .orElseThrow { IllegalArgumentException("Usługa o ID $id nie istnieje") }
+        return offeringRepository.findById(id).orElseThrow { IllegalArgumentException("Usługa o ID $id nie istnieje") }
     }
 
     /** Creates a new offering and evicts the company offerings cache. */
@@ -43,8 +61,8 @@ class OfferingService(
                 companyId = companyId,
                 name = request.name,
                 durationMinutes = request.durationMinutes,
-                price = request.price
-            )
+                price = request.price,
+            ),
         )
     }
 
@@ -78,8 +96,8 @@ class OfferingService(
     }
 
     /**
-     * Uploads an image for the offering and persists it in R2 + DB.
-     * Validates that [companyId] owns the offering and that the per-offering image limit is not exceeded.
+     * Uploads an image for the offering and persists it in R2 + DB. Validates that [companyId] owns the offering and
+     * that the per-offering image limit is not exceeded.
      */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
@@ -90,10 +108,7 @@ class OfferingService(
         return offering
     }
 
-    /**
-     * Deletes the specified image from R2 and DB.
-     * Validates that [companyId] owns the offering.
-     */
+    /** Deletes the specified image from R2 and DB. Validates that [companyId] owns the offering. */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun deleteImage(offeringId: Long, imageId: Long, companyId: Long): Offering {

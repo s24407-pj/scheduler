@@ -6,8 +6,11 @@ import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.slot
 import io.mockk.verify
+import java.time.LocalDateTime
+import java.util.*
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.company.Company
@@ -18,26 +21,19 @@ import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
-import java.time.LocalDateTime
-import java.util.*
 
 @ExtendWith(MockKExtension::class)
 class NotificationServiceTest {
 
-    @MockK
-    private lateinit var smsSender: SmsSender
+    @MockK private lateinit var smsSender: SmsSender
 
-    @MockK
-    private lateinit var userRepository: UserRepository
+    @MockK private lateinit var userRepository: UserRepository
 
-    @MockK
-    private lateinit var offeringRepository: OfferingRepository
+    @MockK private lateinit var offeringRepository: OfferingRepository
 
-    @MockK
-    private lateinit var companyRepository: CompanyRepository
+    @MockK private lateinit var companyRepository: CompanyRepository
 
-    @InjectMockKs
-    private lateinit var notificationService: NotificationService
+    @InjectMockKs private lateinit var notificationService: NotificationService
 
     private val customer = User(id = 1L, phoneNumber = "+48123456789", firstName = "Anna", lastName = "Kowalska")
     private val employee = User(id = 2L, phoneNumber = "+48987654321", firstName = "Jan", lastName = "Nowak")
@@ -45,17 +41,18 @@ class NotificationServiceTest {
     private val company = Company(id = 5L, name = "Salon Piękności")
     private val startTime = LocalDateTime.of(2026, 3, 15, 14, 0)
 
-    private val reservation = Reservation(
-        id = 100L,
-        companyId = 5L,
-        customerId = 1L,
-        employeeId = 2L,
-        serviceId = 10L,
-        price = 200,
-        startTime = startTime,
-        endTime = startTime.plusHours(1),
-        status = ReservationStatus.PENDING
-    )
+    private val reservation =
+        Reservation(
+            id = 100L,
+            companyId = 5L,
+            customerId = 1L,
+            employeeId = 2L,
+            serviceId = 10L,
+            price = 200,
+            startTime = startTime,
+            endTime = startTime.plusHours(1),
+            status = ReservationStatus.PENDING,
+        )
 
     private fun setupMocks() {
         every { userRepository.findById(1L) } returns Optional.of(customer)
@@ -110,11 +107,19 @@ class NotificationServiceTest {
     }
 
     @Test
-    fun `sendBookingConfirmation should not throw when customer not found`() {
+    fun `sendBookingConfirmation should throw when customer not found`() {
         every { userRepository.findById(1L) } returns Optional.empty()
 
-        notificationService.sendBookingConfirmation(reservation)
+        assertThrows<NoSuchElementException> { notificationService.sendBookingConfirmation(reservation) }
 
         verify(exactly = 0) { smsSender.sendMessage(any(), any()) }
+    }
+
+    @Test
+    fun `sendReminder should propagate SMS sender failure so the reminder is not flagged as sent`() {
+        setupMocks()
+        every { smsSender.sendMessage(any(), any()) } throws RuntimeException("SMS failed")
+
+        assertThrows<RuntimeException> { notificationService.sendReminder(reservation) }
     }
 }

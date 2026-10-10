@@ -7,38 +7,49 @@ import io.mockk.junit5.MockKExtension
 import io.mockk.just
 import io.mockk.runs
 import io.mockk.verify
+import java.time.Clock
+import java.time.LocalDateTime
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
-import java.time.LocalDateTime
 
 @ExtendWith(MockKExtension::class)
 class NotificationSchedulerTest {
 
-    @MockK
-    private lateinit var reservationRepository: ReservationRepository
+    @MockK private lateinit var reservationRepository: ReservationRepository
 
-    @MockK
-    private lateinit var notificationService: NotificationService
+    @MockK private lateinit var notificationService: NotificationService
 
-    @InjectMockKs
-    private lateinit var notificationScheduler: NotificationScheduler
+    @MockK private lateinit var clock: Clock
 
-    private val startTime = LocalDateTime.now().plusHours(24)
+    @InjectMockKs private lateinit var notificationScheduler: NotificationScheduler
 
-    private val reservation = Reservation(
-        id = 1L,
-        companyId = 5L,
-        customerId = 1L,
-        employeeId = 2L,
-        serviceId = 10L,
-        price = 200,
-        startTime = startTime,
-        endTime = startTime.plusHours(1),
-        status = ReservationStatus.CONFIRMED
-    )
+    private val now = LocalDateTime.of(2026, 11, 3, 14, 0)
+
+    private val startTime = now.plusHours(24)
+
+    private val reservation =
+        Reservation(
+            id = 1L,
+            companyId = 5L,
+            customerId = 1L,
+            employeeId = 2L,
+            serviceId = 10L,
+            price = 200,
+            startTime = startTime,
+            endTime = startTime.plusHours(1),
+            status = ReservationStatus.CONFIRMED,
+        )
+
+    @BeforeEach
+    fun setupClock() {
+        every { clock.instant() } returns now.atZone(BUSINESS_ZONE).toInstant()
+        every { clock.zone } returns BUSINESS_ZONE
+    }
 
     @Test
     fun `sendReminders should call sendReminder and bulk-mark sent when reservation found`() {
@@ -50,6 +61,15 @@ class NotificationSchedulerTest {
 
         verify { notificationService.sendReminder(reservation) }
         verify { reservationRepository.markRemindersAsSent(listOf(1L)) }
+    }
+
+    @Test
+    fun `sendReminders should query the 23 to 25 hour window relative to the injected clock`() {
+        every { reservationRepository.findPendingReminders(any(), any()) } returns emptyList()
+
+        notificationScheduler.sendReminders()
+
+        verify { reservationRepository.findPendingReminders(now.plusHours(23), now.plusHours(25)) }
     }
 
     @Test
@@ -73,12 +93,12 @@ class NotificationSchedulerTest {
     }
 
     @Test
-    fun `autoCompleteElapsedReservations should call autoCompleteElapsed with current time`() {
+    fun `autoCompleteElapsedReservations should call autoCompleteElapsed with the injected clock time`() {
         every { reservationRepository.autoCompleteElapsed(any()) } returns 3
 
         notificationScheduler.autoCompleteElapsedReservations()
 
-        verify { reservationRepository.autoCompleteElapsed(any()) }
+        verify { reservationRepository.autoCompleteElapsed(now) }
     }
 
     @Test

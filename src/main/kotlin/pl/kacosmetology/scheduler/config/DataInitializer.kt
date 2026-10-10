@@ -25,14 +25,14 @@ class DataInitializer(
     private val companyEmployeeRepository: CompanyEmployeeRepository,
     private val offeringRepository: OfferingRepository,
     private val offeringCategoryRepository: OfferingCategoryRepository,
-    private val passwordEncoder: PasswordEncoder
+    private val passwordEncoder: PasswordEncoder,
 ) : CommandLineRunner {
 
     private val logger = LoggerFactory.getLogger(DataInitializer::class.java)
 
     override fun run(vararg args: String) {
-        val company = companyRepository.findAll().firstOrNull()
-            ?: companyRepository.save(Company(name = "Ka.Cosmetology"))
+        val company =
+            companyRepository.findAll().firstOrNull() ?: companyRepository.save(Company(name = "Ka.Cosmetology"))
         val cid = requireNotNull(company.id) { "Seeded company must have an ID" }
 
         ensureOwner(cid)
@@ -47,21 +47,22 @@ class DataInitializer(
         if (userRepository.findByEmail("gabinet@kacosmetology.pl") != null) return
 
         logger.info("Seeding owner account...")
-        val owner = userRepository.save(
-            User(
-                phoneNumber = "+48726154460",
-                firstName = "Katarzyna",
-                lastName = "Suwalska",
-                email = "gabinet@kacosmetology.pl",
-                passwordHash = passwordEncoder.encode("admin123")
+        val owner =
+            userRepository.save(
+                User(
+                    phoneNumber = "+48726154460",
+                    firstName = "Katarzyna",
+                    lastName = "Suwalska",
+                    email = "gabinet@kacosmetology.pl",
+                    passwordHash = passwordEncoder.encode("admin123"),
+                ),
             )
-        )
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = companyId,
                 userId = requireNotNull(owner.id) { "Seeded owner must have an ID" },
-                role = "OWNER"
-            )
+                role = "OWNER",
+            ),
         )
         logger.info("Owner seeded: gabinet@kacosmetology.pl / admin123")
     }
@@ -70,21 +71,22 @@ class DataInitializer(
         if (userRepository.findByEmail("pracownik@kacosmetology.pl") != null) return
 
         logger.info("Seeding test employee account...")
-        val employee = userRepository.save(
-            User(
-                phoneNumber = "+48100200300",
-                firstName = "Jan",
-                lastName = "Kowalski",
-                email = "pracownik@kacosmetology.pl",
-                passwordHash = passwordEncoder.encode("employee123")
+        val employee =
+            userRepository.save(
+                User(
+                    phoneNumber = "+48100200300",
+                    firstName = "Jan",
+                    lastName = "Kowalski",
+                    email = "pracownik@kacosmetology.pl",
+                    passwordHash = passwordEncoder.encode("employee123"),
+                ),
             )
-        )
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = companyId,
                 userId = requireNotNull(employee.id) { "Seeded employee must have an ID" },
-                role = "EMPLOYEE"
-            )
+                role = "EMPLOYEE",
+            ),
         )
         logger.info("Test employee seeded: pracownik@kacosmetology.pl / employee123")
     }
@@ -105,49 +107,49 @@ class DataInitializer(
                     name = "Henna brwi z regulacją",
                     durationMinutes = 40,
                     price = 60,
-                    categoryId = oprawaOka.id
+                    categoryId = oprawaOka.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Farbka z regulacją",
                     durationMinutes = 40,
                     price = 80,
-                    categoryId = oprawaOka.id
+                    categoryId = oprawaOka.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Regulacja brwi",
                     durationMinutes = 20,
                     price = 30,
-                    categoryId = oprawaOka.id
+                    categoryId = oprawaOka.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Laminacja brwi + regulacja (bez koloryzacji)",
                     durationMinutes = 60,
                     price = 110,
-                    categoryId = oprawaOka.id
+                    categoryId = oprawaOka.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Laminacja brwi + regulacja + koloryzacja",
                     durationMinutes = 60,
                     price = 150,
-                    categoryId = oprawaOka.id
+                    categoryId = oprawaOka.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Lifting rzęs + farbka",
                     durationMinutes = 90,
                     price = 150,
-                    categoryId = oprawaOka.id
+                    categoryId = oprawaOka.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Laminacja brwi + lifting rzęs",
                     durationMinutes = 120,
                     price = 250,
-                    categoryId = oprawaOka.id
+                    categoryId = oprawaOka.id,
                 ),
                 // Trychologia
                 Offering(
@@ -155,35 +157,35 @@ class DataInitializer(
                     name = "Pierwsza konsultacja trychologiczna",
                     durationMinutes = 60,
                     price = 200,
-                    categoryId = trychologia.id
+                    categoryId = trychologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Zabieg trychologiczny dobrany indywidualnie",
                     durationMinutes = 90,
                     price = 350,
-                    categoryId = trychologia.id
+                    categoryId = trychologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Rekonstrukcja łodygi włosa – JOICO",
                     durationMinutes = 90,
                     price = 200,
-                    categoryId = trychologia.id
+                    categoryId = trychologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Mezoterapia mikroigłowa skóry głowy",
                     durationMinutes = 60,
                     price = 400,
-                    categoryId = trychologia.id
+                    categoryId = trychologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Mezoterapia igłowa skóry głowy",
                     durationMinutes = 60,
                     price = 550,
-                    categoryId = trychologia.id
+                    categoryId = trychologia.id,
                 ),
                 // Kosmetologia
                 Offering(
@@ -191,84 +193,84 @@ class DataInitializer(
                     name = "Oczyszczanie wodorowe",
                     durationMinutes = 60,
                     price = 250,
-                    categoryId = kosmetologia.id
+                    categoryId = kosmetologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Mezoterapia mikroigłowa + ampułka",
                     durationMinutes = 120,
                     price = 350,
-                    categoryId = kosmetologia.id
+                    categoryId = kosmetologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Pierwsza konsultacja kosmetologiczna z zabiegiem",
                     durationMinutes = 120,
                     price = 350,
-                    categoryId = kosmetologia.id
+                    categoryId = kosmetologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Zabieg kosmetologiczny dobrany indywidualnie",
                     durationMinutes = 90,
                     price = 300,
-                    categoryId = kosmetologia.id
+                    categoryId = kosmetologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Eksfoliacja kwasami",
                     durationMinutes = 90,
                     price = 300,
-                    categoryId = kosmetologia.id
+                    categoryId = kosmetologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Terapia trądziku – kolejny zabieg",
                     durationMinutes = 90,
                     price = 300,
-                    categoryId = kosmetologia.id
+                    categoryId = kosmetologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Redukcja przebarwień",
                     durationMinutes = 120,
                     price = 300,
-                    categoryId = kosmetologia.id
+                    categoryId = kosmetologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Zabieg regeneracyjny",
                     durationMinutes = 90,
                     price = 300,
-                    categoryId = kosmetologia.id
+                    categoryId = kosmetologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Zabieg regeneracyjny dla kobiet w ciąży",
                     durationMinutes = 90,
                     price = 300,
-                    categoryId = kosmetologia.id
+                    categoryId = kosmetologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Działanie przeciwstarzeniowe",
                     durationMinutes = 90,
                     price = 300,
-                    categoryId = kosmetologia.id
+                    categoryId = kosmetologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Zabieg nawilżający / odbudowujący",
                     durationMinutes = 90,
                     price = 300,
-                    categoryId = kosmetologia.id
+                    categoryId = kosmetologia.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Zabieg oczyszczający",
                     durationMinutes = 90,
                     price = 300,
-                    categoryId = kosmetologia.id
+                    categoryId = kosmetologia.id,
                 ),
                 // Online
                 Offering(
@@ -276,16 +278,16 @@ class DataInitializer(
                     name = "Konsultacja trychologiczna online",
                     durationMinutes = 60,
                     price = 160,
-                    categoryId = online.id
+                    categoryId = online.id,
                 ),
                 Offering(
                     companyId = cid,
                     name = "Konsultacja kosmetologiczna online",
                     durationMinutes = 60,
                     price = 180,
-                    categoryId = online.id
+                    categoryId = online.id,
                 ),
-            )
+            ),
         )
 
         logger.info("26 offerings seeded.")

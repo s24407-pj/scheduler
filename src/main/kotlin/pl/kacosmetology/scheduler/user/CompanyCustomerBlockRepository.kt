@@ -5,10 +5,10 @@ import org.springframework.jdbc.core.JdbcTemplate
 
 /** Repository for company-scoped customer block records. */
 interface CompanyCustomerBlockRepository :
-    JpaRepository<CompanyCustomerBlock, Long>,
-    CompanyCustomerBlockRepositoryCustom {
+    JpaRepository<CompanyCustomerBlock, Long>, CompanyCustomerBlockRepositoryCustom {
     /** Returns the block record for the given company/customer pair, or null if none exists. */
     fun findByCompanyIdAndCustomerId(companyId: Long, customerId: Long): CompanyCustomerBlock?
+
     fun findByCompanyId(companyId: Long): List<CompanyCustomerBlock>
 }
 
@@ -20,11 +20,11 @@ interface CompanyCustomerBlockRepositoryCustom {
 
 /** PostgreSQL implementation of the custom customer block operations. */
 class CompanyCustomerBlockRepositoryImpl(
-    private val jdbcTemplate: JdbcTemplate
+    private val jdbcTemplate: JdbcTemplate,
 ) : CompanyCustomerBlockRepositoryCustom {
     /**
-     * Creates the tracking row if necessary or increments the existing row under PostgreSQL's conflict-row lock.
-     * The returned value is the count after the increment.
+     * Creates the tracking row if necessary or increments the existing row under PostgreSQL's conflict-row lock. The
+     * returned value is the count after the increment.
      */
     override fun incrementNoShowCountAndApplyBlock(companyId: Long, customerId: Long): Int =
         requireNotNull(
@@ -44,10 +44,13 @@ class CompanyCustomerBlockRepositoryImpl(
                           AND company_customer_blocks.no_show_count + 1 >= max_no_shows
                     )
                 RETURNING no_show_count
-                """.trimIndent(),
+                """
+                    .trimIndent(),
                 Int::class.java,
                 customerId,
-                companyId
-            )
-        ) { "Firma nie istnieje" }
+                companyId,
+            ),
+        ) {
+            "Firma nie istnieje"
+        }
 }

@@ -7,6 +7,5 @@ data class UserProfileResponse(
     val firstName: String,
     val lastName: String,
     val email: String?,
-    val photoUrl: String?
+    val photoUrl: String?,
 )
-

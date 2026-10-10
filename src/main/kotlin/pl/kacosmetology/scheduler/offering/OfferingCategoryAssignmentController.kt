@@ -12,13 +12,12 @@ import pl.kacosmetology.scheduler.security.CustomUserDetails
 @RestController
 @RequestMapping("/api/offerings")
 class OfferingCategoryAssignmentController(
-    private val offeringCategoryService: OfferingCategoryService
+    private val offeringCategoryService: OfferingCategoryService,
 ) {
 
     /**
-     * Assigns or removes a category from an offering.
-     * Send `{"categoryId": null}` to remove the assignment.
-     * Requires OWNER role.
+     * Assigns or removes a category from an offering. Send `{"categoryId": null}` to remove the assignment. Requires
+     * OWNER role.
      */
     @PatchMapping("/{offeringId}/category")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -26,6 +25,6 @@ class OfferingCategoryAssignmentController(
     fun assignCategory(
         @PathVariable offeringId: Long,
         @Valid @RequestBody request: AssignOfferingCategoryRequest,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) = offeringCategoryService.assignCategory(offeringId, userDetails.requireCompanyId(), request.categoryId)
 }

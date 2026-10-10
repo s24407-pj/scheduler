@@ -1,49 +1,68 @@
 package pl.kacosmetology.scheduler.reservation
 
 import jakarta.validation.Valid
+import java.time.LocalDateTime
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.server.ResponseStatusException
 import pl.kacosmetology.scheduler.reservation.dto.*
 import pl.kacosmetology.scheduler.security.CustomUserDetails
-import java.time.LocalDateTime
 
 /**
- * REST API for managing reservations from both customer and staff perspectives.
- * Customers can create and cancel their own reservations; staff can view schedules and complete bookings.
+ * REST API for managing reservations from both customer and staff perspectives. Customers can create and cancel their
+ * own reservations; staff can view schedules and complete bookings.
  */
 @RestController
 @RequestMapping("/api/reservations")
 class ReservationController(
-    private val reservationService: ReservationService
+    private val reservationService: ReservationService,
 ) {
 
-    /** Creates a new reservation for the authenticated customer. */
+    /**
+     * Creates a new reservation for the authenticated customer (201). Repeating an identical request returns the
+     * existing active reservation with 200 instead of failing as a conflict.
+     */
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
     fun createReservation(
         @Valid @RequestBody request: CreateReservationRequest,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
-    ): ReservationResponse {
-        return reservationService.createReservation(
-            customerId = userDetails.id,
-            employeeId = request.employeeId,
-            offeringId = request.serviceId,
-            startTime = request.startTime
-        ).toResponse()
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
+    ): ResponseEntity<ReservationResponse> {
+        return reservationService
+            .createReservation(
+                customerId = userDetails.id,
+                employeeId = request.employeeId,
+                offeringId = request.serviceId,
+                startTime = request.startTime,
+            )
+            .toResponseEntity()
     }
 
-    /** Cancels the customer's own reservation. */
+    /** Cancels the customer's own reservation. Allowed only before the visit starts. */
     @PatchMapping("/{id}/cancel")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun cancelReservation(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
         reservationService.cancelReservation(id, userDetails.id)
+    }
+
+    /**
+     * Cancels any active reservation of the staff member's company, including after the visit started. Requires OWNER
+     * or EMPLOYEE role.
+     */
+    @PatchMapping("/{id}/cancel-by-staff")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun cancelReservationByStaff(
+        @PathVariable id: Long,
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
+    ) {
+        reservationService.cancelReservationByStaff(id, userDetails.requireCompanyId())
     }
 
     /** Marks a reservation as completed. Requires OWNER or EMPLOYEE role. */
@@ -52,7 +71,7 @@ class ReservationController(
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun completeReservation(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
         val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
         reservationService.completeReservation(id, companyId)
@@ -64,7 +83,7 @@ class ReservationController(
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun markNoShow(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
         val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
         reservationService.markNoShow(id, companyId)
@@ -76,20 +95,25 @@ class ReservationController(
         return reservationService.getCustomerReservations(userDetails.id).map { it.toResponse() }
     }
 
-    /** Returns the authenticated employee's schedule within a time range. Requires OWNER or EMPLOYEE role. */
+    /**
+     * Returns the authenticated employee's schedule at their session's company within a time range. Requires OWNER or
+     * EMPLOYEE role.
+     */
     @GetMapping("/employee")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getEmployeeSchedule(
         @AuthenticationPrincipal userDetails: CustomUserDetails,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime,
     ): List<EmployeeReservationResponse> {
-        return reservationService.getEmployeeSchedule(userDetails.id, start, end).map { it.toEmployeeResponse() }
+        return reservationService.getEmployeeSchedule(userDetails.requireCompanyId(), userDetails.id, start, end).map {
+            it.toEmployeeResponse()
+        }
     }
 
     /**
-     * Returns reservations for the given employee filtered by date range.
-     * OWNER can query any employee within their company; EMPLOYEE can only query their own schedule.
+     * Returns reservations for the given employee filtered by date range. OWNER can query any employee within their
+     * company; EMPLOYEE can only query their own schedule.
      */
     @GetMapping
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
@@ -97,7 +121,7 @@ class ReservationController(
         @RequestParam employeeId: Long,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): List<DashboardReservationResponse> {
         val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
         val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
@@ -113,29 +137,36 @@ class ReservationController(
     @PreAuthorize("hasRole('OWNER')")
     fun deleteReservation(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
         val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
         reservationService.deleteReservation(id, companyId)
     }
 
-    /** Creates a reservation for a client by phone number. Requires OWNER or EMPLOYEE role. */
+    /**
+     * Creates a reservation for a client by phone number (201), or returns the identical existing active reservation
+     * with 200. Requires OWNER or EMPLOYEE role.
+     */
     @PostMapping("/staff")
-    @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun createReservationByStaff(
         @Valid @RequestBody request: StaffCreateReservationRequest,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
-    ): ReservationResponse {
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
+    ): ResponseEntity<ReservationResponse> {
         val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
-        return reservationService.createReservationByStaff(
-            employeeId = requireNotNull(request.employeeId) { "Pracownik jest wymagany" },
-            serviceId = requireNotNull(request.serviceId) { "Usługa jest wymagana" },
-            startTime = requireNotNull(request.startTime) { "Czas rozpoczęcia jest wymagany" },
-            customerPhone = requireNotNull(request.customerPhone) { "Numer telefonu jest wymagany" },
-            customerFirstName = request.customerFirstName,
-            customerLastName = request.customerLastName,
-            requesterCompanyId = companyId
-        ).toResponse()
+        return reservationService
+            .createReservationByStaff(
+                employeeId = requireNotNull(request.employeeId) { "Pracownik jest wymagany" },
+                serviceId = requireNotNull(request.serviceId) { "Usługa jest wymagana" },
+                startTime = requireNotNull(request.startTime) { "Czas rozpoczęcia jest wymagany" },
+                customerPhone = requireNotNull(request.customerPhone) { "Numer telefonu jest wymagany" },
+                customerFirstName = request.customerFirstName,
+                customerLastName = request.customerLastName,
+                requesterCompanyId = companyId,
+            )
+            .toResponseEntity()
     }
+
+    private fun BookingResult.toResponseEntity(): ResponseEntity<ReservationResponse> =
+        ResponseEntity.status(if (created) HttpStatus.CREATED else HttpStatus.OK).body(reservation.toResponse())
 }

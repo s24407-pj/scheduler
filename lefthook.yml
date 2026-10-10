@@ -1,0 +1,9 @@
+# Git hooks managed by lefthook (installed via mise). Setup: `mise install && lefthook install`.
+# Skip once with `LEFTHOOK=0 git commit ...`.
+pre-commit:
+  commands:
+    ktfmt:
+      glob: "*.{kt,kts}"
+      # mise exec provides the pinned JDK when the hook runs outside a mise-activated shell (e.g. an IDE commit).
+      run: if command -v mise >/dev/null 2>&1; then mise exec -- ./gradlew spotlessApply --quiet; else ./gradlew spotlessApply --quiet; fi
+      stage_fixed: true

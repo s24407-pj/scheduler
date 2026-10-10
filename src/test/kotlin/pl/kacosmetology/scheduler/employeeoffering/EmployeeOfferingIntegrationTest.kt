@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.employeeoffering
 
 import com.ninjasquad.springmockk.MockkBean
+import java.time.LocalDateTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -19,6 +20,8 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingImage
+import pl.kacosmetology.scheduler.offering.OfferingImageRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.JwtService
@@ -26,42 +29,33 @@ import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
-import java.time.LocalDateTime
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
 class EmployeeOfferingIntegrationTest {
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var mockMvc: MockMvc
 
-    @Autowired
-    private lateinit var objectMapper: ObjectMapper
+    @Autowired private lateinit var objectMapper: ObjectMapper
 
-    @Autowired
-    private lateinit var jwtService: JwtService
+    @Autowired private lateinit var jwtService: JwtService
 
-    @Autowired
-    private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: UserRepository
 
-    @Autowired
-    private lateinit var companyRepository: CompanyRepository
+    @Autowired private lateinit var companyRepository: CompanyRepository
 
-    @Autowired
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @Autowired
-    private lateinit var offeringRepository: OfferingRepository
+    @Autowired private lateinit var offeringRepository: OfferingRepository
 
-    @Autowired
-    private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
+    @Autowired private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
-    @Autowired
-    private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var reservationRepository: ReservationRepository
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @Autowired private lateinit var offeringImageRepository: OfferingImageRepository
+
+    @MockkBean private lateinit var s3Client: S3Client
 
     private var companyId: Long = 0
     private var employeeId: Long = 0
@@ -73,6 +67,7 @@ class EmployeeOfferingIntegrationTest {
     fun setup() {
         reservationRepository.deleteAll()
         assignmentRepository.deleteAll()
+        offeringImageRepository.deleteAll()
         offeringRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
@@ -82,33 +77,38 @@ class EmployeeOfferingIntegrationTest {
         companyId = company.id!!
 
         val owner = userRepository.save(User(phoneNumber = "+48100100100", firstName = "Owner", lastName = "Test"))
-        val ownerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
-        )
+        val ownerEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
+            )
         ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
 
         val employee = userRepository.save(User(phoneNumber = "+48200200200", firstName = "Emp", lastName = "Test"))
-        val employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
-        )
+        val employeeEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
+            )
         employeeId = employee.id!!
         employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
 
-        val offering = offeringRepository.save(
-            Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 60)
-        )
+        val offering =
+            offeringRepository.save(
+                Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 60),
+            )
         offeringId = offering.id!!
     }
 
     @Test
     fun `POST assign offering should return 201`() {
-        mockMvc.post("/api/employees/$employeeId/offerings/$offeringId") {
-            header("Authorization", "Bearer $ownerToken")
-        }.andExpect {
-            status { isCreated() }
-            jsonPath("$.offeringId") { value(offeringId) }
-            jsonPath("$.employeeId") { value(employeeId) }
-        }
+        mockMvc
+            .post("/api/employees/$employeeId/offerings/$offeringId") {
+                header("Authorization", "Bearer $ownerToken")
+            }
+            .andExpect {
+                status { isCreated() }
+                jsonPath("$.offeringId") { value(offeringId) }
+                jsonPath("$.employeeId") { value(employeeId) }
+            }
 
         assertEquals(1, assignmentRepository.findAllByEmployeeId(employeeId).size)
     }
@@ -119,15 +119,17 @@ class EmployeeOfferingIntegrationTest {
             EmployeeOfferingAssignment(
                 companyId = companyId,
                 employeeId = employeeId,
-                offeringId = offeringId
-            )
+                offeringId = offeringId,
+            ),
         )
 
-        mockMvc.post("/api/employees/$employeeId/offerings/$offeringId") {
-            header("Authorization", "Bearer $ownerToken")
-        }.andExpect {
-            status { isCreated() }
-        }
+        mockMvc
+            .post("/api/employees/$employeeId/offerings/$offeringId") {
+                header("Authorization", "Bearer $ownerToken")
+            }
+            .andExpect {
+                status { isCreated() }
+            }
 
         assertEquals(1, assignmentRepository.findAllByEmployeeId(employeeId).size)
     }
@@ -138,26 +140,30 @@ class EmployeeOfferingIntegrationTest {
             EmployeeOfferingAssignment(
                 companyId = companyId,
                 employeeId = employeeId,
-                offeringId = offeringId
-            )
+                offeringId = offeringId,
+            ),
         )
 
-        mockMvc.delete("/api/employees/$employeeId/offerings/$offeringId") {
-            header("Authorization", "Bearer $ownerToken")
-        }.andExpect {
-            status { isNoContent() }
-        }
+        mockMvc
+            .delete("/api/employees/$employeeId/offerings/$offeringId") {
+                header("Authorization", "Bearer $ownerToken")
+            }
+            .andExpect {
+                status { isNoContent() }
+            }
 
         assertEquals(0, assignmentRepository.findAllByEmployeeId(employeeId).size)
     }
 
     @Test
     fun `DELETE remove assignment should return 404 when assignment does not exist`() {
-        mockMvc.delete("/api/employees/$employeeId/offerings/$offeringId") {
-            header("Authorization", "Bearer $ownerToken")
-        }.andExpect {
-            status { isNotFound() }
-        }
+        mockMvc
+            .delete("/api/employees/$employeeId/offerings/$offeringId") {
+                header("Authorization", "Bearer $ownerToken")
+            }
+            .andExpect {
+                status { isNotFound() }
+            }
     }
 
     @Test
@@ -166,101 +172,173 @@ class EmployeeOfferingIntegrationTest {
             EmployeeOfferingAssignment(
                 companyId = companyId,
                 employeeId = employeeId,
-                offeringId = offeringId
-            )
+                offeringId = offeringId,
+            ),
         )
 
-        mockMvc.get("/api/employees/$employeeId/offerings") {
-            header("Authorization", "Bearer $ownerToken")
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].offeringId") { value(offeringId) }
-            jsonPath("$[0].employeeId") { value(employeeId) }
-        }
+        mockMvc
+            .get("/api/employees/$employeeId/offerings") {
+                header("Authorization", "Bearer $ownerToken")
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].offeringId") { value(offeringId) }
+                jsonPath("$[0].employeeId") { value(employeeId) }
+            }
     }
 
     @Test
     fun `GET assignments should return 403 for customer`() {
-        val customer = userRepository.save(User(phoneNumber = "+48300300300", firstName = "Customer", lastName = "Test"))
+        val customer =
+            userRepository.save(User(phoneNumber = "+48300300300", firstName = "Customer", lastName = "Test"))
         val customerToken = jwtService.generateCustomerToken(customer)
 
-        mockMvc.get("/api/employees/$employeeId/offerings") {
-            header("Authorization", "Bearer $customerToken")
-        }.andExpect {
-            status { isForbidden() }
-        }
+        mockMvc
+            .get("/api/employees/$employeeId/offerings") {
+                header("Authorization", "Bearer $customerToken")
+            }
+            .andExpect {
+                status { isForbidden() }
+            }
     }
 
     @Test
     fun `GET assignments should return 404 for employee outside owner company`() {
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
-        val otherEmployee = userRepository.save(User(phoneNumber = "+48400400400", firstName = "Other", lastName = "Employee"))
+        val otherEmployee =
+            userRepository.save(User(phoneNumber = "+48400400400", firstName = "Other", lastName = "Employee"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE"),
         )
 
-        mockMvc.get("/api/employees/${otherEmployee.id!!}/offerings") {
-            header("Authorization", "Bearer $ownerToken")
-        }.andExpect {
+        mockMvc
+            .get("/api/employees/${otherEmployee.id!!}/offerings") {
+                header("Authorization", "Bearer $ownerToken")
+            }
+            .andExpect {
+                status { isNotFound() }
+            }
+    }
+
+    @Test
+    fun `GET public employee offerings should return only assigned active offerings with images`() {
+        offeringRepository.save(
+            Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 60, price = 150),
+        )
+        val inactive =
+            offeringRepository.save(
+                Offering(
+                    companyId = companyId,
+                    name = "Stara usługa",
+                    durationMinutes = 30,
+                    price = 50,
+                    active = false,
+                ),
+            )
+        assignmentRepository.save(
+            EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = offeringId),
+        )
+        assignmentRepository.save(
+            EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = inactive.id!!),
+        )
+        offeringImageRepository.save(OfferingImage(offeringId = offeringId, imageUrl = "https://cdn.test/cut.jpg"))
+
+        mockMvc.get("/api/offerings/public/company/$companyId/employee/$employeeId").andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].id") { value(offeringId) }
+            jsonPath("$[0].images[0].imageUrl") { value("https://cdn.test/cut.jpg") }
+        }
+    }
+
+    @Test
+    fun `GET public employee offerings should return every active company offering when employee has no assignments`() {
+        offeringRepository.save(
+            Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 60, price = 150),
+        )
+
+        mockMvc.get("/api/offerings/public/company/$companyId/employee/$employeeId").andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(2) }
+        }
+    }
+
+    @Test
+    fun `GET public employee offerings should return 404 when employee is not employed at the company`() {
+        val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
+
+        mockMvc.get("/api/offerings/public/company/${otherCompany.id!!}/employee/$employeeId").andExpect {
             status { isNotFound() }
         }
     }
 
     @Test
-    fun `GET public employee offerings should return assigned active offerings`() {
+    fun `GET public employee offerings should be scoped to the requested salon for multi-salon employee`() {
+        val otherCompany = companyRepository.save(Company(name = "Drugi Salon"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = employeeId, role = "EMPLOYEE"),
+        )
+        val otherOffering =
+            offeringRepository.save(
+                Offering(companyId = otherCompany.id!!, name = "Masaż", durationMinutes = 60, price = 200),
+            )
+        offeringRepository.save(
+            Offering(companyId = otherCompany.id!!, name = "Peeling", durationMinutes = 30, price = 90),
+        )
         assignmentRepository.save(
             EmployeeOfferingAssignment(
-                companyId = companyId,
+                companyId = otherCompany.id!!,
                 employeeId = employeeId,
-                offeringId = offeringId
-            )
+                offeringId = otherOffering.id!!,
+            ),
         )
 
-        mockMvc.get("/api/offerings/public/employee/$employeeId").andExpect {
+        mockMvc.get("/api/offerings/public/company/$companyId/employee/$employeeId").andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(1) }
             jsonPath("$[0].id") { value(offeringId) }
         }
-    }
-
-    @Test
-    fun `GET public employee offerings should return empty list when no assignments`() {
-        mockMvc.get("/api/offerings/public/employee/$employeeId").andExpect {
+        mockMvc.get("/api/offerings/public/company/${otherCompany.id!!}/employee/$employeeId").andExpect {
             status { isOk() }
-            jsonPath("$.length()") { value(0) }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].id") { value(otherOffering.id!!) }
         }
     }
 
     @Test
     fun `POST reservation should return 400 when employee has assignments but not for requested offering`() {
-        val otherOffering = offeringRepository.save(
-            Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 60, price = 150)
-        )
+        val otherOffering =
+            offeringRepository.save(
+                Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 60, price = 150),
+            )
         assignmentRepository.save(
             EmployeeOfferingAssignment(
                 companyId = companyId,
                 employeeId = employeeId,
-                offeringId = offeringId
-            )
+                offeringId = offeringId,
+            ),
         )
 
         val customer = userRepository.save(User(phoneNumber = "+48999888777", firstName = "Klient", lastName = "Test"))
 
-        val body = mapOf(
-            "employeeId" to employeeId,
-            "serviceId" to otherOffering.id!!,
-            "startTime" to LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
-                .toString(),
-            "customerPhone" to customer.phoneNumber
-        )
+        val body =
+            mapOf(
+                "employeeId" to employeeId,
+                "serviceId" to otherOffering.id!!,
+                "startTime" to
+                    LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0).toString(),
+                "customerPhone" to customer.phoneNumber,
+            )
 
-        mockMvc.post("/api/reservations/staff") {
-            header("Authorization", "Bearer $employeeToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isBadRequest() }
-        }
+        mockMvc
+            .post("/api/reservations/staff") {
+                header("Authorization", "Bearer $employeeToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isBadRequest() }
+            }
     }
 }

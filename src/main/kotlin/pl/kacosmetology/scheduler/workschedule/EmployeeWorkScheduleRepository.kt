@@ -1,21 +1,25 @@
 package pl.kacosmetology.scheduler.workschedule
 
+import java.time.DayOfWeek
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Repository
-import java.time.DayOfWeek
 
-/** JPA repository for [EmployeeWorkSchedule] entities. */
+/** JPA repository for [EmployeeWorkSchedule] entities. Schedules are scoped to one (company, employee) pair. */
 @Repository
 interface EmployeeWorkScheduleRepository : JpaRepository<EmployeeWorkSchedule, Long> {
-    /** Returns all schedule entries for the given employee. */
-    fun findAllByEmployeeId(employeeId: Long): List<EmployeeWorkSchedule>
+    /** Returns all schedule entries for the given employee at [companyId]. */
+    fun findAllByCompanyIdAndEmployeeId(companyId: Long, employeeId: Long): List<EmployeeWorkSchedule>
 
-    /** Returns the schedule entry for a specific day, or null if the employee doesn't work that day. */
-    fun findByEmployeeIdAndDayOfWeek(employeeId: Long, dayOfWeek: DayOfWeek): EmployeeWorkSchedule?
+    /** Returns the schedule entry for a specific day at [companyId], or null if the employee doesn't work that day. */
+    fun findByCompanyIdAndEmployeeIdAndDayOfWeek(
+        companyId: Long,
+        employeeId: Long,
+        dayOfWeek: DayOfWeek,
+    ): EmployeeWorkSchedule?
 
-    /** Deletes all schedule entries for the given employee. Used in atomic replace during [WorkScheduleService.setSchedule]. */
-    fun deleteAllByEmployeeId(employeeId: Long)
-
-    /** Returns true if the employee has any schedule entries configured. */
-    fun existsByEmployeeId(employeeId: Long): Boolean
+    /**
+     * Deletes all schedule entries for the given employee at [companyId]. Used in atomic replace during
+     * [WorkScheduleService.setSchedule].
+     */
+    fun deleteAllByCompanyIdAndEmployeeId(companyId: Long, employeeId: Long)
 }

@@ -1,9 +1,15 @@
 package pl.kacosmetology.scheduler.availability
 
 import io.mockk.every
-import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
+import io.mockk.verify
+import java.time.Clock
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.util.*
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -12,38 +18,32 @@ import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
+import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
-import java.util.*
 
 @ExtendWith(MockKExtension::class)
 class AvailabilityServiceTest {
 
-    @MockK
-    private lateinit var serviceRepository: OfferingRepository
+    @MockK private lateinit var serviceRepository: OfferingRepository
 
-    @MockK
-    private lateinit var companyRepository: CompanyRepository
+    @MockK private lateinit var companyRepository: CompanyRepository
 
-    @MockK
-    private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
+    @MockK private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
 
-    @MockK
-    private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
+    @MockK private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
-    @MockK
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @MockK
-    private lateinit var employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
+    @MockK private lateinit var employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
 
-    @InjectMockKs
+    @MockK private lateinit var clock: Clock
+
     private lateinit var availabilityService: AvailabilityService
 
     private val companyId = 1L
@@ -53,24 +53,38 @@ class AvailabilityServiceTest {
 
     private val defaultCompany = Company(id = companyId, name = "Test Salon")
 
-    private val defaultScheduleEntry = EmployeeWorkSchedule(
-        companyId = companyId,
-        employeeId = employeeId,
-        dayOfWeek = testDate.dayOfWeek,
-        startTime = LocalTime.of(9, 0),
-        endTime = LocalTime.of(17, 0)
-    )
+    private val defaultScheduleEntry =
+        EmployeeWorkSchedule(
+            companyId = companyId,
+            employeeId = employeeId,
+            dayOfWeek = testDate.dayOfWeek,
+            startTime = LocalTime.of(9, 0),
+            endTime = LocalTime.of(17, 0),
+        )
 
     @BeforeEach
     fun setupAvailabilityPolicy() {
+        availabilityService =
+            AvailabilityService(
+                serviceRepository,
+                companyRepository,
+                assignmentRepository,
+                companyEmployeeRepository,
+                employeeAvailabilityPolicy,
+                BookableSlotPolicy(workScheduleRepository),
+                clock,
+            )
+        every { clock.instant() } answers { Instant.now() }
+        every { clock.zone } returns BUSINESS_ZONE
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(any(), any()) } returns true
         every { employeeAvailabilityPolicy.findConflicts(any(), employeeId, any(), any()) } returns emptyList()
-        every { employeeAvailabilityPolicy.overlapsAny(any(), any(), any()) } answers {
-            val start = firstArg<LocalDateTime>()
-            val end = secondArg<LocalDateTime>()
-            val conflicts = thirdArg<List<EmployeeAvailabilityConflict>>()
-            conflicts.any { start.isBefore(it.endTime) && end.isAfter(it.startTime) }
-        }
+        every { employeeAvailabilityPolicy.overlapsAny(any(), any(), any()) } answers
+            {
+                val start = firstArg<LocalDateTime>()
+                val end = secondArg<LocalDateTime>()
+                val conflicts = thirdArg<List<EmployeeAvailabilityConflict>>()
+                conflicts.any { start.isBefore(it.endTime) && end.isAfter(it.startTime) }
+            }
     }
 
     @Test
@@ -82,15 +96,16 @@ class AvailabilityServiceTest {
                 companyId = companyId,
                 name = "Strzyżenie",
                 durationMinutes = 60,
-                price = 100
+                price = 100,
             )
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
-        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, employeeId) } returns false
         every {
-            workScheduleRepository.findByEmployeeIdAndDayOfWeek(
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(
+                companyId,
                 employeeId,
-                testDate.dayOfWeek
+                testDate.dayOfWeek,
             )
         } returns defaultScheduleEntry
 
@@ -103,7 +118,7 @@ class AvailabilityServiceTest {
         assertEquals(
             LocalTime.of(16, 0),
             availableSlots.last().time,
-            "Ostatni slot o 16:00 (bo usługa trwa godzinę, do 17:00)"
+            "Ostatni slot o 16:00 (bo usługa trwa godzinę, do 17:00)",
         )
 
         // Slotów od 9:00 do 16:00 z krokiem 30 minut jest dokładnie 15
@@ -119,24 +134,26 @@ class AvailabilityServiceTest {
                 companyId = companyId,
                 name = "Strzyżenie",
                 durationMinutes = 60,
-                price = 100
+                price = 100,
             )
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
-        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, employeeId) } returns false
         every {
-            workScheduleRepository.findByEmployeeIdAndDayOfWeek(
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(
+                companyId,
                 employeeId,
-                testDate.dayOfWeek
+                testDate.dayOfWeek,
             )
         } returns defaultScheduleEntry
 
         // Symulujemy, że pracownik ma już jedną wizytę od 12:00 do 13:00
-        val existingReservation = EmployeeAvailabilityConflict(
-            source = EmployeeAvailabilityConflictSource.RESERVATION,
-            startTime = testDate.atTime(12, 0),
-            endTime = testDate.atTime(13, 0)
-        )
+        val existingReservation =
+            EmployeeAvailabilityConflict(
+                source = EmployeeAvailabilityConflictSource.RESERVATION,
+                startTime = testDate.atTime(12, 0),
+                endTime = testDate.atTime(13, 0),
+            )
         every {
             employeeAvailabilityPolicy.findConflicts(any(), employeeId, any(), any())
         } returns listOf(existingReservation)
@@ -168,20 +185,22 @@ class AvailabilityServiceTest {
             Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
-        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, employeeId) } returns false
         every {
-            workScheduleRepository.findByEmployeeIdAndDayOfWeek(
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(
+                companyId,
                 employeeId,
-                testDate.dayOfWeek
+                testDate.dayOfWeek,
             )
         } returns defaultScheduleEntry
 
         // Blokada od 14:00 do 15:00
-        val block = EmployeeAvailabilityConflict(
-            source = EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK,
-            startTime = testDate.atTime(14, 0),
-            endTime = testDate.atTime(15, 0)
-        )
+        val block =
+            EmployeeAvailabilityConflict(
+                source = EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK,
+                startTime = testDate.atTime(14, 0),
+                endTime = testDate.atTime(15, 0),
+            )
         every { employeeAvailabilityPolicy.findConflicts(any(), employeeId, any(), any()) } returns listOf(block)
 
         // WHEN
@@ -208,8 +227,10 @@ class AvailabilityServiceTest {
             Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
-        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
-        every { workScheduleRepository.findByEmployeeIdAndDayOfWeek(employeeId, testDate.dayOfWeek) } returns null
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, employeeId) } returns false
+        every {
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(companyId, employeeId, testDate.dayOfWeek)
+        } returns null
 
         // WHEN
         val result = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
@@ -223,20 +244,22 @@ class AvailabilityServiceTest {
         // GIVEN - Pracownik pracuje tylko od 13:00 do 15:00
         val service =
             Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
-        val shortSchedule = EmployeeWorkSchedule(
-            companyId = companyId,
-            employeeId = employeeId,
-            dayOfWeek = testDate.dayOfWeek,
-            startTime = LocalTime.of(13, 0),
-            endTime = LocalTime.of(15, 0)
-        )
+        val shortSchedule =
+            EmployeeWorkSchedule(
+                companyId = companyId,
+                employeeId = employeeId,
+                dayOfWeek = testDate.dayOfWeek,
+                startTime = LocalTime.of(13, 0),
+                endTime = LocalTime.of(15, 0),
+            )
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
-        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, employeeId) } returns false
         every {
-            workScheduleRepository.findByEmployeeIdAndDayOfWeek(
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(
+                companyId,
                 employeeId,
-                testDate.dayOfWeek
+                testDate.dayOfWeek,
             )
         } returns shortSchedule
         // WHEN
@@ -259,21 +282,23 @@ class AvailabilityServiceTest {
         val basePrice = 100
         val discountCompany =
             Company(id = companyId, name = "Test Salon", lastMinuteDiscountPercent = 20, lastMinuteDiscountHours = 48)
-        val service = Offering(
-            id = serviceId,
-            companyId = companyId,
-            name = "Strzyżenie",
-            durationMinutes = 60,
-            price = basePrice
-        )
+        val service =
+            Offering(
+                id = serviceId,
+                companyId = companyId,
+                name = "Strzyżenie",
+                durationMinutes = 60,
+                price = basePrice,
+            )
 
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(discountCompany)
-        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, employeeId) } returns false
         every {
-            workScheduleRepository.findByEmployeeIdAndDayOfWeek(
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(
+                companyId,
                 employeeId,
-                testDate.dayOfWeek
+                testDate.dayOfWeek,
             )
         } returns defaultScheduleEntry
         // WHEN
@@ -291,21 +316,23 @@ class AvailabilityServiceTest {
     fun `should not apply discount when discount percent is zero`() {
         // GIVEN - no discount configured (default)
         val basePrice = 100
-        val service = Offering(
-            id = serviceId,
-            companyId = companyId,
-            name = "Strzyżenie",
-            durationMinutes = 60,
-            price = basePrice
-        )
+        val service =
+            Offering(
+                id = serviceId,
+                companyId = companyId,
+                name = "Strzyżenie",
+                durationMinutes = 60,
+                price = basePrice,
+            )
 
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
-        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, employeeId) } returns false
         every {
-            workScheduleRepository.findByEmployeeIdAndDayOfWeek(
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(
+                companyId,
                 employeeId,
-                testDate.dayOfWeek
+                testDate.dayOfWeek,
             )
         } returns defaultScheduleEntry
         // WHEN
@@ -325,21 +352,23 @@ class AvailabilityServiceTest {
         val basePrice = 100
         val narrowWindowCompany =
             Company(id = companyId, name = "Test Salon", lastMinuteDiscountPercent = 30, lastMinuteDiscountHours = 1)
-        val service = Offering(
-            id = serviceId,
-            companyId = companyId,
-            name = "Strzyżenie",
-            durationMinutes = 60,
-            price = basePrice
-        )
+        val service =
+            Offering(
+                id = serviceId,
+                companyId = companyId,
+                name = "Strzyżenie",
+                durationMinutes = 60,
+                price = basePrice,
+            )
 
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(narrowWindowCompany)
-        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, employeeId) } returns false
         every {
-            workScheduleRepository.findByEmployeeIdAndDayOfWeek(
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(
+                companyId,
                 employeeId,
-                testDate.dayOfWeek
+                testDate.dayOfWeek,
             )
         } returns defaultScheduleEntry
         // WHEN - testDate is LocalDate.now().plusDays(1) so all slots start > 1 hour from now
@@ -361,20 +390,22 @@ class AvailabilityServiceTest {
         val service =
             Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 100)
         // Use a schedule that starts from NOW so we can reason about advance filtering
-        val nearSchedule = EmployeeWorkSchedule(
-            companyId = companyId,
-            employeeId = employeeId,
-            dayOfWeek = testDate.dayOfWeek,
-            startTime = LocalTime.of(9, 0),
-            endTime = LocalTime.of(17, 0)
-        )
+        val nearSchedule =
+            EmployeeWorkSchedule(
+                companyId = companyId,
+                employeeId = employeeId,
+                dayOfWeek = testDate.dayOfWeek,
+                startTime = LocalTime.of(9, 0),
+                endTime = LocalTime.of(17, 0),
+            )
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(advanceCompany)
-        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, employeeId) } returns false
         every {
-            workScheduleRepository.findByEmployeeIdAndDayOfWeek(
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(
+                companyId,
                 employeeId,
-                testDate.dayOfWeek
+                testDate.dayOfWeek,
             )
         } returns nearSchedule
         // WHEN - testDate is tomorrow; all slots start > 60 min from now so they should all be included
@@ -393,11 +424,12 @@ class AvailabilityServiceTest {
             Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(advanceCompany)
-        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, employeeId) } returns false
         every {
-            workScheduleRepository.findByEmployeeIdAndDayOfWeek(
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(
+                companyId,
                 employeeId,
-                testDate.dayOfWeek
+                testDate.dayOfWeek,
             )
         } returns defaultScheduleEntry
         // WHEN - testDate is tomorrow but advance requires 2 days ahead
@@ -414,14 +446,16 @@ class AvailabilityServiceTest {
             Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
-        every { assignmentRepository.existsByEmployeeId(employeeId) } returns true
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, employeeId) } returns true
         every { assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, serviceId) } returns false
 
         // WHEN & THEN
-        val ex = assertThrows<IllegalArgumentException> {
-            availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
-        }
+        val ex =
+            assertThrows<ApiException> {
+                availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+            }
         assertEquals("Ten pracownik nie wykonuje wybranej usługi", ex.message)
+        assertEquals(ErrorCode.EMPLOYEE_OFFERING_NOT_ASSIGNED, ex.code)
     }
 
     @Test
@@ -434,9 +468,92 @@ class AvailabilityServiceTest {
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
 
         // WHEN & THEN
-        val ex = assertThrows<IllegalArgumentException> {
-            availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
-        }
+        val ex =
+            assertThrows<ApiException> {
+                availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+            }
         assertEquals("Pracownik nie należy do firmy wybranej usługi", ex.message)
+        assertEquals(ErrorCode.EMPLOYEE_NOT_IN_COMPANY, ex.code)
+    }
+
+    @Test
+    fun `should reject an inactive offering like booking does`() {
+        val service =
+            Offering(
+                id = serviceId,
+                companyId = companyId,
+                name = "Strzyżenie",
+                durationMinutes = 60,
+                price = 100,
+                active = false,
+            )
+        every { serviceRepository.findById(serviceId) } returns Optional.of(service)
+
+        val ex =
+            assertThrows<ApiException> {
+                availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+            }
+
+        assertEquals(ErrorCode.OFFERING_UNAVAILABLE, ex.code)
+    }
+
+    @Test
+    fun `should read the work schedule and assignments of the offering's company only`() {
+        val otherCompanyId = 2L
+        val service =
+            Offering(
+                id = serviceId,
+                companyId = otherCompanyId,
+                name = "Strzyżenie",
+                durationMinutes = 60,
+                price = 100,
+            )
+        every { serviceRepository.findById(serviceId) } returns Optional.of(service)
+        every { companyRepository.findById(otherCompanyId) } returns
+            Optional.of(Company(id = otherCompanyId, name = "B"))
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(otherCompanyId, employeeId) } returns false
+        every {
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(
+                otherCompanyId,
+                employeeId,
+                testDate.dayOfWeek,
+            )
+        } returns null
+
+        val slots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+
+        assertTrue(slots.isEmpty(), "The schedule at company 1 must not be used for company 2")
+        verify(exactly = 0) {
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(companyId, any(), any())
+        }
+    }
+
+    @Test
+    fun `should report unknown offering with a stable error code`() {
+        every { serviceRepository.findById(serviceId) } returns Optional.empty()
+
+        val ex =
+            assertThrows<ApiException> {
+                availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+            }
+        assertEquals(ErrorCode.OFFERING_UNAVAILABLE, ex.code)
+    }
+
+    @Test
+    fun `should hide slots that already started according to the injected clock`() {
+        val service =
+            Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
+        every { serviceRepository.findById(serviceId) } returns Optional.of(service)
+        every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, employeeId) } returns false
+        every {
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(companyId, employeeId, testDate.dayOfWeek)
+        } returns defaultScheduleEntry
+        every { clock.instant() } returns testDate.atTime(12, 10).atZone(BUSINESS_ZONE).toInstant()
+
+        val slots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+
+        assertEquals(LocalTime.of(12, 30), slots.first().time)
+        assertEquals(LocalTime.of(16, 0), slots.last().time)
     }
 }

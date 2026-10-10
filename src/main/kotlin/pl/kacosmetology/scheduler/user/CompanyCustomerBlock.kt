@@ -7,18 +7,10 @@ import jakarta.persistence.*
 @Table(name = "company_customer_blocks")
 class CompanyCustomerBlock(
     id: Long? = null,
-
-    @Column(name = "company_id", nullable = false)
-    val companyId: Long,
-
-    @Column(name = "customer_id", nullable = false)
-    val customerId: Long,
-
-    @Column(name = "no_show_count", nullable = false)
-    var noShowCount: Int = 0,
-
-    @Column(nullable = false)
-    var blocked: Boolean = false
+    @Column(name = "company_id", nullable = false) val companyId: Long,
+    @Column(name = "customer_id", nullable = false) val customerId: Long,
+    @Column(name = "no_show_count", nullable = false) var noShowCount: Int = 0,
+    @Column(nullable = false) var blocked: Boolean = false,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

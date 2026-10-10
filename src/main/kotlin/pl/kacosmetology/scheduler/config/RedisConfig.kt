@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.config
 
+import java.time.Duration
 import org.springframework.cache.annotation.EnableCaching
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -10,7 +11,6 @@ import org.springframework.data.redis.serializer.RedisSerializationContext
 import org.springframework.data.redis.serializer.RedisSerializer
 import org.springframework.data.redis.serializer.StringRedisSerializer
 import org.springframework.scheduling.annotation.EnableScheduling
-import java.time.Duration
 
 @Configuration
 @EnableCaching
@@ -21,19 +21,21 @@ class RedisConfig {
     fun cacheManager(connectionFactory: RedisConnectionFactory): RedisCacheManager {
         val jsonSerializer = RedisSerializer.json()
 
-        val defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
-            .serializeKeysWith(
-                RedisSerializationContext.SerializationPair.fromSerializer(StringRedisSerializer())
-            )
-            .serializeValuesWith(
-                RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer)
-            )
-            .disableCachingNullValues()
-            .entryTtl(Duration.ofMinutes(10))
+        val defaultConfig =
+            RedisCacheConfiguration.defaultCacheConfig()
+                .serializeKeysWith(
+                    RedisSerializationContext.SerializationPair.fromSerializer(StringRedisSerializer()),
+                )
+                .serializeValuesWith(
+                    RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer),
+                )
+                .disableCachingNullValues()
+                .entryTtl(Duration.ofMinutes(10))
 
-        val cacheConfigs = mapOf(
-            "companyServices" to defaultConfig.entryTtl(Duration.ofMinutes(15))
-        )
+        val cacheConfigs =
+            mapOf(
+                "companyServices" to defaultConfig.entryTtl(Duration.ofMinutes(15)),
+            )
 
         return RedisCacheManager.builder(connectionFactory)
             .cacheDefaults(defaultConfig)

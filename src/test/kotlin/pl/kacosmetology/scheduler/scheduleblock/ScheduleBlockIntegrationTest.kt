@@ -1,11 +1,18 @@
 package pl.kacosmetology.scheduler.scheduleblock
 
 import com.ninjasquad.springmockk.MockkBean
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
@@ -31,42 +38,24 @@ import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
-import java.time.DayOfWeek
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
 class ScheduleBlockIntegrationTest {
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
-    @Autowired
-    private lateinit var objectMapper: ObjectMapper
-    @Autowired
-    private lateinit var jwtService: JwtService
-    @Autowired
-    private lateinit var userRepository: UserRepository
-    @Autowired
-    private lateinit var companyRepository: CompanyRepository
-    @Autowired
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired
-    private lateinit var scheduleBlockRepository: ScheduleBlockRepository
-    @Autowired
-    private lateinit var reservationRepository: ReservationRepository
-    @Autowired
-    private lateinit var serviceRepository: OfferingRepository
-    @Autowired
-    private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
+    @Autowired private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var objectMapper: ObjectMapper
+    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var companyRepository: CompanyRepository
+    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired private lateinit var scheduleBlockRepository: ScheduleBlockRepository
+    @Autowired private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var serviceRepository: OfferingRepository
+    @Autowired private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
     private lateinit var employee: User
     private lateinit var owner: User
@@ -90,12 +79,14 @@ class ScheduleBlockIntegrationTest {
         employee =
             userRepository.save(User(phoneNumber = "+48700800900", firstName = "Pracownik", lastName = "Testowy"))
         owner = userRepository.save(User(phoneNumber = "+48111222333", firstName = "Właściciel", lastName = "Testowy"))
-        val employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
-        )
-        val ownerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
-        )
+        val employeeEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
+            )
+        val ownerEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
+            )
 
         // Grafik pracownika: pracuje cały tydzień 9:00-17:00
         for (day in DayOfWeek.entries) {
@@ -105,8 +96,8 @@ class ScheduleBlockIntegrationTest {
                     employeeId = employee.id!!,
                     dayOfWeek = day,
                     startTime = LocalTime.of(9, 0),
-                    endTime = LocalTime.of(17, 0)
-                )
+                    endTime = LocalTime.of(17, 0),
+                ),
             )
         }
 
@@ -116,39 +107,45 @@ class ScheduleBlockIntegrationTest {
 
     @Test
     fun `POST schedule-blocks should create block and return 201`() {
-        val body = mapOf(
-            "startTime" to testDate.atTime(12, 0).toString(),
-            "endTime" to testDate.atTime(13, 0).toString(),
-            "reason" to "Przerwa obiadowa"
-        )
+        val body =
+            mapOf(
+                "startTime" to testDate.atTime(12, 0).toString(),
+                "endTime" to testDate.atTime(13, 0).toString(),
+                "reason" to "Przerwa obiadowa",
+            )
 
-        mockMvc.post("/api/schedule-blocks") {
-            header("Authorization", "Bearer $employeeToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isCreated() }
-            jsonPath("$.id") { exists() }
-            jsonPath("$.reason") { value("Przerwa obiadowa") }
-        }
+        mockMvc
+            .post("/api/schedule-blocks") {
+                header("Authorization", "Bearer $employeeToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isCreated() }
+                jsonPath("$.id") { exists() }
+                jsonPath("$.reason") { value("Przerwa obiadowa") }
+            }
 
         assertEquals(1, scheduleBlockRepository.findAll().size)
     }
 
     @Test
     fun `POST schedule-blocks should return 400 when startTime is in the past`() {
-        val body = mapOf(
-            "startTime" to LocalDateTime.now().minusHours(1).toString(),
-            "endTime" to LocalDateTime.now().plusHours(1).toString()
-        )
+        val body =
+            mapOf(
+                "startTime" to LocalDateTime.now().minusHours(1).toString(),
+                "endTime" to LocalDateTime.now().plusHours(1).toString(),
+            )
 
-        mockMvc.post("/api/schedule-blocks") {
-            header("Authorization", "Bearer $employeeToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isBadRequest() }
-        }
+        mockMvc
+            .post("/api/schedule-blocks") {
+                header("Authorization", "Bearer $employeeToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isBadRequest() }
+            }
     }
 
     @Test
@@ -159,71 +156,90 @@ class ScheduleBlockIntegrationTest {
                 companyId = companyId,
                 employeeId = employee.id!!,
                 startTime = testDate.atTime(12, 0),
-                endTime = testDate.atTime(13, 0)
+                endTime = testDate.atTime(13, 0),
+            ),
+        )
+
+        val body =
+            mapOf(
+                "startTime" to testDate.atTime(12, 30).toString(),
+                "endTime" to testDate.atTime(13, 30).toString(),
             )
-        )
 
-        val body = mapOf(
-            "startTime" to testDate.atTime(12, 30).toString(),
-            "endTime" to testDate.atTime(13, 30).toString()
-        )
-
-        mockMvc.post("/api/schedule-blocks") {
-            header("Authorization", "Bearer $employeeToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isConflict() }
-        }
+        mockMvc
+            .post("/api/schedule-blocks") {
+                header("Authorization", "Bearer $employeeToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isConflict() }
+            }
     }
 
     @Test
     fun `concurrent reservation and schedule block should persist exactly one busy interval`() {
-        val customer = userRepository.save(
-            User(phoneNumber = "+48600600600", firstName = "Klient", lastName = "Testowy")
-        )
+        val customer =
+            userRepository.save(
+                User(phoneNumber = "+48600600600", firstName = "Klient", lastName = "Testowy"),
+            )
         val customerToken = jwtService.generateCustomerToken(customer)
-        val offering = serviceRepository.save(
-            Offering(companyId = companyId, name = "Kolizja", durationMinutes = 60, price = 100)
-        )
+        val offering =
+            serviceRepository.save(
+                Offering(companyId = companyId, name = "Kolizja", durationMinutes = 60, price = 100),
+            )
         val startTime = testDate.atTime(12, 0)
         val endTime = startTime.plusHours(1)
-        val reservationBody = mapOf(
-            "employeeId" to employee.id!!,
-            "serviceId" to offering.id!!,
-            "startTime" to startTime.toString()
-        )
-        val blockBody = mapOf(
-            "employeeId" to employee.id!!,
-            "startTime" to startTime.toString(),
-            "endTime" to endTime.toString()
-        )
+        val reservationBody =
+            mapOf(
+                "employeeId" to employee.id!!,
+                "serviceId" to offering.id!!,
+                "startTime" to startTime.toString(),
+            )
+        val blockBody =
+            mapOf(
+                "employeeId" to employee.id!!,
+                "startTime" to startTime.toString(),
+                "endTime" to endTime.toString(),
+            )
         val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)
 
         try {
-            val reservationRequest = executor.submit<Int> {
-                start.await()
-                mockMvc.post("/api/reservations") {
-                    header("Authorization", "Bearer $customerToken")
-                    contentType = MediaType.APPLICATION_JSON
-                    content = objectMapper.writeValueAsString(reservationBody)
-                }.andReturn().response.status
-            }
-            val blockRequest = executor.submit<Int> {
-                start.await()
-                mockMvc.post("/api/schedule-blocks") {
-                    header("Authorization", "Bearer $ownerToken")
-                    contentType = MediaType.APPLICATION_JSON
-                    content = objectMapper.writeValueAsString(blockBody)
-                }.andReturn().response.status
-            }
+            val reservationRequest =
+                executor.submit<Int> {
+                    start.await()
+                    mockMvc
+                        .post("/api/reservations") {
+                            header("Authorization", "Bearer $customerToken")
+                            contentType = MediaType.APPLICATION_JSON
+                            content = objectMapper.writeValueAsString(reservationBody)
+                        }
+                        .andReturn()
+                        .response
+                        .status
+                }
+            val blockRequest =
+                executor.submit<Int> {
+                    start.await()
+                    mockMvc
+                        .post("/api/schedule-blocks") {
+                            header("Authorization", "Bearer $ownerToken")
+                            contentType = MediaType.APPLICATION_JSON
+                            content = objectMapper.writeValueAsString(blockBody)
+                        }
+                        .andReturn()
+                        .response
+                        .status
+                }
 
             start.countDown()
-            val statuses = listOf(
-                reservationRequest.get(10, TimeUnit.SECONDS),
-                blockRequest.get(10, TimeUnit.SECONDS)
-            ).sorted()
+            val statuses =
+                listOf(
+                        reservationRequest.get(10, TimeUnit.SECONDS),
+                        blockRequest.get(10, TimeUnit.SECONDS),
+                    )
+                    .sorted()
 
             assertEquals(listOf(201, 409), statuses)
             assertEquals(1L, reservationRepository.count() + scheduleBlockRepository.count())
@@ -234,68 +250,78 @@ class ScheduleBlockIntegrationTest {
 
     @Test
     fun `DELETE schedule-blocks should remove block and return 204`() {
-        val block = scheduleBlockRepository.save(
-            ScheduleBlock(
-                companyId = companyId,
-                employeeId = employee.id!!,
-                startTime = testDate.atTime(14, 0),
-                endTime = testDate.atTime(15, 0)
+        val block =
+            scheduleBlockRepository.save(
+                ScheduleBlock(
+                    companyId = companyId,
+                    employeeId = employee.id!!,
+                    startTime = testDate.atTime(14, 0),
+                    endTime = testDate.atTime(15, 0),
+                ),
             )
-        )
 
-        mockMvc.delete("/api/schedule-blocks/${block.id!!}") {
-            header("Authorization", "Bearer $employeeToken")
-        }.andExpect {
-            status { isNoContent() }
-        }
+        mockMvc
+            .delete("/api/schedule-blocks/${block.id!!}") {
+                header("Authorization", "Bearer $employeeToken")
+            }
+            .andExpect {
+                status { isNoContent() }
+            }
 
         assertTrue(scheduleBlockRepository.findAll().isEmpty())
     }
 
     @Test
-    fun `DELETE schedule-blocks should return 409 when trying to delete another employee block`() {
-        val otherEmployee = userRepository.save(
-            User(phoneNumber = "+48600100200", firstName = "Inny", lastName = "Pracownik")
-        )
-        companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = otherEmployee.id!!, role = "EMPLOYEE")
-        )
-        val block = scheduleBlockRepository.save(
-            ScheduleBlock(
-                companyId = companyId,
-                employeeId = otherEmployee.id!!,
-                startTime = testDate.atTime(10, 0),
-                endTime = testDate.atTime(11, 0)
+    fun `DELETE schedule-blocks should return 403 when trying to delete another employee block`() {
+        val otherEmployee =
+            userRepository.save(
+                User(phoneNumber = "+48600100200", firstName = "Inny", lastName = "Pracownik"),
             )
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = companyId, userId = otherEmployee.id!!, role = "EMPLOYEE"),
         )
+        val block =
+            scheduleBlockRepository.save(
+                ScheduleBlock(
+                    companyId = companyId,
+                    employeeId = otherEmployee.id!!,
+                    startTime = testDate.atTime(10, 0),
+                    endTime = testDate.atTime(11, 0),
+                ),
+            )
 
-        mockMvc.delete("/api/schedule-blocks/${block.id!!}") {
-            header("Authorization", "Bearer $employeeToken")
-        }.andExpect {
-            status { isConflict() }
-        }
+        mockMvc
+            .delete("/api/schedule-blocks/${block.id!!}") {
+                header("Authorization", "Bearer $employeeToken")
+            }
+            .andExpect {
+                status { isForbidden() }
+            }
     }
 
     @Test
     fun `DELETE schedule-blocks employee cannot delete own block from another company`() {
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = employee.id!!, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = employee.id!!, role = "EMPLOYEE"),
         )
-        val block = scheduleBlockRepository.save(
-            ScheduleBlock(
-                companyId = otherCompany.id!!,
-                employeeId = employee.id!!,
-                startTime = testDate.atTime(10, 0),
-                endTime = testDate.atTime(11, 0)
+        val block =
+            scheduleBlockRepository.save(
+                ScheduleBlock(
+                    companyId = otherCompany.id!!,
+                    employeeId = employee.id!!,
+                    startTime = testDate.atTime(10, 0),
+                    endTime = testDate.atTime(11, 0),
+                ),
             )
-        )
 
-        mockMvc.delete("/api/schedule-blocks/${block.id!!}") {
-            header("Authorization", "Bearer $employeeToken")
-        }.andExpect {
-            status { isConflict() }
-        }
+        mockMvc
+            .delete("/api/schedule-blocks/${block.id!!}") {
+                header("Authorization", "Bearer $employeeToken")
+            }
+            .andExpect {
+                status { isNotFound() }
+            }
 
         assertTrue(scheduleBlockRepository.existsById(block.id!!))
     }
@@ -308,8 +334,8 @@ class ScheduleBlockIntegrationTest {
                 employeeId = employee.id!!,
                 startTime = testDate.atTime(9, 0),
                 endTime = testDate.atTime(10, 0),
-                reason = "Spotkanie"
-            )
+                reason = "Spotkanie",
+            ),
         )
         scheduleBlockRepository.save(
             ScheduleBlock(
@@ -317,21 +343,23 @@ class ScheduleBlockIntegrationTest {
                 employeeId = employee.id!!,
                 startTime = testDate.atTime(14, 0),
                 endTime = testDate.atTime(15, 0),
-                reason = "Szkolenie"
-            )
+                reason = "Szkolenie",
+            ),
         )
 
         val start = testDate.atStartOfDay()
         val end = testDate.plusDays(1).atStartOfDay()
 
-        mockMvc.get("/api/schedule-blocks/employee") {
-            header("Authorization", "Bearer $employeeToken")
-            param("start", start.toString())
-            param("end", end.toString())
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(2) }
-        }
+        mockMvc
+            .get("/api/schedule-blocks/employee") {
+                header("Authorization", "Bearer $employeeToken")
+                param("start", start.toString())
+                param("end", end.toString())
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(2) }
+            }
     }
 
     @Test
@@ -342,19 +370,21 @@ class ScheduleBlockIntegrationTest {
                 employeeId = employee.id!!,
                 startTime = testDate.atStartOfDay().minusMinutes(30),
                 endTime = testDate.atStartOfDay().plusMinutes(30),
-                reason = "Dyżur"
-            )
+                reason = "Dyżur",
+            ),
         )
 
-        mockMvc.get("/api/schedule-blocks/employee") {
-            header("Authorization", "Bearer $employeeToken")
-            param("start", testDate.atStartOfDay().toString())
-            param("end", testDate.atTime(1, 0).toString())
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].reason") { value("Dyżur") }
-        }
+        mockMvc
+            .get("/api/schedule-blocks/employee") {
+                header("Authorization", "Bearer $employeeToken")
+                param("start", testDate.atStartOfDay().toString())
+                param("end", testDate.atTime(1, 0).toString())
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].reason") { value("Dyżur") }
+            }
     }
 
     @Test
@@ -365,60 +395,69 @@ class ScheduleBlockIntegrationTest {
                 companyId = companyId,
                 employeeId = employee.id!!,
                 startTime = testDate.atTime(10, 0),
-                endTime = testDate.atTime(11, 0)
+                endTime = testDate.atTime(11, 0),
+            ),
+        )
+
+        val service =
+            serviceRepository.save(
+                Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 80),
             )
-        )
 
-        val service = serviceRepository.save(
-            Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 80)
-        )
-
-        mockMvc.get("/api/availability") {
-            param("employeeId", employee.id!!.toString())
-            param("serviceId", service.id!!.toString())
-            param("date", testDate.toString())
-        }.andExpect {
-            status { isOk() }
-            // Slot 9:30 do 10:30 nachodzi na blokadę 10:00-11:00 -> nie powinien istnieć
-            jsonPath("$[?(@.time == '09:30:00')]") { doesNotExist() }
-            // Slot 10:00 do 11:00 pokrywa się z blokadą -> nie powinien istnieć
-            jsonPath("$[?(@.time == '10:00:00')]") { doesNotExist() }
-            // Slot 11:00 do 12:00 jest po blokadzie -> powinien istnieć
-            jsonPath("$[?(@.time == '11:00:00')]") { exists() }
-        }
+        mockMvc
+            .get("/api/availability") {
+                param("employeeId", employee.id!!.toString())
+                param("serviceId", service.id!!.toString())
+                param("date", testDate.toString())
+            }
+            .andExpect {
+                status { isOk() }
+                // Slot 9:30 do 10:30 nachodzi na blokadę 10:00-11:00 -> nie powinien istnieć
+                jsonPath("$[?(@.time == '09:30:00')]") { doesNotExist() }
+                // Slot 10:00 do 11:00 pokrywa się z blokadą -> nie powinien istnieć
+                jsonPath("$[?(@.time == '10:00:00')]") { doesNotExist() }
+                // Slot 11:00 do 12:00 jest po blokadzie -> powinien istnieć
+                jsonPath("$[?(@.time == '11:00:00')]") { exists() }
+            }
     }
 
     @Test
-    fun `POST schedule-blocks should return 403 without token`() {
-        val body = mapOf(
-            "startTime" to testDate.atTime(10, 0).toString(),
-            "endTime" to testDate.atTime(11, 0).toString()
-        )
+    fun `POST schedule-blocks should return 401 without token`() {
+        val body =
+            mapOf(
+                "startTime" to testDate.atTime(10, 0).toString(),
+                "endTime" to testDate.atTime(11, 0).toString(),
+            )
 
-        mockMvc.post("/api/schedule-blocks") {
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isForbidden() }
-        }
+        mockMvc
+            .post("/api/schedule-blocks") {
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isUnauthorized() }
+            }
     }
 
     @Test
     fun `POST schedule-blocks owner can create block for another employee by supplying employeeId`() {
-        val body = mapOf(
-            "startTime" to testDate.atTime(12, 0).toString(),
-            "endTime" to testDate.atTime(13, 0).toString(),
-            "reason" to "Przerwa pracownika",
-            "employeeId" to employee.id!!
-        )
+        val body =
+            mapOf(
+                "startTime" to testDate.atTime(12, 0).toString(),
+                "endTime" to testDate.atTime(13, 0).toString(),
+                "reason" to "Przerwa pracownika",
+                "employeeId" to employee.id!!,
+            )
 
-        mockMvc.post("/api/schedule-blocks") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isCreated() }
-        }
+        mockMvc
+            .post("/api/schedule-blocks") {
+                header("Authorization", "Bearer $ownerToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isCreated() }
+            }
 
         val blocks = scheduleBlockRepository.findAll()
         assertEquals(1, blocks.size)
@@ -428,25 +467,29 @@ class ScheduleBlockIntegrationTest {
     @Test
     fun `POST schedule-blocks owner receives 404 for employee from another company`() {
         val otherCompany = companyRepository.save(Company(name = "Obcy Salon POST"))
-        val otherEmployee = userRepository.save(
-            User(phoneNumber = "+48900100201", firstName = "Obcy", lastName = "Pracownik")
-        )
+        val otherEmployee =
+            userRepository.save(
+                User(phoneNumber = "+48900100201", firstName = "Obcy", lastName = "Pracownik"),
+            )
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE"),
         )
-        val body = mapOf(
-            "startTime" to testDate.atTime(12, 0).toString(),
-            "endTime" to testDate.atTime(13, 0).toString(),
-            "employeeId" to otherEmployee.id!!
-        )
+        val body =
+            mapOf(
+                "startTime" to testDate.atTime(12, 0).toString(),
+                "endTime" to testDate.atTime(13, 0).toString(),
+                "employeeId" to otherEmployee.id!!,
+            )
 
-        mockMvc.post("/api/schedule-blocks") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isNotFound() }
-        }
+        mockMvc
+            .post("/api/schedule-blocks") {
+                header("Authorization", "Bearer $ownerToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isNotFound() }
+            }
 
         assertTrue(scheduleBlockRepository.findAll().isEmpty())
     }
@@ -454,21 +497,24 @@ class ScheduleBlockIntegrationTest {
     @Test
     fun `GET schedule-blocks owner receives 404 for employee from another company`() {
         val otherCompany = companyRepository.save(Company(name = "Obcy Salon GET"))
-        val otherEmployee = userRepository.save(
-            User(phoneNumber = "+48900100202", firstName = "Obcy", lastName = "Pracownik")
-        )
+        val otherEmployee =
+            userRepository.save(
+                User(phoneNumber = "+48900100202", firstName = "Obcy", lastName = "Pracownik"),
+            )
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE"),
         )
 
-        mockMvc.get("/api/schedule-blocks/employee") {
-            header("Authorization", "Bearer $ownerToken")
-            param("employeeId", otherEmployee.id!!.toString())
-            param("start", testDate.atStartOfDay().toString())
-            param("end", testDate.plusDays(1).atStartOfDay().toString())
-        }.andExpect {
-            status { isNotFound() }
-        }
+        mockMvc
+            .get("/api/schedule-blocks/employee") {
+                header("Authorization", "Bearer $ownerToken")
+                param("employeeId", otherEmployee.id!!.toString())
+                param("start", testDate.atStartOfDay().toString())
+                param("end", testDate.plusDays(1).atStartOfDay().toString())
+            }
+            .andExpect {
+                status { isNotFound() }
+            }
     }
 
     @Test
@@ -476,49 +522,65 @@ class ScheduleBlockIntegrationTest {
         val otherCompany = companyRepository.save(Company(name = "Drugi Salon"))
         val otherCompanyId = otherCompany.id!!
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompanyId, userId = employee.id!!, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompanyId, userId = employee.id!!, role = "EMPLOYEE"),
         )
-        val otherOwnerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompanyId, userId = owner.id!!, role = "OWNER")
-        )
+        val otherOwnerEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = otherCompanyId, userId = owner.id!!, role = "OWNER"),
+            )
         val otherCompanyOwnerToken = jwtService.generateStaffToken(owner, otherOwnerEmployment)
         scheduleBlockRepository.save(
             ScheduleBlock(
                 companyId = companyId,
                 employeeId = employee.id!!,
                 startTime = testDate.atTime(10, 0),
-                endTime = testDate.atTime(11, 0)
+                endTime = testDate.atTime(11, 0),
+            ),
+        )
+        val otherOffering =
+            serviceRepository.save(
+                Offering(companyId = otherCompanyId, name = "Usługa drugiego salonu", durationMinutes = 60, price = 90),
             )
-        )
-        val otherOffering = serviceRepository.save(
-            Offering(companyId = otherCompanyId, name = "Usługa drugiego salonu", durationMinutes = 60, price = 90)
+        workScheduleRepository.save(
+            EmployeeWorkSchedule(
+                companyId = otherCompanyId,
+                employeeId = employee.id!!,
+                dayOfWeek = testDate.dayOfWeek,
+                startTime = LocalTime.of(9, 0),
+                endTime = LocalTime.of(17, 0),
+            ),
         )
 
-        mockMvc.get("/api/schedule-blocks/employee") {
-            header("Authorization", "Bearer $otherCompanyOwnerToken")
-            param("employeeId", employee.id!!.toString())
-            param("start", testDate.atStartOfDay().toString())
-            param("end", testDate.plusDays(1).atStartOfDay().toString())
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(0) }
-        }
+        mockMvc
+            .get("/api/schedule-blocks/employee") {
+                header("Authorization", "Bearer $otherCompanyOwnerToken")
+                param("employeeId", employee.id!!.toString())
+                param("start", testDate.atStartOfDay().toString())
+                param("end", testDate.plusDays(1).atStartOfDay().toString())
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(0) }
+            }
 
-        mockMvc.get("/api/availability") {
-            param("employeeId", employee.id!!.toString())
-            param("serviceId", otherOffering.id!!.toString())
-            param("date", testDate.toString())
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$[?(@.time == '10:00:00')]") { exists() }
-        }
+        mockMvc
+            .get("/api/availability") {
+                param("employeeId", employee.id!!.toString())
+                param("serviceId", otherOffering.id!!.toString())
+                param("date", testDate.toString())
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$[?(@.time == '10:00:00')]") { exists() }
+            }
     }
 
     @Test
     fun `database rejects schedule block for employee outside company`() {
-        val outsider = userRepository.save(
-            User(phoneNumber = "+48900100203", firstName = "Bez", lastName = "Firmy")
-        )
+        val outsider =
+            userRepository.save(
+                User(phoneNumber = "+48900100203", firstName = "Bez", lastName = "Firmy"),
+            )
 
         assertThrows<DataIntegrityViolationException> {
             scheduleBlockRepository.saveAndFlush(
@@ -526,8 +588,8 @@ class ScheduleBlockIntegrationTest {
                     companyId = companyId,
                     employeeId = outsider.id!!,
                     startTime = testDate.atTime(10, 0),
-                    endTime = testDate.atTime(11, 0)
-                )
+                    endTime = testDate.atTime(11, 0),
+                ),
             )
         }
     }
@@ -536,15 +598,15 @@ class ScheduleBlockIntegrationTest {
     fun `database allows overlapping blocks for shared employee in different companies`() {
         val otherCompany = companyRepository.save(Company(name = "Salon współdzielony"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = employee.id!!, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = employee.id!!, role = "EMPLOYEE"),
         )
         scheduleBlockRepository.saveAndFlush(
             ScheduleBlock(
                 companyId = companyId,
                 employeeId = employee.id!!,
                 startTime = testDate.atTime(10, 0),
-                endTime = testDate.atTime(11, 0)
-            )
+                endTime = testDate.atTime(11, 0),
+            ),
         )
 
         scheduleBlockRepository.saveAndFlush(
@@ -552,8 +614,8 @@ class ScheduleBlockIntegrationTest {
                 companyId = otherCompany.id!!,
                 employeeId = employee.id!!,
                 startTime = testDate.atTime(10, 0),
-                endTime = testDate.atTime(11, 0)
-            )
+                endTime = testDate.atTime(11, 0),
+            ),
         )
 
         assertEquals(2, scheduleBlockRepository.findAll().size)
@@ -561,20 +623,23 @@ class ScheduleBlockIntegrationTest {
 
     @Test
     fun `DELETE schedule-blocks owner can delete another employee block in their company`() {
-        val block = scheduleBlockRepository.save(
-            ScheduleBlock(
-                companyId = companyId,
-                employeeId = employee.id!!,
-                startTime = testDate.atTime(14, 0),
-                endTime = testDate.atTime(15, 0)
+        val block =
+            scheduleBlockRepository.save(
+                ScheduleBlock(
+                    companyId = companyId,
+                    employeeId = employee.id!!,
+                    startTime = testDate.atTime(14, 0),
+                    endTime = testDate.atTime(15, 0),
+                ),
             )
-        )
 
-        mockMvc.delete("/api/schedule-blocks/${block.id!!}") {
-            header("Authorization", "Bearer $ownerToken")
-        }.andExpect {
-            status { isNoContent() }
-        }
+        mockMvc
+            .delete("/api/schedule-blocks/${block.id!!}") {
+                header("Authorization", "Bearer $ownerToken")
+            }
+            .andExpect {
+                status { isNoContent() }
+            }
 
         assertTrue(scheduleBlockRepository.findAll().isEmpty())
     }
@@ -585,21 +650,24 @@ class ScheduleBlockIntegrationTest {
         val otherEmployee =
             userRepository.save(User(phoneNumber = "+48999888777", firstName = "Obcy", lastName = "Pracownik"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE"),
         )
-        val block = scheduleBlockRepository.save(
-            ScheduleBlock(
-                companyId = otherCompany.id!!,
-                employeeId = otherEmployee.id!!,
-                startTime = testDate.atTime(10, 0),
-                endTime = testDate.atTime(11, 0)
+        val block =
+            scheduleBlockRepository.save(
+                ScheduleBlock(
+                    companyId = otherCompany.id!!,
+                    employeeId = otherEmployee.id!!,
+                    startTime = testDate.atTime(10, 0),
+                    endTime = testDate.atTime(11, 0),
+                ),
             )
-        )
 
-        mockMvc.delete("/api/schedule-blocks/${block.id!!}") {
-            header("Authorization", "Bearer $ownerToken")
-        }.andExpect {
-            status { isConflict() }
-        }
+        mockMvc
+            .delete("/api/schedule-blocks/${block.id!!}") {
+                header("Authorization", "Bearer $ownerToken")
+            }
+            .andExpect {
+                status { isNotFound() }
+            }
     }
 }

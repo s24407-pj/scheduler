@@ -1,0 +1,5 @@
+# Formatting-only commits, skipped by `git blame` (GitHub applies this file automatically).
+# Locally: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: reformat with ktfmt
+7637901ad88da541409422a91f38e3c8167933e3

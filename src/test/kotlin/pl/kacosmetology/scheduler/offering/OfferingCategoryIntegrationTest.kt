@@ -28,35 +28,25 @@ import tools.jackson.databind.ObjectMapper
 @Import(TestcontainersConfiguration::class)
 class OfferingCategoryIntegrationTest {
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var mockMvc: MockMvc
 
-    @Autowired
-    private lateinit var objectMapper: ObjectMapper
+    @Autowired private lateinit var objectMapper: ObjectMapper
 
-    @Autowired
-    private lateinit var jwtService: JwtService
+    @Autowired private lateinit var jwtService: JwtService
 
-    @Autowired
-    private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: UserRepository
 
-    @Autowired
-    private lateinit var companyRepository: CompanyRepository
+    @Autowired private lateinit var companyRepository: CompanyRepository
 
-    @Autowired
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @Autowired
-    private lateinit var categoryRepository: OfferingCategoryRepository
+    @Autowired private lateinit var categoryRepository: OfferingCategoryRepository
 
-    @Autowired
-    private lateinit var offeringRepository: OfferingRepository
+    @Autowired private lateinit var offeringRepository: OfferingRepository
 
-    @Autowired
-    private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var reservationRepository: ReservationRepository
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
     private var companyId: Long = 0
     private var offeringId: Long = 0
@@ -76,20 +66,23 @@ class OfferingCategoryIntegrationTest {
         companyId = company.id!!
 
         val owner = userRepository.save(User(phoneNumber = "+48500500500", firstName = "Owner", lastName = "Cat"))
-        val ownerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
-        )
+        val ownerEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
+            )
         ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
 
         val employee = userRepository.save(User(phoneNumber = "+48600600600", firstName = "Emp", lastName = "Cat"))
-        val employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
-        )
+        val employeeEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
+            )
         employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
 
-        val offering = offeringRepository.save(
-            Offering(companyId = companyId, name = "Farbowanie", durationMinutes = 60, price = 150)
-        )
+        val offering =
+            offeringRepository.save(
+                Offering(companyId = companyId, name = "Farbowanie", durationMinutes = 60, price = 150),
+            )
         offeringId = offering.id!!
     }
 
@@ -97,15 +90,17 @@ class OfferingCategoryIntegrationTest {
     fun `POST api-offering-categories should return 201 for owner`() {
         val body = mapOf("name" to "Koloryzacja")
 
-        mockMvc.post("/api/offering-categories") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isCreated() }
-            jsonPath("$.id") { exists() }
-            jsonPath("$.name") { value("Koloryzacja") }
-        }
+        mockMvc
+            .post("/api/offering-categories") {
+                header("Authorization", "Bearer $ownerToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isCreated() }
+                jsonPath("$.id") { exists() }
+                jsonPath("$.name") { value("Koloryzacja") }
+            }
     }
 
     @Test
@@ -114,26 +109,30 @@ class OfferingCategoryIntegrationTest {
 
         val body = mapOf("name" to "Koloryzacja")
 
-        mockMvc.post("/api/offering-categories") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isConflict() }
-        }
+        mockMvc
+            .post("/api/offering-categories") {
+                header("Authorization", "Bearer $ownerToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isConflict() }
+            }
     }
 
     @Test
     fun `POST api-offering-categories should return 403 for employee`() {
         val body = mapOf("name" to "Strzyżenie")
 
-        mockMvc.post("/api/offering-categories") {
-            header("Authorization", "Bearer $employeeToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isForbidden() }
-        }
+        mockMvc
+            .post("/api/offering-categories") {
+                header("Authorization", "Bearer $employeeToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isForbidden() }
+            }
     }
 
     @Test
@@ -141,23 +140,27 @@ class OfferingCategoryIntegrationTest {
         categoryRepository.save(OfferingCategory(companyId = companyId, name = "Kategoria A"))
         categoryRepository.save(OfferingCategory(companyId = companyId, name = "Kategoria B"))
 
-        mockMvc.get("/api/offering-categories") {
-            header("Authorization", "Bearer $employeeToken")
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(2) }
-        }
+        mockMvc
+            .get("/api/offering-categories") {
+                header("Authorization", "Bearer $employeeToken")
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(2) }
+            }
     }
 
     @Test
     fun `DELETE api-offering-categories should return 204 for owner`() {
         val category = categoryRepository.save(OfferingCategory(companyId = companyId, name = "Do Usunięcia"))
 
-        mockMvc.delete("/api/offering-categories/${category.id!!}") {
-            header("Authorization", "Bearer $ownerToken")
-        }.andExpect {
-            status { isNoContent() }
-        }
+        mockMvc
+            .delete("/api/offering-categories/${category.id!!}") {
+                header("Authorization", "Bearer $ownerToken")
+            }
+            .andExpect {
+                status { isNoContent() }
+            }
     }
 
     @Test
@@ -170,8 +173,8 @@ class OfferingCategoryIntegrationTest {
                 name = "Farbowanie",
                 durationMinutes = 60,
                 price = 150,
-                categoryId = category.id!!
-            )
+                categoryId = category.id!!,
+            ),
         )
 
         // Populate the cache
@@ -181,9 +184,11 @@ class OfferingCategoryIntegrationTest {
         }
 
         // Delete the category
-        mockMvc.delete("/api/offering-categories/${category.id!!}") {
-            header("Authorization", "Bearer $ownerToken")
-        }.andExpect { status { isNoContent() } }
+        mockMvc
+            .delete("/api/offering-categories/${category.id!!}") {
+                header("Authorization", "Bearer $ownerToken")
+            }
+            .andExpect { status { isNoContent() } }
 
         // Cache must be evicted — public endpoint must return null categoryId
         mockMvc.get("/api/offerings/public/company/$companyId").andExpect {
@@ -203,11 +208,13 @@ class OfferingCategoryIntegrationTest {
         }
 
         // Assign category
-        mockMvc.patch("/api/offerings/$offeringId/category") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(mapOf("categoryId" to category.id!!))
-        }.andExpect { status { isNoContent() } }
+        mockMvc
+            .patch("/api/offerings/$offeringId/category") {
+                header("Authorization", "Bearer $ownerToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(mapOf("categoryId" to category.id!!))
+            }
+            .andExpect { status { isNoContent() } }
 
         // Cache must be evicted — public endpoint must return updated categoryId
         mockMvc.get("/api/offerings/public/company/$companyId").andExpect {
@@ -222,13 +229,15 @@ class OfferingCategoryIntegrationTest {
 
         val body = mapOf("categoryId" to category.id!!)
 
-        mockMvc.patch("/api/offerings/$offeringId/category") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isNoContent() }
-        }
+        mockMvc
+            .patch("/api/offerings/$offeringId/category") {
+                header("Authorization", "Bearer $ownerToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isNoContent() }
+            }
 
         val updated = offeringRepository.findById(offeringId).get()
         assertEquals(category.id!!, updated.categoryId)
@@ -244,19 +253,21 @@ class OfferingCategoryIntegrationTest {
                 name = "Farbowanie",
                 durationMinutes = 60,
                 price = 150,
-                categoryId = category.id!!
-            )
+                categoryId = category.id!!,
+            ),
         )
 
         val body = mapOf("categoryId" to null)
 
-        mockMvc.patch("/api/offerings/$offeringId/category") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isNoContent() }
-        }
+        mockMvc
+            .patch("/api/offerings/$offeringId/category") {
+                header("Authorization", "Bearer $ownerToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isNoContent() }
+            }
 
         val updated = offeringRepository.findById(offeringId).get()
         assertNull(updated.categoryId)
