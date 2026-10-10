@@ -34,6 +34,19 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
     )
     fun findOverlapping(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<Reservation>
 
+    /** Returns the active reservation exactly matching a booking request; used to make booking retries idempotent. */
+    @Query(
+        """
+        SELECT r FROM Reservation r
+        WHERE r.customerId = :customerId
+        AND r.employeeId = :employeeId
+        AND r.serviceId = :serviceId
+        AND r.startTime = :startTime
+        AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
+    """
+    )
+    fun findActiveBooking(customerId: Long, employeeId: Long, serviceId: Long, startTime: LocalDateTime): Reservation?
+
     fun findAllByCustomerIdOrderByStartTimeDesc(customerId: Long): List<Reservation>
 
     /** Returns an employee's schedule overlapping a given time range (for the staff dashboard). */

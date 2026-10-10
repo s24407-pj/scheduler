@@ -14,6 +14,7 @@ val mockkVersion = "1.14.11"
 val springmockkVersion = "5.0.1"
 val testcontainersVersion = "2.0.5"
 val awsSdkVersion = "2.55.5"
+val springdocVersion = "3.1.1"
 
 group = "pl.kacosmetology"
 version = "0.0.1-SNAPSHOT"
@@ -50,6 +51,9 @@ dependencies {
 
     // AWS SDK (for Cloudflare R2 — S3-compatible)
     implementation("software.amazon.awssdk:s3:$awsSdkVersion")
+
+    // OpenAPI spec + Swagger UI (enabled only in the dev profile)
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:$springdocVersion")
 
     // JWT
     implementation("io.jsonwebtoken:jjwt-api:$jjwtVersion")
@@ -92,6 +96,7 @@ allOpen {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    systemProperty("user.timezone", "Europe/Warsaw")
 }
 
 tasks.named<Jar>("jar") {

@@ -90,14 +90,14 @@ class OfferingManagementIntegrationTest {
     }
 
     @Test
-    fun `should reject offering creation request without JWT token (403)`() {
+    fun `should reject offering creation request without JWT token (401)`() {
         val request = OfferingRequest(name = "Masaż", durationMinutes = 60, price = 200)
 
         mockMvc.post("/api/offerings") {
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(request)
         }.andExpect {
-            status { isForbidden() }
+            status { isUnauthorized() }
         }
     }
 
@@ -118,7 +118,7 @@ class OfferingManagementIntegrationTest {
     }
 
     @Test
-    fun `employee of Company B cannot delete offering belonging to Company A (403)`() {
+    fun `employee of Company B cannot delete offering belonging to Company A (404)`() {
         val offeringOfCompanyA = offeringRepository.save(
             Offering(companyId = companyA_Id, name = "Złota Usługa", durationMinutes = 30, price = 500)
         )
@@ -128,7 +128,7 @@ class OfferingManagementIntegrationTest {
         mockMvc.delete("/api/offerings/${offeringOfCompanyA.id!!}") {
             header("Authorization", "Bearer $tokenB")
         }.andExpect {
-            status { isForbidden() }
+            status { isNotFound() }
         }
 
         val isStillInDb = offeringRepository.existsById(offeringOfCompanyA.id!!)
@@ -190,7 +190,7 @@ class OfferingManagementIntegrationTest {
     }
 
     @Test
-    fun `employee of Company B cannot activate offering belonging to Company A (403)`() {
+    fun `employee of Company B cannot activate offering belonging to Company A (404)`() {
         val inactive = offeringRepository.save(
             Offering(companyId = companyA_Id, name = "Stara", durationMinutes = 30, price = 50, active = false)
         )
@@ -199,7 +199,7 @@ class OfferingManagementIntegrationTest {
         mockMvc.patch("/api/offerings/${inactive.id!!}/activate") {
             header("Authorization", "Bearer $tokenB")
         }.andExpect {
-            status { isForbidden() }
+            status { isNotFound() }
         }
     }
 

@@ -187,12 +187,12 @@ class CustomerNotesIntegrationTest {
     }
 
     @Test
-    fun `unauthenticated PUT notes should return 403`() {
+    fun `unauthenticated PUT notes should return 401`() {
         mockMvc.put("/api/customers/${customer.id!!}/notes") {
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(mapOf("notes" to "Test"))
         }.andExpect {
-            status { isForbidden() }
+            status { isUnauthorized() }
         }
     }
 

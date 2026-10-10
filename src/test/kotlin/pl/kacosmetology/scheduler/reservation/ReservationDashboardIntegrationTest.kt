@@ -130,7 +130,8 @@ class ReservationDashboardIntegrationTest {
             param("end", rangeEnd.toString())
         }.andExpect {
             status { isBadRequest() }
-            jsonPath("$.message") { value("Invalid value for parameter 'start'") }
+            jsonPath("$.code") { value("INVALID_PARAMETER") }
+            jsonPath("$.detail") { value("Nieprawidłowa wartość parametru 'start'") }
         }
     }
 
@@ -238,8 +239,7 @@ class ReservationDashboardIntegrationTest {
             param("start", rangeStart.toString())
             param("end", rangeEnd.toString())
         }.andExpect {
-            // Spring Security returns 403 for unauthenticated requests when no auth entry point is configured
-            status { isForbidden() }
+            status { isUnauthorized() }
         }
     }
 }

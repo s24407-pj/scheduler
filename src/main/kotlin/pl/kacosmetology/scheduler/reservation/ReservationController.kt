@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.reservation
 import jakarta.validation.Valid
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
@@ -21,19 +22,21 @@ class ReservationController(
     private val reservationService: ReservationService
 ) {
 
-    /** Creates a new reservation for the authenticated customer. */
+    /**
+     * Creates a new reservation for the authenticated customer (201). Repeating an identical request returns the
+     * existing active reservation with 200 instead of failing as a conflict.
+     */
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
     fun createReservation(
         @Valid @RequestBody request: CreateReservationRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails
-    ): ReservationResponse {
+    ): ResponseEntity<ReservationResponse> {
         return reservationService.createReservation(
             customerId = userDetails.id,
             employeeId = request.employeeId,
             offeringId = request.serviceId,
             startTime = request.startTime
-        ).toResponse()
+        ).toResponseEntity()
     }
 
     /** Cancels the customer's own reservation. */
@@ -119,14 +122,16 @@ class ReservationController(
         reservationService.deleteReservation(id, companyId)
     }
 
-    /** Creates a reservation for a client by phone number. Requires OWNER or EMPLOYEE role. */
+    /**
+     * Creates a reservation for a client by phone number (201), or returns the identical existing active
+     * reservation with 200. Requires OWNER or EMPLOYEE role.
+     */
     @PostMapping("/staff")
-    @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun createReservationByStaff(
         @Valid @RequestBody request: StaffCreateReservationRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails
-    ): ReservationResponse {
+    ): ResponseEntity<ReservationResponse> {
         val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
         return reservationService.createReservationByStaff(
             employeeId = requireNotNull(request.employeeId) { "Pracownik jest wymagany" },
@@ -136,6 +141,9 @@ class ReservationController(
             customerFirstName = request.customerFirstName,
             customerLastName = request.customerLastName,
             requesterCompanyId = companyId
-        ).toResponse()
+        ).toResponseEntity()
     }
+
+    private fun BookingResult.toResponseEntity(): ResponseEntity<ReservationResponse> =
+        ResponseEntity.status(if (created) HttpStatus.CREATED else HttpStatus.OK).body(reservation.toResponse())
 }

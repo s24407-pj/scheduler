@@ -174,9 +174,9 @@ class CustomerListIntegrationTest {
     }
 
     @Test
-    fun `GET customers as unauthenticated user should return 403`() {
+    fun `GET customers as unauthenticated user should return 401`() {
         mockMvc.get("/api/customers").andExpect {
-            status { isForbidden() }
+            status { isUnauthorized() }
         }
     }
 

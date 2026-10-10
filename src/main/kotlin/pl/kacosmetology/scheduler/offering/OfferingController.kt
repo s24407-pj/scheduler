@@ -46,7 +46,7 @@ class OfferingController(
     ): OfferingResponse {
         val offering = findOfferingOrThrow(id)
         if (offering.companyId != userDetails.companyId) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak dostępu do tej usługi")
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Usługa nie istnieje")
         }
         return enrichWithImages(offering)
     }
@@ -77,7 +77,7 @@ class OfferingController(
         } catch (e: IllegalArgumentException) {
             throw ResponseStatusException(HttpStatus.NOT_FOUND, e.message)
         } catch (e: IllegalStateException) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, e.message)
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Usługa nie istnieje")
         }
     }
 
@@ -94,7 +94,7 @@ class OfferingController(
         } catch (e: IllegalArgumentException) {
             throw ResponseStatusException(HttpStatus.NOT_FOUND, e.message)
         } catch (e: IllegalStateException) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, e.message)
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Usługa nie istnieje")
         }
     }
 
@@ -111,7 +111,7 @@ class OfferingController(
         } catch (e: IllegalArgumentException) {
             throw ResponseStatusException(HttpStatus.NOT_FOUND, e.message)
         } catch (e: IllegalStateException) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, e.message)
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Usługa nie istnieje")
         }
     }
 
@@ -156,7 +156,7 @@ class OfferingController(
         } catch (e: IllegalArgumentException) {
             throw ResponseStatusException(HttpStatus.NOT_FOUND, e.message)
         } catch (e: IllegalStateException) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, e.message)
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Zdjęcie nie istnieje")
         }
     }
 

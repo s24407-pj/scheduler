@@ -155,7 +155,7 @@ class ReservationNoShowIntegrationTest {
     }
 
     @Test
-    fun `PATCH no-show by staff from different company should return 409`() {
+    fun `PATCH no-show by staff from different company should return 404`() {
         val reservation = saveReservation()
 
         // Staff from a different company
@@ -173,7 +173,7 @@ class ReservationNoShowIntegrationTest {
         mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
             header("Authorization", "Bearer $otherToken")
         }.andExpect {
-            status { isConflict() }
+            status { isNotFound() }
         }
 
         // Reservation status must be unchanged
@@ -182,7 +182,7 @@ class ReservationNoShowIntegrationTest {
     }
 
     @Test
-    fun `PATCH complete by staff from different company should return 409`() {
+    fun `PATCH complete by staff from different company should return 404`() {
         val reservation = saveReservation()
 
         val otherCompany = companyRepository.save(Company(name = "Inny Salon B"))
@@ -200,7 +200,7 @@ class ReservationNoShowIntegrationTest {
         mockMvc.patch("/api/reservations/${reservation.id!!}/complete") {
             header("Authorization", "Bearer $otherToken")
         }.andExpect {
-            status { isConflict() }
+            status { isNotFound() }
         }
 
         val unchanged = reservationRepository.findById(reservation.id!!).get()

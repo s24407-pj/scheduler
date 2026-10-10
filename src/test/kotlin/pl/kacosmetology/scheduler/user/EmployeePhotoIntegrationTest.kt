@@ -141,13 +141,13 @@ class EmployeePhotoIntegrationTest {
     }
 
     @Test
-    fun `POST photo - unauthenticated gets 403`() {
+    fun `POST photo - unauthenticated gets 401`() {
         val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
 
         mockMvc.perform(
             multipart("/api/employees/${employee.id!!}/photo").file(file)
         )
-            .andExpect(status().isForbidden)
+            .andExpect(status().isUnauthorized)
     }
 
     @Test

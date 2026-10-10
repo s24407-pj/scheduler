@@ -118,6 +118,37 @@ class ReservationStaffIntegrationTest {
     }
 
     @Test
+    fun `POST reservations-staff should return existing reservation with 200 when request is repeated`() {
+        val body = mapOf(
+            "employeeId" to employee.id!!,
+            "serviceId" to serviceId,
+            "startTime" to reservationTime.toString(),
+            "customerPhone" to "+48555444999",
+            "customerFirstName" to "Powtórny",
+            "customerLastName" to "Klient"
+        )
+
+        val firstId = mockMvc.post("/api/reservations/staff") {
+            header("Authorization", "Bearer $staffToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isCreated() }
+        }.andReturn().let { objectMapper.readTree(it.response.contentAsString).get("id").asLong() }
+
+        mockMvc.post("/api/reservations/staff") {
+            header("Authorization", "Bearer $staffToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(firstId) }
+        }
+
+        assertEquals(1, reservationRepository.findAll().size)
+    }
+
+    @Test
     fun `POST reservations-staff should create new client and reservation when phone is unknown`() {
         val newClientPhone = "+48666777888"
 
@@ -210,7 +241,7 @@ class ReservationStaffIntegrationTest {
     }
 
     @Test
-    fun `POST reservations-staff should return 403 without token`() {
+    fun `POST reservations-staff should return 401 without token`() {
         val body = mapOf(
             "employeeId" to employee.id!!,
             "serviceId" to serviceId,
@@ -222,7 +253,8 @@ class ReservationStaffIntegrationTest {
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(body)
         }.andExpect {
-            status { isForbidden() }
+            status { isUnauthorized() }
+            jsonPath("$.code") { value("UNAUTHORIZED") }
         }
     }
 

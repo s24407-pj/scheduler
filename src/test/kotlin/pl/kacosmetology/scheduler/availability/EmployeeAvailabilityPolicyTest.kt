@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
@@ -123,8 +125,9 @@ class EmployeeAvailabilityPolicyTest {
             ScheduleBlock(companyId = 1L, employeeId = employeeId, startTime = start, endTime = end)
         )
 
-        assertThrows(IllegalStateException::class.java) {
+        val exception = assertThrows(ApiException::class.java) {
             policy.assertAvailable(companyId, employeeId, start, end)
         }
+        assertEquals(ErrorCode.SLOT_UNAVAILABLE, exception.code)
     }
 }

@@ -79,7 +79,8 @@ class AvailabilityIntegrationTest {
             param("date", "bad-date")
         }.andExpect {
             status { isBadRequest() }
-            jsonPath("$.message") { value("Invalid value for parameter 'date'") }
+            jsonPath("$.code") { value("INVALID_PARAMETER") }
+            jsonPath("$.detail") { value("Nieprawidłowa wartość parametru 'date'") }
         }
     }
 

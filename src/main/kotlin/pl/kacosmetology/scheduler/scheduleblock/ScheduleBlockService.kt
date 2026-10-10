@@ -5,6 +5,8 @@ import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityConflictSource
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.ErrorCode
 import java.time.LocalDateTime
 
 /** Business logic for employee schedule blocks (breaks, personal unavailability). */
@@ -40,7 +42,7 @@ class ScheduleBlockService(
                 EmployeeAvailabilityConflictSource.RESERVATION -> "W tym czasie istnieje już rezerwacja"
                 EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK -> "W tym czasie istnieje już blokada"
             }
-            throw IllegalStateException(message)
+            throw ApiException(ErrorCode.SLOT_UNAVAILABLE, message)
         }
 
         return scheduleBlockRepository.save(
@@ -56,17 +58,17 @@ class ScheduleBlockService(
 
     /**
      * Deletes a schedule block.
-     * Both roles are restricted to [companyId]. OWNER may delete any block within that company,
-     * while EMPLOYEE may only delete their own block (verified by [requesterId]).
+     * Both roles are restricted to [companyId]; other companies' blocks are reported as not found.
+     * OWNER may delete any block within that company, while EMPLOYEE may only delete their own block
+     * (verified by [requesterId]).
      */
     @Transactional
     fun deleteBlock(blockId: Long, requesterId: Long, isOwner: Boolean, companyId: Long) {
-        val block = scheduleBlockRepository.findById(blockId)
-            .orElseThrow { NoSuchElementException("Blokada nie istnieje") }
+        val block = scheduleBlockRepository.findById(blockId).orElse(null)?.takeIf { it.companyId == companyId }
+            ?: throw ApiException(ErrorCode.SCHEDULE_BLOCK_NOT_FOUND, "Blokada nie istnieje")
 
-        if (block.companyId != companyId) throw IllegalStateException("Brak dostępu do tej blokady")
-        if (!isOwner) {
-            if (block.employeeId != requesterId) throw IllegalStateException("Nie możesz usunąć cudzej blokady")
+        if (!isOwner && block.employeeId != requesterId) {
+            throw ApiException(ErrorCode.ACCESS_DENIED, "Nie możesz usunąć cudzej blokady")
         }
 
         scheduleBlockRepository.delete(block)

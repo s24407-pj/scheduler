@@ -295,7 +295,7 @@ class AuthFlowIntegrationTest {
         companyEmployeeRepository.delete(employeeInA)
         mockMvc.get("/api/company/settings") {
             header("Authorization", "Bearer $employeeToken")
-        }.andExpect { status { isForbidden() } }
+        }.andExpect { status { isUnauthorized() } }
     }
 
     @Test

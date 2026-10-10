@@ -132,7 +132,7 @@ class OfferingImageIntegrationTest {
     }
 
     @Test
-    fun `POST image - unauthenticated gets 403`() {
+    fun `POST image - unauthenticated gets 401`() {
         val offering = offeringRepository.save(
             Offering(companyId = companyId, name = "Masaż", durationMinutes = 60, price = 120)
         )
@@ -141,7 +141,7 @@ class OfferingImageIntegrationTest {
         mockMvc.perform(
             multipart("/api/offerings/${offering.id!!}/image").file(file)
         )
-            .andExpect(status().isForbidden)
+            .andExpect(status().isUnauthorized)
     }
 
     @Test

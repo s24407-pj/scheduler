@@ -124,10 +124,10 @@ class UserIntegrationTest {
     }
 
     @Test
-    fun `should reject request without token (403)`() {
+    fun `should reject request without token (401)`() {
         mockMvc.get("/api/users/me")
             .andExpect {
-                status { isForbidden() } // Spring Security odrzuca nieautoryzowany ruch
+                status { isUnauthorized() }
             }
     }
 

@@ -171,9 +171,9 @@ class CompanySettingsIntegrationTest {
     }
 
     @Test
-    fun `GET api-company-employees should return 403 without token`() {
+    fun `GET api-company-employees should return 401 without token`() {
         mockMvc.get("/api/company/employees").andExpect {
-            status { isForbidden() }
+            status { isUnauthorized() }
         }
     }
 

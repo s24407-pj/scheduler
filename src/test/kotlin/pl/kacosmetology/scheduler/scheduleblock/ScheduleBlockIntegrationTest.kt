@@ -253,7 +253,7 @@ class ScheduleBlockIntegrationTest {
     }
 
     @Test
-    fun `DELETE schedule-blocks should return 409 when trying to delete another employee block`() {
+    fun `DELETE schedule-blocks should return 403 when trying to delete another employee block`() {
         val otherEmployee = userRepository.save(
             User(phoneNumber = "+48600100200", firstName = "Inny", lastName = "Pracownik")
         )
@@ -272,7 +272,7 @@ class ScheduleBlockIntegrationTest {
         mockMvc.delete("/api/schedule-blocks/${block.id!!}") {
             header("Authorization", "Bearer $employeeToken")
         }.andExpect {
-            status { isConflict() }
+            status { isForbidden() }
         }
     }
 
@@ -294,7 +294,7 @@ class ScheduleBlockIntegrationTest {
         mockMvc.delete("/api/schedule-blocks/${block.id!!}") {
             header("Authorization", "Bearer $employeeToken")
         }.andExpect {
-            status { isConflict() }
+            status { isNotFound() }
         }
 
         assertTrue(scheduleBlockRepository.existsById(block.id!!))
@@ -389,7 +389,7 @@ class ScheduleBlockIntegrationTest {
     }
 
     @Test
-    fun `POST schedule-blocks should return 403 without token`() {
+    fun `POST schedule-blocks should return 401 without token`() {
         val body = mapOf(
             "startTime" to testDate.atTime(10, 0).toString(),
             "endTime" to testDate.atTime(11, 0).toString()
@@ -399,7 +399,7 @@ class ScheduleBlockIntegrationTest {
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(body)
         }.andExpect {
-            status { isForbidden() }
+            status { isUnauthorized() }
         }
     }
 
@@ -599,7 +599,7 @@ class ScheduleBlockIntegrationTest {
         mockMvc.delete("/api/schedule-blocks/${block.id!!}") {
             header("Authorization", "Bearer $ownerToken")
         }.andExpect {
-            status { isConflict() }
+            status { isNotFound() }
         }
     }
 }

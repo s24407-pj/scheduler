@@ -16,6 +16,8 @@ import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityConflictSourc
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.ErrorCode
 import java.time.LocalDateTime
 import java.util.*
 
@@ -95,10 +97,11 @@ class ScheduleBlockServiceTest {
         )
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<ApiException> {
             scheduleBlockService.createBlock(employeeId, companyId, startTime, endTime, null)
         }
         assertEquals("W tym czasie istnieje już rezerwacja", exception.message)
+        assertEquals(ErrorCode.SLOT_UNAVAILABLE, exception.code)
         verify(exactly = 0) { scheduleBlockRepository.save(any()) }
     }
 
@@ -115,10 +118,11 @@ class ScheduleBlockServiceTest {
         )
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<ApiException> {
             scheduleBlockService.createBlock(employeeId, companyId, startTime, endTime, null)
         }
         assertEquals("W tym czasie istnieje już blokada", exception.message)
+        assertEquals(ErrorCode.SLOT_UNAVAILABLE, exception.code)
         verify(exactly = 0) { scheduleBlockRepository.save(any()) }
     }
 
@@ -191,9 +195,10 @@ class ScheduleBlockServiceTest {
         every { scheduleBlockRepository.findById(blockId) } returns Optional.empty()
 
         // WHEN & THEN
-        assertThrows<NoSuchElementException> {
+        val exception = assertThrows<ApiException> {
             scheduleBlockService.deleteBlock(blockId, requesterId = employeeId, isOwner = false, companyId = companyId)
         }
+        assertEquals(ErrorCode.SCHEDULE_BLOCK_NOT_FOUND, exception.code)
     }
 
     @Test
@@ -208,7 +213,7 @@ class ScheduleBlockServiceTest {
         )
         every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
 
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<ApiException> {
             scheduleBlockService.deleteBlock(
                 blockId,
                 requesterId = employeeId,
@@ -217,7 +222,8 @@ class ScheduleBlockServiceTest {
             )
         }
 
-        assertEquals("Brak dostępu do tej blokady", exception.message)
+        assertEquals("Blokada nie istnieje", exception.message)
+        assertEquals(ErrorCode.SCHEDULE_BLOCK_NOT_FOUND, exception.code)
         verify(exactly = 0) { scheduleBlockRepository.delete(any()) }
     }
 
@@ -236,10 +242,11 @@ class ScheduleBlockServiceTest {
         every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<ApiException> {
             scheduleBlockService.deleteBlock(blockId, requesterId = employeeId, isOwner = false, companyId = companyId)
         }
         assertEquals("Nie możesz usunąć cudzej blokady", exception.message)
+        assertEquals(ErrorCode.ACCESS_DENIED, exception.code)
         verify(exactly = 0) { scheduleBlockRepository.delete(any()) }
     }
 
@@ -280,10 +287,11 @@ class ScheduleBlockServiceTest {
         every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalStateException> {
+        val exception = assertThrows<ApiException> {
             scheduleBlockService.deleteBlock(blockId, requesterId = 1L, isOwner = true, companyId = companyId)
         }
-        assertEquals("Brak dostępu do tej blokady", exception.message)
+        assertEquals("Blokada nie istnieje", exception.message)
+        assertEquals(ErrorCode.SCHEDULE_BLOCK_NOT_FOUND, exception.code)
         verify(exactly = 0) { scheduleBlockRepository.delete(any()) }
     }
 }

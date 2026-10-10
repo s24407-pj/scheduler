@@ -1,6 +1,8 @@
 package pl.kacosmetology.scheduler.availability
 
 import org.springframework.stereotype.Service
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
 import java.time.LocalDateTime
@@ -64,7 +66,7 @@ class EmployeeAvailabilityPolicy(
         conflicts: List<EmployeeAvailabilityConflict>
     ): Boolean = conflicts.any { start.isBefore(it.endTime) && end.isAfter(it.startTime) }
 
-    /** Throws [IllegalStateException] when [start, end) is not available for [employeeId]. */
+    /** Throws [ApiException] with [ErrorCode.SLOT_UNAVAILABLE] when [start, end) is not available for [employeeId]. */
     fun assertAvailable(
         companyId: Long,
         employeeId: Long,
@@ -73,7 +75,7 @@ class EmployeeAvailabilityPolicy(
         message: String = "Ten termin jest już zajęty"
     ) {
         if (findFirstConflict(companyId, employeeId, start, end) != null) {
-            throw IllegalStateException(message)
+            throw ApiException(ErrorCode.SLOT_UNAVAILABLE, message)
         }
     }
 }

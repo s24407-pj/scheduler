@@ -10,6 +10,12 @@ logging:
     pl.kacosmetology.scheduler: DEBUG
     org.springframework.security: DEBUG
 
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
 management:
   endpoints:
     web:

@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Import
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
@@ -24,15 +25,18 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.dto.CreateReservationRequest
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
+import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
+import java.time.Instant
 import java.time.LocalDateTime
 
 @SpringBootTest
@@ -66,6 +70,9 @@ class CustomerReservationFlowIntegrationTest {
 
     @Autowired
     private lateinit var scheduleBlockRepository: ScheduleBlockRepository
+
+    @Autowired
+    private lateinit var jwtService: JwtService
 
     @MockkBean
     private lateinit var smsSender: SmsSender
@@ -245,10 +252,98 @@ class CustomerReservationFlowIntegrationTest {
             content = objectMapper.writeValueAsString(createReservationReq)
         }.andExpect {
             status { isConflict() }
+            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+            jsonPath("$.status") { value(409) }
+            jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
+            jsonPath("$.detail") { value("Ten termin jest już zajęty") }
+            jsonPath("$.instance") { value("/api/reservations") }
         }
 
         assertEquals(0, reservationRepository.findAll().size)
     }
+
+    @Test
+    fun `repeating an identical booking request should return the existing reservation with 200`() {
+        val token = customerToken("+48555333444")
+        val body = objectMapper.writeValueAsString(
+            CreateReservationRequest(employeeId = employeeId, serviceId = serviceId, startTime = tomorrowAt(11))
+        )
+
+        val firstId = mockMvc.post("/api/reservations") {
+            header("Authorization", "Bearer $token")
+            contentType = MediaType.APPLICATION_JSON
+            content = body
+        }.andExpect {
+            status { isCreated() }
+        }.andReturn().let { objectMapper.readTree(it.response.contentAsString).get("id").asLong() }
+
+        mockMvc.post("/api/reservations") {
+            header("Authorization", "Bearer $token")
+            contentType = MediaType.APPLICATION_JSON
+            content = body
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(firstId) }
+        }
+
+        assertEquals(1, reservationRepository.findAll().size)
+    }
+
+    @Test
+    fun `booking a local time skipped by the daylight saving change should return 400`() {
+        val token = customerToken("+48555333555")
+        val transition = generateSequence(BUSINESS_ZONE.rules.nextTransition(Instant.now())) {
+            BUSINESS_ZONE.rules.nextTransition(it.instant)
+        }.first { it.isGap }
+
+        mockMvc.post("/api/reservations") {
+            header("Authorization", "Bearer $token")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                CreateReservationRequest(
+                    employeeId = employeeId,
+                    serviceId = serviceId,
+                    startTime = transition.dateTimeBefore.plusMinutes(30)
+                )
+            )
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_LOCAL_TIME") }
+        }
+
+        assertEquals(0, reservationRepository.findAll().size)
+    }
+
+    @Test
+    fun `cancelling another customer's reservation should return 404`() {
+        val ownerToken = customerToken("+48555333666")
+        val reservationId = mockMvc.post("/api/reservations") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                CreateReservationRequest(employeeId = employeeId, serviceId = serviceId, startTime = tomorrowAt(12))
+            )
+        }.andExpect {
+            status { isCreated() }
+        }.andReturn().let { objectMapper.readTree(it.response.contentAsString).get("id").asLong() }
+
+        mockMvc.patch("/api/reservations/$reservationId/cancel") {
+            header("Authorization", "Bearer ${customerToken("+48555333777")}")
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("RESERVATION_NOT_FOUND") }
+        }
+
+        assertEquals(ReservationStatus.PENDING, reservationRepository.findById(reservationId).get().status)
+    }
+
+    private fun customerToken(phone: String): String =
+        jwtService.generateCustomerToken(
+            userRepository.save(User(phoneNumber = phone, firstName = "Klient", lastName = "Testowy"))
+        )
+
+    private fun tomorrowAt(hour: Int): LocalDateTime =
+        LocalDateTime.now(BUSINESS_ZONE).plusDays(1).withHour(hour).withMinute(0).withSecond(0).withNano(0)
 
     @Test
     fun `customer reservation should return 400 when employee belongs to another company`() {

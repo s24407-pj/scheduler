@@ -12,11 +12,16 @@ import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
+import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
+import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -43,6 +48,9 @@ class AvailabilityServiceTest {
     @MockK
     private lateinit var employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
 
+    @MockK
+    private lateinit var clock: Clock
+
     @InjectMockKs
     private lateinit var availabilityService: AvailabilityService
 
@@ -63,6 +71,8 @@ class AvailabilityServiceTest {
 
     @BeforeEach
     fun setupAvailabilityPolicy() {
+        every { clock.instant() } answers { Instant.now() }
+        every { clock.zone } returns BUSINESS_ZONE
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(any(), any()) } returns true
         every { employeeAvailabilityPolicy.findConflicts(any(), employeeId, any(), any()) } returns emptyList()
         every { employeeAvailabilityPolicy.overlapsAny(any(), any(), any()) } answers {
@@ -418,10 +428,11 @@ class AvailabilityServiceTest {
         every { assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, serviceId) } returns false
 
         // WHEN & THEN
-        val ex = assertThrows<IllegalArgumentException> {
+        val ex = assertThrows<ApiException> {
             availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
         }
         assertEquals("Ten pracownik nie wykonuje wybranej usługi", ex.message)
+        assertEquals(ErrorCode.EMPLOYEE_OFFERING_NOT_ASSIGNED, ex.code)
     }
 
     @Test
@@ -434,9 +445,38 @@ class AvailabilityServiceTest {
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
 
         // WHEN & THEN
-        val ex = assertThrows<IllegalArgumentException> {
+        val ex = assertThrows<ApiException> {
             availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
         }
         assertEquals("Pracownik nie należy do firmy wybranej usługi", ex.message)
+        assertEquals(ErrorCode.EMPLOYEE_NOT_IN_COMPANY, ex.code)
+    }
+
+    @Test
+    fun `should report unknown offering with a stable error code`() {
+        every { serviceRepository.findById(serviceId) } returns Optional.empty()
+
+        val ex = assertThrows<ApiException> {
+            availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+        }
+        assertEquals(ErrorCode.OFFERING_UNAVAILABLE, ex.code)
+    }
+
+    @Test
+    fun `should hide slots that already started according to the injected clock`() {
+        val service =
+            Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
+        every { serviceRepository.findById(serviceId) } returns Optional.of(service)
+        every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
+        every { assignmentRepository.existsByEmployeeId(employeeId) } returns false
+        every {
+            workScheduleRepository.findByEmployeeIdAndDayOfWeek(employeeId, testDate.dayOfWeek)
+        } returns defaultScheduleEntry
+        every { clock.instant() } returns testDate.atTime(12, 10).atZone(BUSINESS_ZONE).toInstant()
+
+        val slots = availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
+
+        assertEquals(LocalTime.of(12, 30), slots.first().time)
+        assertEquals(LocalTime.of(16, 0), slots.last().time)
     }
 }
