@@ -36,7 +36,7 @@ curl -sf http://localhost:8080/actuator/health
 
 Dev accounts: owner `gabinet@kacosmetology.pl` / `admin123`, employee `pracownik@kacosmetology.pl` / `employee123`. Seed data has no work schedules, so availability is empty until one is set. Details: [docs/development.md](./docs/development.md).
 
-JDK 25 is pinned in `mise.toml` (`mise install` once; mise switches to it inside the repo). Testcontainers and `docker compose` use rootless Podman via `DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock`, exported in `~/.zshrc`; non-interactive shells need `zsh -ic '...'` to pick up both. Distrobox is no longer required.
+JDK 25 and lefthook are pinned in `mise.toml` (`mise install && lefthook install` once; mise switches to the JDK inside the repo). The lefthook pre-commit hook runs `spotlessApply` on commits that stage Kotlin files and re-stages the result. Testcontainers and `docker compose` use rootless Podman via `DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock`, exported in `~/.zshrc`; non-interactive shells need `zsh -ic '...'` to pick up both. Distrobox is no longer required.
 
 ## Project Overview
 

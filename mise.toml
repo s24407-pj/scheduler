@@ -1,2 +1,3 @@
 [tools]
 java = "temurin-25"
+lefthook = "2.1.9"
