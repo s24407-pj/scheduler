@@ -54,7 +54,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 ├── offering/ # Offering catalog, categories, images
 ├── reservation/ # Booking lifecycle
 ├── scheduleblock/ # Employee time blocks (breaks, unavailability)
-├── security/ # JWT filter, CustomUserDetails, CustomUserDetailsService
+├── security/ # JWT filter, SessionStore, CustomUserDetails, CustomUserDetailsService
 ├── user/ # Profiles, customers (block/unblock, notes), employee photos
 └── workschedule/ # Employee weekly work schedules
 ```
@@ -74,6 +74,8 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 - **Layering:** Controller → Service → Repository. No cross-module service calls; modules communicate through IDs. `EmployeeAvailabilityPolicy` is the shared exception.
 - **Company scoping:** staff JWTs carry exactly one `employmentId`, `companyId`, and role (`ROLE_OWNER`/`ROLE_EMPLOYEE`). Every staff operation must verify the target belongs to `userDetails.companyId`. Customer JWTs carry only `ROLE_CUSTOMER`.
+- **Sessions:** issue tokens only through `JwtService`, which registers the `jti` in `SessionStore` (Redis). A token whose session is gone is rejected, so logout and `logout-all` take effect immediately ([ADR-0009](./docs/adr/0009-revocable-sessions.md)).
+- **Client IP:** use `request.remoteAddr` for rate limiting; never parse `X-Forwarded-For` by hand (Tomcat applies it only for `TRUSTED_PROXIES`).
 - **Double booking:** any code that creates reservations or schedule blocks must take the `company_employees` row lock (`findByCompanyIdAndUserIdForUpdate`) before checking overlap. `@Version` does not prevent double booking.
 - **Reservation status:** `PENDING` means booked; `CONFIRMED` is unused. Active = not `CANCELLED`/`NO_SHOW`.
 - **Time:** API date-times are Europe/Warsaw local time without offset. Get "now" from the injected `Clock` bean (`LocalDateTime.now(clock)`); never call `now()` without it or hardcode `ZoneId.of(...)`.

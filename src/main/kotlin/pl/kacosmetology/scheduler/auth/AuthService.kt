@@ -13,7 +13,9 @@ import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.SessionStore
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import java.security.SecureRandom
@@ -29,13 +31,30 @@ class AuthService(
     private val companyEmployeeRepository: CompanyEmployeeRepository,
     private val companyRepository: CompanyRepository,
     private val loginRateLimiter: LoginRateLimiter,
-    private val otpVerificationRateLimiter: OtpVerificationRateLimiter
+    private val otpVerificationRateLimiter: OtpVerificationRateLimiter,
+    private val otpRequestRateLimiter: OtpRequestRateLimiter,
+    private val sessionStore: SessionStore
 ) {
+
+    companion object {
+        private const val INVALID_CREDENTIALS_MESSAGE = "Nieprawidłowy email lub hasło"
+    }
 
     private val secureRandom = SecureRandom()
 
-    /** Generates a 6-digit OTP code, stores it in Redis with TTL and sends it via SMS. */
-    fun requestCode(request: RequestCodeRequest) {
+    /** Compared against when the account is unknown or has no password, so every failed login costs one bcrypt check. */
+    private val dummyPasswordHash: String by lazy {
+        requireNotNull(passwordEncoder.encode("dummy-password-for-timing-equalization"))
+    }
+
+    /**
+     * Generates a 6-digit OTP code, stores it in Redis with TTL and sends it via SMS.
+     * Throws [RateLimitExceededException] if [clientIp] or the phone number exceeded its request limit.
+     */
+    fun requestCode(request: RequestCodeRequest, clientIp: String) {
+        if (!otpRequestRateLimiter.checkAndIncrement(clientIp)) {
+            throw RateLimitExceededException()
+        }
         if (!otpStore.checkAndIncrementRateLimit(request.phoneNumber)) {
             throw RateLimitExceededException()
         }
@@ -99,14 +118,14 @@ class AuthService(
             throw RateLimitExceededException()
         }
         val user = userRepository.findByEmail(request.email)
-            ?: throw IllegalArgumentException("Nieprawidłowy email lub hasło")
-
-        if (user.passwordHash == null) {
-            throw IllegalArgumentException("To konto obsługuje tylko logowanie SMS")
+        val passwordHash = user?.passwordHash
+        if (user == null || passwordHash == null) {
+            passwordEncoder.matches(request.password, dummyPasswordHash)
+            throw IllegalArgumentException(INVALID_CREDENTIALS_MESSAGE)
         }
 
-        if (!passwordEncoder.matches(request.password, user.passwordHash)) {
-            throw IllegalArgumentException("Nieprawidłowy email lub hasło")
+        if (!passwordEncoder.matches(request.password, passwordHash)) {
+            throw IllegalArgumentException(INVALID_CREDENTIALS_MESSAGE)
         }
 
         val userId = requireNotNull(user.id) { "Persisted staff user must have an ID" }
@@ -142,5 +161,16 @@ class AuthService(
             token = jwtService.generateStaffToken(user, selected),
             employments = emptyList()
         )
+    }
+
+    /** Revokes the session of the token that authenticated [userDetails]. */
+    fun logout(userDetails: CustomUserDetails) {
+        val sessionId = checkNotNull(userDetails.sessionId) { "Authenticated principal has no session" }
+        sessionStore.revoke(sessionId, userDetails.id)
+    }
+
+    /** Revokes every session of the user behind [userDetails], on all devices and employments. */
+    fun logoutAll(userDetails: CustomUserDetails) {
+        sessionStore.revokeAll(userDetails.id)
     }
 }

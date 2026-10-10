@@ -3,6 +3,7 @@
 | Document | Read it when you... |
 | -------- | ------------------- |
 | [development.md](./development.md) | set up the project, configure it, use seed data, or write tests |
+| [deployment.md](./deployment.md) | deploy to the VPS (Dokploy + Cloudflare): client IP, origin lockdown, production compose |
 | [architecture.md](./architecture.md) | need the module map, auth, authorization, notifications, caching, storage, or schema overview |
 | [reservations.md](./reservations.md) | touch booking, cancellation, status changes, pricing, or concurrency |
 | [availability.md](./availability.md) | touch slot calculation, work schedules, schedule blocks, offering assignments, or company settings |

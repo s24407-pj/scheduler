@@ -6,13 +6,20 @@ import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
 import pl.kacosmetology.scheduler.user.User
 
-/** Extended UserDetails holding the domain [User] and an optional, exact staff employment scope. */
+/**
+ * Extended UserDetails holding the domain [User], an optional, exact staff employment scope, and the
+ * [sessionId] of the token that authenticated the request.
+ */
 class CustomUserDetails(
     val user: User,
     val companyId: Long?,
     private val authorities: Collection<GrantedAuthority>,
-    val employmentId: Long? = null
+    val employmentId: Long? = null,
+    val sessionId: String? = null
 ) : UserDetails {
+
+    /** Returns a copy bound to the session of the authenticating token. */
+    fun withSession(sessionId: String) = CustomUserDetails(user, companyId, authorities, employmentId, sessionId)
 
     /** Persisted domain user identifier required by authenticated principals. */
     val id: Long get() = requireNotNull(user.id) { "Authenticated user must have a persisted ID" }

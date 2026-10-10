@@ -8,7 +8,10 @@ import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import io.jsonwebtoken.Jwts
+import io.jsonwebtoken.security.Keys
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
@@ -33,6 +36,7 @@ import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
+import java.util.Date
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -65,6 +69,9 @@ class AuthFlowIntegrationTest {
 
     @Autowired
     private lateinit var passwordEncoder: PasswordEncoder
+
+    @Value($$"${jwt.secret}")
+    private lateinit var jwtSecret: String
 
     // Zastępujemy prawdziwy serwis sztucznym (żeby nie sypało logami ani nie wysyłało prawdziwych SMS)
     @MockkBean
@@ -533,24 +540,113 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
-    fun `verify-code should return 429 after ten requests from forwarded client IP`() {
-        val forwardedIp = "203.0.113.10"
+    fun `verify-code IP limit should ignore spoofed X-Forwarded-For from untrusted peer`() {
         repeat(10) { attempt ->
             val phoneNumber = "+4860000${attempt.toString().padStart(4, '0')}"
             mockMvc.post("/api/auth/verify-code") {
-                header("X-Forwarded-For", "$forwardedIp, 10.0.0.1")
+                header("X-Forwarded-For", "203.0.113.$attempt")
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, "123456"))
             }.andExpect { status { isBadRequest() } }
         }
 
         mockMvc.post("/api/auth/verify-code") {
-            header("X-Forwarded-For", "$forwardedIp, 10.0.0.1")
+            header("X-Forwarded-For", "203.0.113.99")
             contentType = MediaType.APPLICATION_JSON
             content = objectMapper.writeValueAsString(VerifyCodeRequest("+48699999999", "123456"))
         }.andExpect { status { isTooManyRequests() } }
 
-        assertEquals("11", redisTemplate.opsForValue().get("rate:otp-verify:$forwardedIp"))
+        assertEquals("11", redisTemplate.opsForValue().get("rate:otp-verify:127.0.0.1"))
+    }
+
+    @Test
+    fun `request-code should return 429 after ten requests from one IP for different numbers`() {
+        repeat(10) { attempt ->
+            mockMvc.post("/api/auth/request-code") {
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(
+                    RequestCodeRequest("+4861000${attempt.toString().padStart(4, '0')}")
+                )
+            }.andExpect { status { isOk() } }
+        }
+
+        mockMvc.post("/api/auth/request-code") {
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(RequestCodeRequest("+48619999999"))
+        }.andExpect { status { isTooManyRequests() } }
+
+        Assertions.assertNull(redisTemplate.opsForValue().get("otp:+48619999999"))
+    }
+
+    @Test
+    fun `logout should revoke only the token used for the request`() {
+        val customer = userRepository.save(User(phoneNumber = "+48500100200", firstName = "Jan", lastName = "Nowak"))
+        val token = jwtService.generateCustomerToken(customer)
+        val otherDeviceToken = jwtService.generateCustomerToken(customer)
+
+        mockMvc.get("/api/users/me") { header("Authorization", "Bearer $token") }
+            .andExpect { status { isOk() } }
+
+        mockMvc.post("/api/auth/logout") { header("Authorization", "Bearer $token") }
+            .andExpect { status { isNoContent() } }
+
+        mockMvc.get("/api/users/me") { header("Authorization", "Bearer $token") }
+            .andExpect { status { isUnauthorized() } }
+        mockMvc.post("/api/auth/logout") { header("Authorization", "Bearer $token") }
+            .andExpect { status { isUnauthorized() } }
+        mockMvc.get("/api/users/me") { header("Authorization", "Bearer $otherDeviceToken") }
+            .andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `logout-all should revoke every session of the user`() {
+        val rawPassword = "securePassword1"
+        val company = companyRepository.save(Company(name = "Logout Salon"))
+        val owner = userRepository.save(
+            User(
+                phoneNumber = "+48500300400",
+                firstName = "Ola",
+                lastName = "Owner",
+                email = "logout@salon.pl",
+                passwordHash = passwordEncoder.encode(rawPassword)
+            )
+        )
+        companyEmployeeRepository.save(CompanyEmployee(companyId = company.id!!, userId = owner.id!!, role = "OWNER"))
+        val tokens = List(2) {
+            val result = mockMvc.post("/api/auth/login-staff") {
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(StaffLoginRequest("logout@salon.pl", rawPassword))
+            }.andExpect { status { isOk() } }.andReturn()
+            objectMapper.readTree(result.response.contentAsString)["token"].asString()
+        }
+
+        mockMvc.post("/api/auth/logout-all") { header("Authorization", "Bearer ${tokens[0]}") }
+            .andExpect { status { isNoContent() } }
+
+        tokens.forEach { token ->
+            mockMvc.get("/api/company/settings") { header("Authorization", "Bearer $token") }
+                .andExpect { status { isUnauthorized() } }
+        }
+    }
+
+    @Test
+    fun `logout without token should return 401`() {
+        mockMvc.post("/api/auth/logout").andExpect { status { isUnauthorized() } }
+    }
+
+    @Test
+    fun `validly signed token without session id should be rejected`() {
+        val customer = userRepository.save(User(phoneNumber = "+48500500600", firstName = "Jan", lastName = "Nowak"))
+        val tokenWithoutSession = Jwts.builder()
+            .claims(mapOf("role" to "customer"))
+            .subject(customer.phoneNumber)
+            .issuedAt(Date())
+            .expiration(Date(System.currentTimeMillis() + 60_000))
+            .signWith(Keys.hmacShaKeyFor(jwtSecret.toByteArray()))
+            .compact()
+
+        mockMvc.get("/api/users/me") { header("Authorization", "Bearer $tokenWithoutSession") }
+            .andExpect { status { isUnauthorized() } }
     }
 
     private fun loginForEmployment(password: String, employmentId: Long): String {

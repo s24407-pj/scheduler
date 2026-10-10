@@ -97,6 +97,7 @@ allOpen {
 tasks.withType<Test> {
     useJUnitPlatform()
     systemProperty("user.timezone", "Europe/Warsaw")
+    systemProperty("spring.profiles.active", "test")
 }
 
 tasks.named<Jar>("jar") {

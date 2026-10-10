@@ -80,12 +80,14 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/scheduler_db` | Set by Compose to the `db` container |
 | `DB_USERNAME`, `DB_PASSWORD` | `postgres` / `password` | Database credentials (Compose also passes them as `SPRING_DATASOURCE_USERNAME/PASSWORD`) |
 | `REDIS_HOST`, `REDIS_PORT` | `localhost` / `6379` | Redis (Compose sets `SPRING_DATA_REDIS_HOST/PORT` instead) |
-| `JWT_SECRET`, `JWT_EXPIRATION_MS` | dev secret / 24 h | Token signing; **must** be replaced in production |
+| `JWT_SECRET`, `JWT_EXPIRATION_MS` | dev secret / 24 h | Token signing and session lifetime. Startup fails if the secret is under 32 bytes, or is the dev default outside the `dev`/`test` profiles |
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed origins |
 | `OTP_TTL_MINUTES` | 5 | OTP lifetime |
 | `OTP_MAX_ATTEMPTS`, `OTP_RATE_WINDOW_MINUTES` | 3 / 5 | OTP requests per phone per window |
 | `OTP_VERIFICATION_MAX_ATTEMPTS` | 3 | Failed attempts per code |
 | `OTP_VERIFICATION_IP_MAX_ATTEMPTS`, `OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES` | 10 / 5 | Verifications per IP per window |
+| `OTP_REQUEST_IP_MAX_ATTEMPTS`, `OTP_REQUEST_IP_RATE_WINDOW_MINUTES` | 10 / 15 | OTP send requests per IP per window |
+| `TRUSTED_PROXIES` | empty | Regex of reverse-proxy IPs whose `X-Forwarded-For` is trusted for the client IP; empty trusts none |
 | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` | 10 / 1 | Staff logins per IP per window (not passed through by Compose; edit `docker-compose.yml` to override) |
 | `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | endpoint and bucket preset, keys empty | Image storage. Without keys the app starts but uploads fail. |
 | `TZ` | `Europe/Warsaw` in Compose | Container OS zone; the app sets its JVM default zone to Europe/Warsaw regardless |
@@ -94,6 +96,7 @@ Profiles:
 
 - `dev` (`application-dev.yaml`): SQL logging, DEBUG for the app and Spring Security, extra actuator endpoints, seed data, Swagger UI.
 - `prod` (`application-prod.yaml`): INFO/WARN logging, no SQL logging.
+- `test`: set by Gradle for every test run; allows the dev `JWT_SECRET` default.
 
 ## Testing
 

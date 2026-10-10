@@ -67,7 +67,11 @@ class SecurityConfig(
                         "/actuator/metrics/**",
                         "/actuator/info"
                     ).permitAll()
-                    .requestMatchers("/api/auth/**").permitAll()
+                    .requestMatchers(
+                        "/api/auth/request-code",
+                        "/api/auth/verify-code",
+                        "/api/auth/login-staff"
+                    ).permitAll()
                     .requestMatchers("/api/availability").permitAll()
                     .requestMatchers("/api/offerings/public/**").permitAll()
                     .requestMatchers("/api/company/public/**").permitAll()

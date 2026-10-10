@@ -15,7 +15,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 ├── offering/          # Offering catalog, categories, images (R2)
 ├── reservation/       # Booking lifecycle
 ├── scheduleblock/     # Employee time blocks (breaks, unavailability)
-├── security/          # JWT filter, CustomUserDetails, CustomUserDetailsService
+├── security/          # JWT filter, SessionStore, secret check, CustomUserDetails, CustomUserDetailsService
 ├── user/              # Profiles, customers (block/unblock, notes), employee photos
 └── workschedule/      # Weekly working hours per employee
 ```
@@ -31,18 +31,33 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 A staff user with several employments who omits `employmentId` gets status `EMPLOYMENT_SELECTION_REQUIRED` and an `employments` list (`employmentId`, `companyId`, `companyName`, `role`); the client repeats the request with the selected `employmentId`.
 
-`JwtService.generateCustomerToken()` and `generateStaffToken()` build the tokens. `CustomUserDetails` exposes `id` (user ID), and for staff `companyId` and one authority (`ROLE_OWNER` or `ROLE_EMPLOYEE`). Customers get `ROLE_CUSTOMER`.
+`JwtService.generateCustomerToken()` and `generateStaffToken()` build the tokens. `CustomUserDetails` exposes `id` (user ID), `sessionId`, and for staff `companyId` and one authority (`ROLE_OWNER` or `ROLE_EMPLOYEE`). Customers get `ROLE_CUSTOMER`.
+
+### Sessions and logout
+
+Every token is HS256-signed and carries a session ID in `jti` ([ADR-0009](./adr/0009-revocable-sessions.md)). `SessionStore` registers it in Redis as `session:<jti>` → user ID with the token's TTL (`JWT_EXPIRATION_MS`) and indexes it in `user-sessions:<userId>`. On every request `JwtAuthenticationFilter` parses the token once, reloads the user (and for staff the employment, rejecting a changed role or company), and accepts the token only if its session still exists for that user. Tokens without `jti` are rejected.
+
+- `POST /api/auth/logout` deletes the current session (204).
+- `POST /api/auth/logout-all` deletes every session of the user, on all devices and employments (204).
+
+The token format and claims are unchanged, so frontends that decode the JWT payload keep working. Flushing Redis logs everyone out.
+
+### Secret and login hardening
+
+- `JwtSecretValidator` stops startup when `JWT_SECRET` is shorter than 32 bytes, or equals the public development default while neither the `dev` nor the `test` profile is active. Gradle runs tests with the `test` profile.
+- Staff login returns the same message ("Nieprawidłowy email lub hasło") for an unknown email, an SMS-only account without a password, and a wrong password, and runs one bcrypt comparison in each case so response time does not reveal which.
 
 ### Rate limiting (Redis)
 
 | Limiter | Redis key | Limit (default) | Config |
 | ------- | --------- | --------------- | ------ |
 | OTP requests per phone | `rate:sms:<phone>` | 3 per 5 min | `OTP_MAX_ATTEMPTS`, `OTP_RATE_WINDOW_MINUTES` |
+| OTP requests per client IP | `rate:otp-request:<ip>` | 10 per 15 min | `OTP_REQUEST_IP_MAX_ATTEMPTS`, `OTP_REQUEST_IP_RATE_WINDOW_MINUTES` |
 | OTP failed attempts per code | stored with `otp:<phone>` | 3 | `OTP_VERIFICATION_MAX_ATTEMPTS` |
-| OTP verification per client IP | `OtpVerificationRateLimiter` | 10 per 5 min | `OTP_VERIFICATION_IP_MAX_ATTEMPTS`, `OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES` |
+| OTP verification per client IP | `rate:otp-verify:<ip>` | 10 per 5 min | `OTP_VERIFICATION_IP_MAX_ATTEMPTS`, `OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES` |
 | Staff login per client IP | `rate:login:<ip>` | 10 per 1 min | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` |
 
-OTP codes live under `otp:<phone>` with TTL `OTP_TTL_MINUTES`. A Lua script verifies and consumes a correct code atomically and keeps the TTL after failed attempts. Client IP comes from the first `X-Forwarded-For` value, falling back to `remoteAddr`. Exceeding a limit returns 429.
+OTP codes live under `otp:<phone>` with TTL `OTP_TTL_MINUTES`. A Lua script verifies and consumes a correct code atomically and keeps the TTL after failed attempts. Client IP is `request.remoteAddr`. With `server.forward-headers-strategy: native`, Tomcat replaces it with the `X-Forwarded-For` client only when the direct peer matches the `TRUSTED_PROXIES` regex; the default (empty) trusts no proxy, so a client-supplied header cannot bypass the limits. Behind a reverse proxy, set `TRUSTED_PROXIES` to the proxy's address, otherwise every client shares the proxy's limit. For Dokploy behind Cloudflare, see [deployment.md](./deployment.md#client-ip-for-rate-limiting). Exceeding a limit returns 429.
 
 ## Authorization and company isolation
 

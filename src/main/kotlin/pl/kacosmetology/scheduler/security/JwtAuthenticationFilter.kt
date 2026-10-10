@@ -10,13 +10,15 @@ import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 
 /**
- * Intercepts every HTTP request to extract and validate the JWT token
- * from the Authorization header. Sets the SecurityContext if valid.
+ * Intercepts every HTTP request to extract and validate the JWT token from the Authorization header.
+ * Sets the SecurityContext only if the token is valid, its session is still active in [SessionStore],
+ * and its scope matches the current user and employment.
  */
 @Component
 class JwtAuthenticationFilter(
     private val jwtService: JwtService,
-    private val userDetailsService: CustomUserDetailsService
+    private val userDetailsService: CustomUserDetailsService,
+    private val sessionStore: SessionStore
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -31,22 +33,20 @@ class JwtAuthenticationFilter(
             return
         }
 
-        val jwt = authHeader.substring(7)
-
-        val userIdentifier = try {
-            jwtService.extractUsername(jwt)
+        val claims = try {
+            jwtService.parse(authHeader.substring(7))
         } catch (_: Exception) {
             null
         }
 
-        if (userIdentifier != null && SecurityContextHolder.getContext().authentication == null) {
+        if (claims != null && SecurityContextHolder.getContext().authentication == null) {
             val userDetails = try {
-                loadScopedUserDetails(jwt, userIdentifier)
+                loadScopedUserDetails(claims)
             } catch (_: Exception) {
                 null
             }
 
-            if (userDetails != null && jwtService.isTokenValid(jwt, userDetails)) {
+            if (userDetails != null) {
                 val authToken = UsernamePasswordAuthenticationToken(
                     userDetails, null, userDetails.authorities
                 )
@@ -59,22 +59,27 @@ class JwtAuthenticationFilter(
         filterChain.doFilter(request, response)
     }
 
-    private fun loadScopedUserDetails(jwt: String, username: String): CustomUserDetails? {
-        val role = jwtService.extractRole(jwt) ?: return null
-        val companyId = jwtService.extractCompanyId(jwt)
-        val employmentId = jwtService.extractEmploymentId(jwt)
+    private fun loadScopedUserDetails(claims: TokenClaims): CustomUserDetails? {
+        val sessionId = claims.sessionId ?: return null
+        val role = claims.role ?: return null
 
-        if (role == "customer") {
-            if (companyId != null || employmentId != null) return null
-            return userDetailsService.loadUserByUsername(username) as CustomUserDetails
+        val details = if (role == "customer") {
+            if (claims.companyId != null || claims.employmentId != null) return null
+            userDetailsService.loadUserByUsername(claims.username) as CustomUserDetails
+        } else {
+            if (role !in setOf("owner", "employee") || claims.companyId == null || claims.employmentId == null) {
+                return null
+            }
+            val staff = userDetailsService.loadStaffByEmployment(claims.username, claims.employmentId)
+            val currentRole = staff.authorities.singleOrNull()?.authority
+                ?.removePrefix("ROLE_")?.lowercase()
+            if (staff.companyId != claims.companyId || staff.employmentId != claims.employmentId || currentRole != role) {
+                return null
+            }
+            staff
         }
-        if (role !in setOf("owner", "employee") || companyId == null || employmentId == null) return null
 
-        val details = userDetailsService.loadStaffByEmployment(username, employmentId)
-        val currentRole = details.authorities.singleOrNull()?.authority
-            ?.removePrefix("ROLE_")?.lowercase()
-        return details.takeIf {
-            it.companyId == companyId && it.employmentId == employmentId && currentRole == role
-        }
+        if (!sessionStore.isActive(sessionId, details.id)) return null
+        return details.withSession(sessionId)
     }
 }

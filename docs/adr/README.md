@@ -18,3 +18,4 @@ To add one, copy the structure of an existing ADR, use the next number, and add 
 | [0006](./0006-booking-idempotency.md) | Booking idempotency | Accepted |
 | [0007](./0007-single-instance-deployment.md) | Single-instance deployment | Accepted |
 | [0008](./0008-whole-zloty-pricing.md) | Whole-złoty pricing | Accepted |
+| [0009](./0009-revocable-sessions.md) | Revocable sessions behind JWTs | Accepted — implemented |

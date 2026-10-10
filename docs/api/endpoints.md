@@ -10,9 +10,11 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| POST | `/api/auth/request-code` | Public | Sends OTP to phone; rate-limited |
+| POST | `/api/auth/request-code` | Public | Sends OTP to phone; rate-limited per phone and IP |
 | POST | `/api/auth/verify-code` | Public | Returns customer JWT; rate-limited per code and IP |
 | POST | `/api/auth/login-staff` | Public | `email`, `password`, optional `employmentId`; rate-limited per IP |
+| POST | `/api/auth/logout` | Authenticated | Revokes the session of the calling token; 204 |
+| POST | `/api/auth/logout-all` | Authenticated | Revokes every session of the caller; 204 |
 
 ## Availability — `AvailabilityController`
 
