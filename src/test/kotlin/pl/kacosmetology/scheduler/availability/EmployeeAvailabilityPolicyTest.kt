@@ -49,7 +49,7 @@ class EmployeeAvailabilityPolicyTest {
 
     @Test
     fun `findConflicts should include overlapping active reservation`() {
-        every { reservationRepository.findOverlapping(employeeId, start, end) } returns listOf(
+        every { reservationRepository.findOverlapping(companyId, employeeId, start, end) } returns listOf(
             Reservation(
                 companyId = 1L,
                 customerId = 2L,
@@ -71,7 +71,7 @@ class EmployeeAvailabilityPolicyTest {
 
     @Test
     fun `findFirstConflict should return null when cancelled and no-show reservations are ignored by repository`() {
-        every { reservationRepository.findOverlapping(employeeId, start, end) } returns emptyList()
+        every { reservationRepository.findOverlapping(companyId, employeeId, start, end) } returns emptyList()
         every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end) } returns emptyList()
 
         assertNull(policy.findFirstConflict(companyId, employeeId, start, end))
@@ -79,7 +79,7 @@ class EmployeeAvailabilityPolicyTest {
 
     @Test
     fun `findConflicts should include overlapping schedule block`() {
-        every { reservationRepository.findOverlapping(employeeId, start, end) } returns emptyList()
+        every { reservationRepository.findOverlapping(companyId, employeeId, start, end) } returns emptyList()
         every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end) } returns listOf(
             ScheduleBlock(
                 companyId = 1L,
@@ -97,7 +97,7 @@ class EmployeeAvailabilityPolicyTest {
 
     @Test
     fun `findFirstConflict should prefer reservation over schedule block`() {
-        every { reservationRepository.findOverlapping(employeeId, start, end) } returns listOf(
+        every { reservationRepository.findOverlapping(companyId, employeeId, start, end) } returns listOf(
             Reservation(
                 companyId = 1L,
                 customerId = 2L,
@@ -120,7 +120,7 @@ class EmployeeAvailabilityPolicyTest {
 
     @Test
     fun `assertAvailable should throw when any conflict exists`() {
-        every { reservationRepository.findOverlapping(employeeId, start, end) } returns emptyList()
+        every { reservationRepository.findOverlapping(companyId, employeeId, start, end) } returns emptyList()
         every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end) } returns listOf(
             ScheduleBlock(companyId = 1L, employeeId = employeeId, startTime = start, endTime = end)
         )

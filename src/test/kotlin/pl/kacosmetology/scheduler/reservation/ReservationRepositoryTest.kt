@@ -34,6 +34,7 @@ class ReservationRepositoryTest {
     @Autowired
     private lateinit var serviceRepository: OfferingRepository
 
+    private var companyId: Long = 0
     private var employeeId: Long = 0
     private val baseTime: LocalDateTime = LocalDateTime.of(2024, 5, 20, 12, 0) // 12:00
 
@@ -41,6 +42,7 @@ class ReservationRepositoryTest {
     fun setup() {
         // Musimy stworzyć pełne środowisko dla bazy (ze względu na klucze obce)
         val company = companyRepository.save(Company(name = "Salon Testowy"))
+        companyId = company.id!!
 
         val employee = userRepository.save(User(phoneNumber = "+48111", firstName = "Pracownik", lastName = "Testowy"))
         employeeId = employee.id!!
@@ -71,7 +73,7 @@ class ReservationRepositoryTest {
     @Test
     fun `should return true when new slot exactly overlaps with existing one`() {
         // Próbujemy zarezerwować od 12:00 do 13:00
-        val isOverlapping = reservationRepository.existsOverlapping(employeeId, baseTime, baseTime.plusHours(1))
+        val isOverlapping = reservationRepository.existsOverlapping(companyId, employeeId, baseTime, baseTime.plusHours(1))
         assertTrue(isOverlapping, "Terminy idealnie się pokrywają")
     }
 
@@ -79,7 +81,7 @@ class ReservationRepositoryTest {
     fun `should return true when new slot starts during existing one`() {
         // Próbujemy zarezerwować od 12:30 do 13:30
         val isOverlapping =
-            reservationRepository.existsOverlapping(employeeId, baseTime.plusMinutes(30), baseTime.plusMinutes(90))
+            reservationRepository.existsOverlapping(companyId, employeeId, baseTime.plusMinutes(30), baseTime.plusMinutes(90))
         assertTrue(isOverlapping, "Nowy termin nachodzi na koniec starego")
     }
 
@@ -87,7 +89,7 @@ class ReservationRepositoryTest {
     fun `should return true when new slot ends during existing one`() {
         // Próbujemy zarezerwować od 11:30 do 12:30
         val isOverlapping =
-            reservationRepository.existsOverlapping(employeeId, baseTime.minusMinutes(30), baseTime.plusMinutes(30))
+            reservationRepository.existsOverlapping(companyId, employeeId, baseTime.minusMinutes(30), baseTime.plusMinutes(30))
         assertTrue(isOverlapping, "Nowy termin nachodzi na początek starego")
     }
 
@@ -95,7 +97,7 @@ class ReservationRepositoryTest {
     fun `should return false when slot is right after existing one`() {
         // Próbujemy zarezerwować od 13:00 do 14:00
         val isOverlapping =
-            reservationRepository.existsOverlapping(employeeId, baseTime.plusHours(1), baseTime.plusHours(2))
+            reservationRepository.existsOverlapping(companyId, employeeId, baseTime.plusHours(1), baseTime.plusHours(2))
         assertFalse(isOverlapping, "Terminy stykają się, ale nie nakładają (dozwolone)")
     }
 
@@ -107,14 +109,25 @@ class ReservationRepositoryTest {
         reservationRepository.save(reservation)
 
         // Próbujemy zarezerwować ten sam termin: 12:00 - 13:00
-        val isOverlapping = reservationRepository.existsOverlapping(employeeId, baseTime, baseTime.plusHours(1))
+        val isOverlapping = reservationRepository.existsOverlapping(companyId, employeeId, baseTime, baseTime.plusHours(1))
 
         assertFalse(isOverlapping, "Termin powinien być wolny, ponieważ poprzednia rezerwacja została anulowana")
     }
 
     @Test
+    fun `existsOverlapping should ignore the same employee's reservations at another company`() {
+        val otherCompanyId = companyRepository.save(Company(name = "Inny Salon")).id!!
+
+        val isOverlapping =
+            reservationRepository.existsOverlapping(otherCompanyId, employeeId, baseTime, baseTime.plusHours(1))
+
+        assertFalse(isOverlapping, "Rezerwacja w innej firmie nie blokuje terminu")
+    }
+
+    @Test
     fun `findEmployeeSchedule should return reservations overlapping range start`() {
         val reservations = reservationRepository.findEmployeeSchedule(
+            companyId,
             employeeId,
             baseTime.plusMinutes(30),
             baseTime.plusHours(2)

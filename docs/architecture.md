@@ -107,6 +107,6 @@ PostgreSQL, schema managed by Flyway (`src/main/resources/db/migration/`). `V1__
 | `company_customer_blocks` | Per-company no-show count and block flag |
 | `offerings`, `offering_categories`, `offering_images` | Catalog |
 | `employee_offerings` | Which offerings an employee performs |
-| `employee_work_schedules` | Weekly hours per employee and day of week |
+| `employee_work_schedules` | Weekly hours per (company, employee) and day of week |
 | `schedule_blocks` | Employee unavailability; GiST exclusion constraint against overlaps |
 | `reservations` | Bookings with price snapshot, `version`, `reminder_sent`; GiST exclusion constraint against overlapping active bookings |

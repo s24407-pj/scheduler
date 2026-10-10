@@ -40,7 +40,7 @@ class WorkScheduleServiceTest {
             )
         )
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
-        every { workScheduleRepository.deleteAllByEmployeeId(employeeId) } returns Unit
+        every { workScheduleRepository.deleteAllByCompanyIdAndEmployeeId(companyId, employeeId) } returns Unit
         every { workScheduleRepository.flush() } returns Unit
         every { workScheduleRepository.saveAll(any<List<EmployeeWorkSchedule>>()) } answers {
             firstArg<List<EmployeeWorkSchedule>>()
@@ -49,7 +49,7 @@ class WorkScheduleServiceTest {
         val result = workScheduleService.setSchedule(companyId, employeeId, request)
 
         assertEquals(2, result.size)
-        verify(exactly = 1) { workScheduleRepository.deleteAllByEmployeeId(employeeId) }
+        verify(exactly = 1) { workScheduleRepository.deleteAllByCompanyIdAndEmployeeId(companyId, employeeId) }
         verify(exactly = 1) { workScheduleRepository.saveAll(any<List<EmployeeWorkSchedule>>()) }
     }
 
@@ -57,21 +57,21 @@ class WorkScheduleServiceTest {
     fun `setSchedule with empty entries should clear schedule`() {
         val request = SetWeeklyScheduleRequest(entries = emptyList())
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
-        every { workScheduleRepository.deleteAllByEmployeeId(employeeId) } returns Unit
+        every { workScheduleRepository.deleteAllByCompanyIdAndEmployeeId(companyId, employeeId) } returns Unit
         every { workScheduleRepository.flush() } returns Unit
         every { workScheduleRepository.saveAll(any<List<EmployeeWorkSchedule>>()) } returns emptyList()
 
         val result = workScheduleService.setSchedule(companyId, employeeId, request)
 
         assertTrue(result.isEmpty())
-        verify(exactly = 1) { workScheduleRepository.deleteAllByEmployeeId(employeeId) }
+        verify(exactly = 1) { workScheduleRepository.deleteAllByCompanyIdAndEmployeeId(companyId, employeeId) }
     }
 
     @Test
     fun `setSchedule with null entries should clear schedule`() {
         val request = SetWeeklyScheduleRequest(entries = null)
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
-        every { workScheduleRepository.deleteAllByEmployeeId(employeeId) } returns Unit
+        every { workScheduleRepository.deleteAllByCompanyIdAndEmployeeId(companyId, employeeId) } returns Unit
         every { workScheduleRepository.flush() } returns Unit
         every { workScheduleRepository.saveAll(any<List<EmployeeWorkSchedule>>()) } returns emptyList()
 
@@ -94,7 +94,7 @@ class WorkScheduleServiceTest {
             workScheduleService.setSchedule(companyId, employeeId, request)
         }
         assertEquals("Grafik zawiera zduplikowane dni tygodnia", ex.message)
-        verify(exactly = 0) { workScheduleRepository.deleteAllByEmployeeId(any()) }
+        verify(exactly = 0) { workScheduleRepository.deleteAllByCompanyIdAndEmployeeId(any(), any()) }
     }
 
     @Test
@@ -109,7 +109,7 @@ class WorkScheduleServiceTest {
         assertThrows<IllegalArgumentException> {
             workScheduleService.setSchedule(companyId, employeeId, request)
         }
-        verify(exactly = 0) { workScheduleRepository.deleteAllByEmployeeId(any()) }
+        verify(exactly = 0) { workScheduleRepository.deleteAllByCompanyIdAndEmployeeId(any(), any()) }
     }
 
     @Test

@@ -5,14 +5,35 @@ import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
+import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 
 /** Business logic for managing salon offerings (CRUD). Results are cached per company. */
 @Service
 class OfferingService(
     private val offeringRepository: OfferingRepository,
-    private val offeringImageService: OfferingImageService
+    private val offeringImageService: OfferingImageService,
+    private val companyEmployeeRepository: CompanyEmployeeRepository,
+    private val assignmentRepository: EmployeeOfferingAssignmentRepository
 ) {
+    /**
+     * Returns the active offerings [employeeId] can perform at [companyId], following the booking rules: the
+     * offerings assigned to the employee at that company, or every active offering of the company when the employee
+     * has no assignments there. Throws [NoSuchElementException] when the employee is not employed at [companyId].
+     */
+    @Transactional(readOnly = true)
+    fun getPublicEmployeeOfferings(companyId: Long, employeeId: Long): List<Offering> {
+        if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
+            throw NoSuchElementException("Pracownik nie istnieje")
+        }
+        val assignedIds = assignmentRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId)
+            .map { it.offeringId }
+            .toSet()
+        val activeOfferings = offeringRepository.findAllByCompanyIdAndActiveTrue(companyId)
+        return if (assignedIds.isEmpty()) activeOfferings else activeOfferings.filter { it.id in assignedIds }
+    }
+
 
     /** Returns only active offerings for a company. Used by public endpoints and booking. Cached in Redis. */
     @Transactional(readOnly = true)

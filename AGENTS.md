@@ -46,7 +46,7 @@ Customers authenticate via SMS OTP; staff via email/password. Frontends: `../sch
 ```
 src/main/kotlin/pl/kacosmetology/scheduler/
 ├── auth/ # SMS OTP + staff login → JWT issuance
-├── availability/ # Available slot calculation (public), shared EmployeeAvailabilityPolicy
+├── availability/ # Available slot calculation (public), shared EmployeeAvailabilityPolicy and BookableSlotPolicy
 ├── company/ # Company entity, settings, public booking profile
 ├── config/ # Security, CORS, Redis, R2, RestExceptionHandler, DataInitializer (dev seed)
 ├── employeeoffering/ # Which offerings an employee performs
@@ -63,7 +63,8 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 | If you touch... | Read |
 | --------------- | ---- |
-| Booking, cancellation, status changes, pricing | [docs/reservations.md](./docs/reservations.md), [ADR-0001](./docs/adr/0001-double-booking-prevention.md), [ADR-0002](./docs/adr/0002-reservation-lifecycle-and-cancellation.md) |
+| A user journey spanning several endpoints (setup, booking, sign-in, staff work, visit outcome, jobs) | [docs/flows.md](./docs/flows.md) |
+| Booking, cancellation, status changes, pricing | [docs/reservations.md](./docs/reservations.md), [ADR-0001](./docs/adr/0001-double-booking-prevention.md), [ADR-0002](./docs/adr/0002-reservation-lifecycle-and-cancellation.md), [ADR-0010](./docs/adr/0010-cancellation-window-and-no-show-correction.md) |
 | Availability, work schedules, blocks, assignments, company settings | [docs/availability.md](./docs/availability.md) |
 | Dates, times, "now", scheduled jobs | [docs/time-handling.md](./docs/time-handling.md) |
 | Auth, security, notifications, caching, R2, schema | [docs/architecture.md](./docs/architecture.md) |
@@ -72,11 +73,12 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 ## Invariants
 
-- **Layering:** Controller → Service → Repository. No cross-module service calls; modules communicate through IDs. `EmployeeAvailabilityPolicy` is the shared exception.
+- **Layering:** Controller → Service → Repository. No cross-module service calls; modules communicate through IDs. `EmployeeAvailabilityPolicy` and `BookableSlotPolicy` (slot grid shared by availability and customer booking) are the shared exceptions.
 - **Company scoping:** staff JWTs carry exactly one `employmentId`, `companyId`, and role (`ROLE_OWNER`/`ROLE_EMPLOYEE`). Every staff operation must verify the target belongs to `userDetails.companyId`. Customer JWTs carry only `ROLE_CUSTOMER`.
 - **Sessions:** issue tokens only through `JwtService`, which registers the `jti` in `SessionStore` (Redis). A token whose session is gone is rejected, so logout and `logout-all` take effect immediately ([ADR-0009](./docs/adr/0009-revocable-sessions.md)).
 - **Client IP:** use `request.remoteAddr` for rate limiting; never parse `X-Forwarded-For` by hand (Tomcat applies it only for `TRUSTED_PROXIES`).
 - **Double booking:** any code that creates reservations or schedule blocks must take the `company_employees` row lock (`findByCompanyIdAndUserIdForUpdate`) before checking overlap. `@Version` does not prevent double booking.
+- **Per-company employee time:** reservations, schedule blocks, work schedules, and offering assignments are scoped to (company, employee). Never query them by `employeeId` alone; a person employed by two salons has an independent calendar at each.
 - **Reservation status:** `PENDING` means booked; `CONFIRMED` is unused. Active = not `CANCELLED`/`NO_SHOW`.
 - **Time:** API date-times are Europe/Warsaw local time without offset. Get "now" from the injected `Clock` bean (`LocalDateTime.now(clock)`); never call `now()` without it or hardcode `ZoneId.of(...)`.
 - **Errors:** throw `ApiException(ErrorCode.X, "<Polish detail>")` for business errors; responses are ProblemDetail with a stable `code`. Another company's resource is 404, not 403/409. Add new codes to `ErrorCode` and `docs/api/errors.md`.

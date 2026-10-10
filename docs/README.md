@@ -2,6 +2,7 @@
 
 | Document | Read it when you... |
 | -------- | ------------------- |
+| [flows.md](./flows.md) | want the end-to-end journeys per actor (owner, employee, customer, background jobs) and the order of API calls |
 | [development.md](./development.md) | set up the project, configure it, use seed data, or write tests |
 | [deployment.md](./deployment.md) | deploy to the VPS (Dokploy + Cloudflare): client IP, origin lockdown, production compose |
 | [architecture.md](./architecture.md) | need the module map, auth, authorization, notifications, caching, storage, or schema overview |

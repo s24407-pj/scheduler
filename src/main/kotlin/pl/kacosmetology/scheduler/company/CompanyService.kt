@@ -51,7 +51,7 @@ class CompanyService(
         val memberships = companyEmployeeRepository.findAllByCompanyId(companyId)
         val eligibleUserIds = memberships
             .filter { emp ->
-                !assignmentRepository.existsByEmployeeId(emp.userId) ||
+                !assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, emp.userId) ||
                     assignmentRepository.existsByEmployeeIdAndOfferingId(emp.userId, offeringId)
             }
             .map { it.userId }

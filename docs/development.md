@@ -48,7 +48,7 @@ The `dev` profile runs `DataInitializer` on startup. It is idempotent.
 | Owner | `gabinet@kacosmetology.pl` / `admin123` |
 | Employee | `pracownik@kacosmetology.pl` / `employee123` |
 | Catalog | 4 categories and 26 offerings (seeded only if no offerings exist) |
-| Work schedules | **None.** Availability returns no slots until an owner sets a schedule with `PUT /api/employees/{id}/work-schedule`. |
+| Work schedules | **None.** Availability returns no slots, and customer bookings are rejected with 409, until an owner sets a schedule with `PUT /api/employees/{id}/work-schedule`. |
 | Customers, reservations | None |
 
 ### Getting tokens

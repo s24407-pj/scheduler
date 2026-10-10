@@ -10,8 +10,8 @@ To add one, copy the structure of an existing ADR, use the next number, and add 
 
 | ADR | Title | Status |
 | --- | ----- | ------ |
-| [0001](./0001-double-booking-prevention.md) | Double-booking prevention | Accepted — partially implemented |
-| [0002](./0002-reservation-lifecycle-and-cancellation.md) | Reservation lifecycle and cancellation policy | Accepted — partially implemented |
+| [0001](./0001-double-booking-prevention.md) | Double-booking prevention | Accepted — implemented |
+| [0002](./0002-reservation-lifecycle-and-cancellation.md) | Reservation lifecycle and cancellation policy | Accepted — partially implemented; cancellation cutoff and no-show rule superseded by 0010 |
 | [0003](./0003-single-time-zone.md) | Single business time zone (Europe/Warsaw) | Accepted |
 | [0004](./0004-error-contract-problem-detail.md) | Error contract based on ProblemDetail | Accepted |
 | [0005](./0005-generated-openapi-spec.md) | Generated OpenAPI specification | Accepted |
@@ -19,3 +19,4 @@ To add one, copy the structure of an existing ADR, use the next number, and add 
 | [0007](./0007-single-instance-deployment.md) | Single-instance deployment | Accepted |
 | [0008](./0008-whole-zloty-pricing.md) | Whole-złoty pricing | Accepted |
 | [0009](./0009-revocable-sessions.md) | Revocable sessions behind JWTs | Accepted — implemented |
+| [0010](./0010-cancellation-window-and-no-show-correction.md) | Cancellation window and no-show correction | Accepted — implemented |

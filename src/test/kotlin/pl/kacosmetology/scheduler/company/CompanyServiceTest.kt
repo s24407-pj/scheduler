@@ -161,7 +161,7 @@ class CompanyServiceTest {
         every { companyRepository.findById(companyId) } returns Optional.of(company)
         every { offeringRepository.findById(offeringId) } returns Optional.of(offering)
         every { companyEmployeeRepository.findAllByCompanyId(companyId) } returns listOf(ce)
-        every { assignmentRepository.existsByEmployeeId(10L) } returns true
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, 10L) } returns true
         every { assignmentRepository.existsByEmployeeIdAndOfferingId(10L, offeringId) } returns true
         every { userRepository.findAllById(listOf(10L)) } returns listOf(user)
 

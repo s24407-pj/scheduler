@@ -19,6 +19,8 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingImage
+import pl.kacosmetology.scheduler.offering.OfferingImageRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.JwtService
@@ -60,6 +62,9 @@ class EmployeeOfferingIntegrationTest {
     @Autowired
     private lateinit var reservationRepository: ReservationRepository
 
+    @Autowired
+    private lateinit var offeringImageRepository: OfferingImageRepository
+
     @MockkBean
     private lateinit var s3Client: S3Client
 
@@ -73,6 +78,7 @@ class EmployeeOfferingIntegrationTest {
     fun setup() {
         reservationRepository.deleteAll()
         assignmentRepository.deleteAll()
+        offeringImageRepository.deleteAll()
         offeringRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
@@ -208,27 +214,75 @@ class EmployeeOfferingIntegrationTest {
     }
 
     @Test
-    fun `GET public employee offerings should return assigned active offerings`() {
-        assignmentRepository.save(
-            EmployeeOfferingAssignment(
-                companyId = companyId,
-                employeeId = employeeId,
-                offeringId = offeringId
-            )
+    fun `GET public employee offerings should return only assigned active offerings with images`() {
+        offeringRepository.save(Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 60, price = 150))
+        val inactive = offeringRepository.save(
+            Offering(companyId = companyId, name = "Stara usługa", durationMinutes = 30, price = 50, active = false)
         )
+        assignmentRepository.save(
+            EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = offeringId)
+        )
+        assignmentRepository.save(
+            EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = inactive.id!!)
+        )
+        offeringImageRepository.save(OfferingImage(offeringId = offeringId, imageUrl = "https://cdn.test/cut.jpg"))
 
-        mockMvc.get("/api/offerings/public/employee/$employeeId").andExpect {
+        mockMvc.get("/api/offerings/public/company/$companyId/employee/$employeeId").andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(1) }
             jsonPath("$[0].id") { value(offeringId) }
+            jsonPath("$[0].images[0].imageUrl") { value("https://cdn.test/cut.jpg") }
         }
     }
 
     @Test
-    fun `GET public employee offerings should return empty list when no assignments`() {
-        mockMvc.get("/api/offerings/public/employee/$employeeId").andExpect {
+    fun `GET public employee offerings should return every active company offering when employee has no assignments`() {
+        offeringRepository.save(Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 60, price = 150))
+
+        mockMvc.get("/api/offerings/public/company/$companyId/employee/$employeeId").andExpect {
             status { isOk() }
-            jsonPath("$.length()") { value(0) }
+            jsonPath("$.length()") { value(2) }
+        }
+    }
+
+    @Test
+    fun `GET public employee offerings should return 404 when employee is not employed at the company`() {
+        val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
+
+        mockMvc.get("/api/offerings/public/company/${otherCompany.id!!}/employee/$employeeId").andExpect {
+            status { isNotFound() }
+        }
+    }
+
+    @Test
+    fun `GET public employee offerings should be scoped to the requested salon for multi-salon employee`() {
+        val otherCompany = companyRepository.save(Company(name = "Drugi Salon"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = employeeId, role = "EMPLOYEE")
+        )
+        val otherOffering = offeringRepository.save(
+            Offering(companyId = otherCompany.id!!, name = "Masaż", durationMinutes = 60, price = 200)
+        )
+        offeringRepository.save(
+            Offering(companyId = otherCompany.id!!, name = "Peeling", durationMinutes = 30, price = 90)
+        )
+        assignmentRepository.save(
+            EmployeeOfferingAssignment(
+                companyId = otherCompany.id!!,
+                employeeId = employeeId,
+                offeringId = otherOffering.id!!
+            )
+        )
+
+        mockMvc.get("/api/offerings/public/company/$companyId/employee/$employeeId").andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].id") { value(offeringId) }
+        }
+        mockMvc.get("/api/offerings/public/company/${otherCompany.id!!}/employee/$employeeId").andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].id") { value(otherOffering.id!!) }
         }
     }
 

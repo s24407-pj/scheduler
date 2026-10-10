@@ -29,6 +29,16 @@ class OfferingController(
         return enrichWithImages(offerings)
     }
 
+    /**
+     * Returns the active offerings of [companyId] that [employeeId] performs there, for employee-first booking.
+     * Public — no authentication required. Returns 404 when the employee is not employed at the company.
+     */
+    @GetMapping("/public/company/{companyId}/employee/{employeeId}")
+    fun getPublicEmployeeOfferings(
+        @PathVariable companyId: Long,
+        @PathVariable employeeId: Long
+    ): List<OfferingResponse> = enrichWithImages(offeringService.getPublicEmployeeOfferings(companyId, employeeId))
+
     /** Returns all offerings (including inactive) for the authenticated user's company. Requires EMPLOYEE or OWNER role. */
     @GetMapping("")
     fun getCompanyOfferings(

@@ -1,6 +1,6 @@
 # ADR-0002: Reservation lifecycle and cancellation policy
 
-**Status:** Accepted — partially implemented (see [Pending](#pending))
+**Status:** Accepted — partially implemented (see [Pending](#pending)). The customer cancellation cutoff and the no-show rule are superseded by [ADR-0010](./0010-cancellation-window-and-no-show-correction.md).
 
 ## Context
 
@@ -35,7 +35,6 @@
 
 ## Pending
 
-- Staff cancellation endpoint (for example `PATCH /api/reservations/{id}/cancel-by-staff`, or extend the existing endpoint to accept staff with a company check).
-- 24-hour cutoff for customer cancellation in `ReservationService.cancelReservation()`.
 - Remove `CONFIRMED` from `ReservationStatus` and from the repository queries that reference it.
-- Assumption to confirm: the 24-hour cutoff applies to customers only, not to staff.
+
+Implemented since: staff cancellation (`PATCH /api/reservations/{id}/cancel-by-staff`). The 24-hour cutoff and the "no after-start check" rule for no-shows were replaced by ADR-0010 instead of being implemented.

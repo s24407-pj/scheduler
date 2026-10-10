@@ -39,9 +39,9 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | GET | `/api/employees` | OWNER, EMPLOYEE | |
 | POST | `/api/employees/{id}/photo` | OWNER | Multipart field `photo` |
 | DELETE | `/api/employees/{id}/photo` | OWNER | |
-| GET | `/api/employees/{employeeId}/work-schedule` | OWNER, EMPLOYEE | |
-| PUT | `/api/employees/{employeeId}/work-schedule` | OWNER | Replaces whole week |
-| GET | `/api/employees/{employeeId}/offerings` | OWNER, EMPLOYEE | Assignments |
+| GET | `/api/employees/{employeeId}/work-schedule` | OWNER, EMPLOYEE | JWT company's schedule only |
+| PUT | `/api/employees/{employeeId}/work-schedule` | OWNER | Replaces whole week at the JWT company |
+| GET | `/api/employees/{employeeId}/offerings` | OWNER, EMPLOYEE | Assignments at the JWT company |
 | POST | `/api/employees/{employeeId}/offerings/{offeringId}` | OWNER | Idempotent |
 | DELETE | `/api/employees/{employeeId}/offerings/{offeringId}` | OWNER | |
 
@@ -50,7 +50,7 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
 | GET | `/api/offerings/public/company/{companyId}` | Public | Cached (`companyServices`) |
-| GET | `/api/offerings/public/employee/{employeeId}` | Public | Active offerings assigned to employee |
+| GET | `/api/offerings/public/company/{companyId}/employee/{employeeId}` | Public | Active offerings the employee performs at that salon: assigned ones, or all active company offerings if the employee has no assignments there; 404 if not employed there |
 | GET | `/api/offerings` | Authenticated | |
 | GET | `/api/offerings/{id}` | Authenticated | |
 | POST | `/api/offerings` | OWNER | |
@@ -75,14 +75,15 @@ See [reservations](../reservations.md).
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| POST | `/api/reservations` | Authenticated | Books for the caller (`customerId` = JWT user); 201, or 200 for an identical active booking |
+| POST | `/api/reservations` | Authenticated | Books for the caller (`customerId` = JWT user); only slots availability would list; 201, or 200 for an identical active booking |
 | POST | `/api/reservations/staff` | OWNER, EMPLOYEE | Books for a client by phone; may create the user; 201 or 200 as above |
-| PATCH | `/api/reservations/{id}/cancel` | Authenticated | Owning customer only |
+| PATCH | `/api/reservations/{id}/cancel` | Authenticated | Owning customer only; before `startTime` |
+| PATCH | `/api/reservations/{id}/cancel-by-staff` | OWNER, EMPLOYEE | Any active reservation of the company, also after start; 204 |
 | PATCH | `/api/reservations/{id}/complete` | OWNER, EMPLOYEE | |
-| PATCH | `/api/reservations/{id}/no-show` | OWNER, EMPLOYEE | |
+| PATCH | `/api/reservations/{id}/no-show` | OWNER, EMPLOYEE | From `startTime`; `COMPLETED` until `endTime + 24 h` |
 | DELETE | `/api/reservations/{id}` | OWNER | Hard delete |
 | GET | `/api/reservations/me` | Authenticated | Caller's reservations |
-| GET | `/api/reservations/employee?start&end` | OWNER, EMPLOYEE | Caller's schedule |
+| GET | `/api/reservations/employee?start&end` | OWNER, EMPLOYEE | Caller's schedule at the JWT's company |
 | GET | `/api/reservations?employeeId&start&end` | OWNER, EMPLOYEE | EMPLOYEE only for self |
 
 ## Schedule blocks — `ScheduleBlockController`

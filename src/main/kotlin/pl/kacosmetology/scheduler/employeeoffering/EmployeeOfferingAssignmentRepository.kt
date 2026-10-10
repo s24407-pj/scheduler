@@ -6,11 +6,14 @@ import org.springframework.stereotype.Repository
 /** JPA repository for [EmployeeOfferingAssignment] entities. */
 @Repository
 interface EmployeeOfferingAssignmentRepository : JpaRepository<EmployeeOfferingAssignment, Long> {
-    /** Returns all offering assignments for the given employee. */
+    /** Returns all offering assignments for the given employee, across all companies. */
     fun findAllByEmployeeId(employeeId: Long): List<EmployeeOfferingAssignment>
 
-    /** Returns true if the employee has any offering assignments. */
-    fun existsByEmployeeId(employeeId: Long): Boolean
+    /** Returns all offering assignments for the given employee at [companyId]. */
+    fun findAllByCompanyIdAndEmployeeId(companyId: Long, employeeId: Long): List<EmployeeOfferingAssignment>
+
+    /** Returns true if the employee has any offering assignments at [companyId]. */
+    fun existsByCompanyIdAndEmployeeId(companyId: Long, employeeId: Long): Boolean
 
     /** Returns the assignment for the given employee and offering, or null if not found. */
     fun findByEmployeeIdAndOfferingId(employeeId: Long, offeringId: Long): EmployeeOfferingAssignment?

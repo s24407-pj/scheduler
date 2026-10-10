@@ -1,6 +1,6 @@
 # ADR-0001: Double-booking prevention
 
-**Status:** Accepted — partially implemented (see [Pending](#pending))
+**Status:** Accepted — implemented
 
 ## Context
 
@@ -26,8 +26,7 @@ Conflicts detected by layer 3 (`DataIntegrityViolationException` with SQLSTATE `
 - Every new code path that creates reservations or blocks must acquire the same lock before checking overlap, or rely on the constraint and map its violation to 409.
 - Bulk JPQL updates (such as `ReservationRepository.autoCompleteElapsed`) do not increment `@Version`. A status change that races with a bulk update is not detected; the last write wins.
 
-## Pending
+## Implementation notes
 
-The code does not yet fully match this decision:
-
-- **Per-company scope for reservations.** `ReservationRepository.findOverlapping` filters by `employeeId` only, and the reservation exclusion constraint in `V1__init_schema.sql` is `(employee_id, tstzrange)`. Both must include `company_id`. Requires a new Flyway migration that drops and recreates the constraint, plus a query change. Schedule blocks are already company-scoped.
+- Per-company scope for reservations: `ReservationRepository.findOverlapping` filters by `(companyId, employeeId)`, and `V2__scope_reservation_overlap_by_company.sql` replaced the V1 `(employee_id, tstzrange)` constraint with `reservations_company_employee_no_overlap` on `(company_id, employee_id, tstzrange)`.
+- The rest of an employee's scheduling data follows the same scope: work schedules and offering assignments are read and replaced per (company, employee).

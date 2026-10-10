@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.reservation
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import pl.kacosmetology.scheduler.availability.BookableSlotPolicy
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
@@ -18,6 +19,9 @@ import pl.kacosmetology.scheduler.user.UserRepository
 import java.time.Clock
 import java.time.LocalDateTime
 
+/** How long after a visit's end a COMPLETED reservation can still be corrected to NO_SHOW. */
+const val NO_SHOW_CORRECTION_HOURS = 24L
+
 /** Core business logic for reservation lifecycle: create, cancel, complete, and no-show marking. */
 @Service
 class ReservationService(
@@ -30,6 +34,7 @@ class ReservationService(
     private val applicationEventPublisher: ApplicationEventPublisher,
     private val companyCustomerBlockRepository: CompanyCustomerBlockRepository,
     private val employeeAvailabilityPolicy: EmployeeAvailabilityPolicy,
+    private val bookableSlotPolicy: BookableSlotPolicy,
     private val clock: Clock
 ) {
     /**
@@ -39,10 +44,12 @@ class ReservationService(
      *
      * Throws [ApiException] when [startTime] does not exist in the business time zone (daylight-saving gap), the
      * offering is unknown or inactive, the employee is not part of the offering's company or does not perform it,
-     * the customer is blocked, the slot is taken, or [enforceAdvanceCheck] is true and the slot starts sooner than
-     * the company's [pl.kacosmetology.scheduler.company.Company.minBookingAdvanceMinutes] setting.
+     * the customer is blocked, the slot is taken, [enforceAdvanceCheck] is true and the slot starts sooner than
+     * the company's [pl.kacosmetology.scheduler.company.Company.minBookingAdvanceMinutes] setting, or
+     * [enforceSlotGrid] is true and [startTime] is not a slot offered by [BookableSlotPolicy].
      *
      * @param enforceAdvanceCheck when false (staff bookings) the minimum-advance-time check is skipped.
+     * @param enforceSlotGrid when false (staff bookings) work hours and the slot grid are not enforced.
      */
     @Transactional
     fun createReservation(
@@ -50,7 +57,8 @@ class ReservationService(
         employeeId: Long,
         offeringId: Long,
         startTime: LocalDateTime,
-        enforceAdvanceCheck: Boolean = true
+        enforceAdvanceCheck: Boolean = true,
+        enforceSlotGrid: Boolean = true
     ): BookingResult {
         if (clock.zone.rules.getValidOffsets(startTime).isEmpty()) {
             throw ApiException(ErrorCode.INVALID_LOCAL_TIME, "Podana godzina nie istnieje z powodu zmiany czasu")
@@ -75,7 +83,7 @@ class ReservationService(
             return BookingResult(it, created = false)
         }
 
-        if (assignmentRepository.existsByEmployeeId(employeeId) &&
+        if (assignmentRepository.existsByCompanyIdAndEmployeeId(offering.companyId, employeeId) &&
             !assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId)
         ) {
             throw ApiException(ErrorCode.EMPLOYEE_OFFERING_NOT_ASSIGNED, "Ten pracownik nie wykonuje wybranej usługi")
@@ -103,6 +111,17 @@ class ReservationService(
             }
         }
 
+        if (enforceSlotGrid && !bookableSlotPolicy.isOnGrid(
+                offering.companyId,
+                employeeId,
+                startTime,
+                offering.durationMinutes,
+                company.slotIntervalMinutes
+            )
+        ) {
+            throw ApiException(ErrorCode.SLOT_UNAVAILABLE, "Ten termin nie jest dostępny do rezerwacji")
+        }
+
         val endTime = startTime.plusMinutes(offering.durationMinutes.toLong())
 
         employeeAvailabilityPolicy.assertAvailable(offering.companyId, employeeId, startTime, endTime)
@@ -126,12 +145,25 @@ class ReservationService(
     }
 
     /**
-     * Cancels a reservation. Only the owning customer can cancel, and only if not already in a terminal state.
-     * Another customer's reservation is reported as not found.
+     * Cancels a reservation on behalf of its owning customer. Allowed only before the visit starts and only if the
+     * reservation is not already in a terminal state. Another customer's reservation is reported as not found.
      */
     @Transactional
     fun cancelReservation(reservationId: Long, customerId: Long) {
         val reservation = findReservation(reservationId) { it.customerId == customerId }
+
+        reservation.cancel(onlyBeforeStartAt = LocalDateTime.now(clock))
+        reservationRepository.save(reservation)
+        applicationEventPublisher.publishEvent(ReservationCancelledEvent(reservation))
+    }
+
+    /**
+     * Cancels a reservation on behalf of staff of [companyId]. Allowed at any time, including after the visit
+     * started, as long as the reservation is not in a terminal state. Other companies' reservations are not found.
+     */
+    @Transactional
+    fun cancelReservationByStaff(reservationId: Long, companyId: Long) {
+        val reservation = findReservation(reservationId) { it.companyId == companyId }
 
         reservation.cancel()
         reservationRepository.save(reservation)
@@ -151,13 +183,14 @@ class ReservationService(
      * Marks a reservation as [ReservationStatus.NO_SHOW] and increments the customer's company-scoped no-show counter.
      * If the counter reaches the company's [pl.kacosmetology.scheduler.company.Company.maxNoShows] threshold
      * (and it is greater than zero), the customer is automatically blocked from online booking at that company.
-     * Only PENDING or CONFIRMED reservations can be marked as no-show.
+     * PENDING or CONFIRMED reservations can be marked once the visit has started; COMPLETED reservations (by staff
+     * or the auto-complete job) can be corrected to no-show until [NO_SHOW_CORRECTION_HOURS] after the visit ended.
      */
     @Transactional
     fun markNoShow(reservationId: Long, companyId: Long) {
         val reservation = findReservation(reservationId) { it.companyId == companyId }
 
-        reservation.markNoShow()
+        reservation.markNoShow(LocalDateTime.now(clock))
         reservationRepository.save(reservation)
 
         companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(
@@ -197,10 +230,15 @@ class ReservationService(
         }
     }
 
-    /** Returns an employee's schedule within a given time range. */
+    /** Returns an employee's schedule at [companyId] within a given time range. */
     @Transactional(readOnly = true)
-    fun getEmployeeSchedule(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<Reservation> {
-        return reservationRepository.findEmployeeSchedule(employeeId, start, end)
+    fun getEmployeeSchedule(
+        companyId: Long,
+        employeeId: Long,
+        start: LocalDateTime,
+        end: LocalDateTime
+    ): List<Reservation> {
+        return reservationRepository.findEmployeeSchedule(companyId, employeeId, start, end)
     }
 
     /**
@@ -257,7 +295,8 @@ class ReservationService(
             employeeId = employeeId,
             offeringId = serviceId,
             startTime = startTime,
-            enforceAdvanceCheck = false
+            enforceAdvanceCheck = false,
+            enforceSlotGrid = false
         )
     }
 
@@ -269,12 +308,18 @@ class ReservationService(
 private fun invalidTransition(message: String): Nothing =
     throw ApiException(ErrorCode.INVALID_STATUS_TRANSITION, message)
 
-private fun Reservation.cancel() {
+/** Cancels an active reservation; when [onlyBeforeStartAt] is given, that moment must be before [Reservation.startTime]. */
+private fun Reservation.cancel(onlyBeforeStartAt: LocalDateTime? = null) {
     when (status) {
         ReservationStatus.CANCELLED -> invalidTransition("Rezerwacja jest już anulowana")
         ReservationStatus.COMPLETED -> invalidTransition("Nie można anulować wizyty, która już się odbyła")
         ReservationStatus.NO_SHOW -> invalidTransition("Nie można anulować rezerwacji oznaczonej jako nieobecność")
-        else -> status = ReservationStatus.CANCELLED
+        else -> {
+            if (onlyBeforeStartAt != null && !onlyBeforeStartAt.isBefore(startTime)) {
+                invalidTransition("Nie można anulować wizyty, która już się rozpoczęła")
+            }
+            status = ReservationStatus.CANCELLED
+        }
     }
 }
 
@@ -287,9 +332,19 @@ private fun Reservation.complete() {
     }
 }
 
-private fun Reservation.markNoShow() {
+private fun Reservation.markNoShow(now: LocalDateTime) {
     when (status) {
-        ReservationStatus.PENDING, ReservationStatus.CONFIRMED -> status = ReservationStatus.NO_SHOW
-        else -> invalidTransition("Tylko aktywna rezerwacja może być oznaczona jako nieobecność")
+        ReservationStatus.PENDING, ReservationStatus.CONFIRMED ->
+            if (now.isBefore(startTime)) {
+                invalidTransition("Nie można oznaczyć nieobecności przed rozpoczęciem wizyty")
+            }
+
+        ReservationStatus.COMPLETED ->
+            if (now.isAfter(endTime.plusHours(NO_SHOW_CORRECTION_HOURS))) {
+                invalidTransition("Minął czas na oznaczenie nieobecności dla zakończonej wizyty")
+            }
+
+        else -> invalidTransition("Tej rezerwacji nie można oznaczyć jako nieobecność")
     }
+    status = ReservationStatus.NO_SHOW
 }

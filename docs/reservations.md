@@ -4,7 +4,7 @@ A reservation books one employee for one offering at one company, from `startTim
 
 ## Lifecycle
 
-Decision record: [ADR-0002](./adr/0002-reservation-lifecycle-and-cancellation.md).
+Decision records: [ADR-0002](./adr/0002-reservation-lifecycle-and-cancellation.md), cancellation and no-show windows in [ADR-0010](./adr/0010-cancellation-window-and-no-show-correction.md).
 
 | Status | Meaning | Active (occupies the slot)? |
 | ------ | ------- | --------------------------- |
@@ -22,14 +22,15 @@ Decision record: [ADR-0002](./adr/0002-reservation-lifecycle-and-cancellation.md
 | ---- | -- | --- | -------- | ---------- |
 | — | `PENDING` | Customer | `POST /api/reservations` | See [booking rules](#booking-rules) |
 | — | `PENDING` | OWNER, EMPLOYEE | `POST /api/reservations/staff` | See [booking rules](#booking-rules) |
-| `PENDING` | `CANCELLED` | Owning customer | `PATCH /api/reservations/{id}/cancel` | Currently no time limit. **Pending:** only until 24 h before `startTime`. |
-| `PENDING` | `CANCELLED` | OWNER, EMPLOYEE | — | **Pending:** staff cancellation, any time. |
+| `PENDING` | `CANCELLED` | Owning customer | `PATCH /api/reservations/{id}/cancel` | Only while `now < startTime`; at or after start → 409 |
+| `PENDING` | `CANCELLED` | OWNER, EMPLOYEE | `PATCH /api/reservations/{id}/cancel-by-staff` | Same company. Any time, including after start |
 | `PENDING` | `COMPLETED` | OWNER, EMPLOYEE | `PATCH /api/reservations/{id}/complete` | Same company |
 | `PENDING` | `COMPLETED` | System | Hourly job | `endTime` has passed |
-| `PENDING` | `NO_SHOW` | OWNER, EMPLOYEE | `PATCH /api/reservations/{id}/no-show` | Same company. No check that the visit has started. |
+| `PENDING` | `NO_SHOW` | OWNER, EMPLOYEE | `PATCH /api/reservations/{id}/no-show` | Same company. Only once `now >= startTime` |
+| `COMPLETED` | `NO_SHOW` | OWNER, EMPLOYEE | `PATCH /api/reservations/{id}/no-show` | Same company. Correction window: until `endTime + 24 h`. Applies whether staff or the hourly job completed it |
 | any | (deleted) | OWNER | `DELETE /api/reservations/{id}` | Same company. Hard delete, no SMS. |
 
-Every `PENDING` row above applies equally to `CONFIRMED`. Transitions out of terminal states (`COMPLETED`, `CANCELLED`, `NO_SHOW`) are rejected with 409 `INVALID_STATUS_TRANSITION`. A reservation of another company, or another customer's reservation on cancel, is reported as 404 `RESERVATION_NOT_FOUND`.
+Every `PENDING` row above applies equally to `CONFIRMED`. Apart from the `COMPLETED → NO_SHOW` correction, transitions out of terminal states (`COMPLETED`, `CANCELLED`, `NO_SHOW`) are rejected with 409 `INVALID_STATUS_TRANSITION`, as are the time-window violations above. A reservation of another company, or another customer's reservation on cancel, is reported as 404 `RESERVATION_NOT_FOUND`.
 
 ## Booking rules
 
@@ -48,10 +49,10 @@ Both endpoints end in `ReservationService.createReservation()`. Checks run in th
 | Employee performs the offering (only if the employee has any assignments) | Yes | Yes | 400 `EMPLOYEE_OFFERING_NOT_ASSIGNED` |
 | Customer not blocked at the company | Yes | Yes | 400 `CUSTOMER_BLOCKED` |
 | `startTime` at least `minBookingAdvanceMinutes` from now | Yes | **No** | 400 `BOOKING_ADVANCE_REQUIRED` |
-| No overlap with active reservations or schedule blocks | Yes | Yes | 409 `SLOT_UNAVAILABLE` |
-| Inside the employee's work schedule and aligned to the slot interval | **No** | **No** | — |
+| `startTime` is a slot on the grid: inside the employee's work schedule at the offering's company, a multiple of `slotIntervalMinutes` from the schedule start, and ending by the schedule end (`BookableSlotPolicy`) | Yes | **No** | 409 `SLOT_UNAVAILABLE` |
+| No overlap with active reservations or schedule blocks at the same company | Yes | Yes | 409 `SLOT_UNAVAILABLE` |
 
-The last row is a known gap for customer bookings: the API accepts any future time that does not overlap, even outside working hours or off the slot grid. Customer clients should only offer times returned by [availability](./availability.md). Staff are intentionally allowed to book outside working hours.
+Customer bookings accept exactly the start times [availability](./availability.md) would list. Staff are intentionally allowed to book outside working hours and off the grid. Changing a work schedule or the slot interval does not affect existing bookings; only new customer bookings are checked, so a client who loaded slots before the change can get 409 and must pick again.
 
 ## Concurrency
 
@@ -61,7 +62,7 @@ Decision record: [ADR-0001](./adr/0001-double-booking-prevention.md).
 - The overlap check runs under that lock; a database exclusion constraint is the backstop.
 - `@Version` protects status changes on an existing reservation, not slot conflicts.
 - An exclusion-constraint violation returns 409 `SLOT_UNAVAILABLE`; a `@Version` conflict returns 409 `CONCURRENT_MODIFICATION`.
-- **Pending:** reservation overlap is currently checked per employee across all companies; it must be per (company, employee).
+- Overlap is checked per (company, employee) in both the query and the constraint (`V2__scope_reservation_overlap_by_company.sql`): a booking at salon A does not block the same person at salon B.
 
 ## Retries and idempotency
 
@@ -86,7 +87,7 @@ Whole złoty, integer ([ADR-0008](./adr/0008-whole-zloty-pricing.md)). `reservat
 | Endpoint | Who | Returns |
 | -------- | --- | ------- |
 | `GET /api/reservations/me` | Customer | Own reservations, newest first (`ReservationResponse`) |
-| `GET /api/reservations/employee?start=&end=` | OWNER, EMPLOYEE | Caller's own schedule in the range, all statuses |
+| `GET /api/reservations/employee?start=&end=` | OWNER, EMPLOYEE | Caller's own schedule at the JWT's company in the range, all statuses |
 | `GET /api/reservations?employeeId=&start=&end=` | OWNER (any employee in company), EMPLOYEE (self only, else 403) | `DashboardReservationResponse` with customer names; used by dashboard calendar |
 
 Ranges match reservations that overlap `[start, end)`. `start` and `end` are ISO date-times without offset ([time handling](./time-handling.md)).

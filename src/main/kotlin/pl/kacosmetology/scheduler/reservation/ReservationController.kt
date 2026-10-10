@@ -39,7 +39,7 @@ class ReservationController(
         ).toResponseEntity()
     }
 
-    /** Cancels the customer's own reservation. */
+    /** Cancels the customer's own reservation. Allowed only before the visit starts. */
     @PatchMapping("/{id}/cancel")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun cancelReservation(
@@ -47,6 +47,20 @@ class ReservationController(
         @AuthenticationPrincipal userDetails: CustomUserDetails
     ) {
         reservationService.cancelReservation(id, userDetails.id)
+    }
+
+    /**
+     * Cancels any active reservation of the staff member's company, including after the visit started.
+     * Requires OWNER or EMPLOYEE role.
+     */
+    @PatchMapping("/{id}/cancel-by-staff")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun cancelReservationByStaff(
+        @PathVariable id: Long,
+        @AuthenticationPrincipal userDetails: CustomUserDetails
+    ) {
+        reservationService.cancelReservationByStaff(id, userDetails.requireCompanyId())
     }
 
     /** Marks a reservation as completed. Requires OWNER or EMPLOYEE role. */
@@ -79,7 +93,10 @@ class ReservationController(
         return reservationService.getCustomerReservations(userDetails.id).map { it.toResponse() }
     }
 
-    /** Returns the authenticated employee's schedule within a time range. Requires OWNER or EMPLOYEE role. */
+    /**
+     * Returns the authenticated employee's schedule at their session's company within a time range.
+     * Requires OWNER or EMPLOYEE role.
+     */
     @GetMapping("/employee")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getEmployeeSchedule(
@@ -87,7 +104,8 @@ class ReservationController(
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime
     ): List<EmployeeReservationResponse> {
-        return reservationService.getEmployeeSchedule(userDetails.id, start, end).map { it.toEmployeeResponse() }
+        return reservationService.getEmployeeSchedule(userDetails.requireCompanyId(), userDetails.id, start, end)
+            .map { it.toEmployeeResponse() }
     }
 
     /**

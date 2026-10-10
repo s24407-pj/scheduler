@@ -11,12 +11,14 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
@@ -287,5 +289,78 @@ class ReservationStaffIntegrationTest {
         }
 
         assertEquals(0, reservationRepository.findAll().size)
+    }
+
+    private fun saveReservation(startTime: LocalDateTime): Reservation {
+        val client = userRepository.save(User(phoneNumber = "+48555123123", firstName = "Anul", lastName = "Klient"))
+        return reservationRepository.save(
+            Reservation(
+                companyId = companyId,
+                customerId = client.id!!,
+                employeeId = employee.id!!,
+                serviceId = serviceId,
+                price = 300,
+                startTime = startTime,
+                endTime = startTime.plusMinutes(90)
+            )
+        )
+    }
+
+    @Test
+    fun `PATCH cancel-by-staff should cancel a reservation that already started`() {
+        val reservation = saveReservation(LocalDateTime.now(BUSINESS_ZONE).minusMinutes(30))
+
+        mockMvc.patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
+            header("Authorization", "Bearer $staffToken")
+        }.andExpect {
+            status { isNoContent() }
+        }
+
+        assertEquals(ReservationStatus.CANCELLED, reservationRepository.findById(reservation.id!!).get().status)
+    }
+
+    @Test
+    fun `PATCH cancel-by-staff should return 404 for another company's staff`() {
+        val reservation = saveReservation(reservationTime)
+        val otherCompany = companyRepository.save(Company(name = "Obcy Salon Anulowanie"))
+        val otherOwner = userRepository.save(User(phoneNumber = "+48777000999", firstName = "Obcy", lastName = "Owner"))
+        val otherEmployment = companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherOwner.id!!, role = "OWNER")
+        )
+
+        mockMvc.patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
+            header("Authorization", "Bearer ${jwtService.generateStaffToken(otherOwner, otherEmployment)}")
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("RESERVATION_NOT_FOUND") }
+        }
+
+        assertEquals(ReservationStatus.PENDING, reservationRepository.findById(reservation.id!!).get().status)
+    }
+
+    @Test
+    fun `PATCH cancel-by-staff should return 403 for a customer`() {
+        val reservation = saveReservation(reservationTime)
+        val customer = userRepository.findById(reservation.customerId).get()
+
+        mockMvc.patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
+            header("Authorization", "Bearer ${jwtService.generateCustomerToken(customer)}")
+        }.andExpect {
+            status { isForbidden() }
+        }
+    }
+
+    @Test
+    fun `PATCH cancel-by-staff should return 409 for a terminal reservation`() {
+        val reservation = saveReservation(reservationTime)
+        reservation.status = ReservationStatus.COMPLETED
+        reservationRepository.save(reservation)
+
+        mockMvc.patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
+            header("Authorization", "Bearer $staffToken")
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
+        }
     }
 }

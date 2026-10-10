@@ -26,14 +26,14 @@ class EmployeeAvailabilityPolicy(
     private val reservationRepository: ReservationRepository,
     private val scheduleBlockRepository: ScheduleBlockRepository
 ) {
-    /** Returns all active reservations and company-scoped schedule blocks overlapping [start, end). */
+    /** Returns all active reservations and schedule blocks of [employeeId] at [companyId] overlapping [start, end). */
     fun findConflicts(
         companyId: Long,
         employeeId: Long,
         start: LocalDateTime,
         end: LocalDateTime
     ): List<EmployeeAvailabilityConflict> {
-        val reservationConflicts = reservationRepository.findOverlapping(employeeId, start, end).map {
+        val reservationConflicts = reservationRepository.findOverlapping(companyId, employeeId, start, end).map {
             EmployeeAvailabilityConflict(
                 source = EmployeeAvailabilityConflictSource.RESERVATION,
                 startTime = it.startTime,

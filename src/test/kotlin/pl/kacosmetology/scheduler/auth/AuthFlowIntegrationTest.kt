@@ -31,6 +31,7 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -68,6 +69,9 @@ class AuthFlowIntegrationTest {
     private lateinit var jwtService: JwtService
 
     @Autowired
+    private lateinit var reservationRepository: ReservationRepository
+
+    @Autowired
     private lateinit var passwordEncoder: PasswordEncoder
 
     @Value($$"${jwt.secret}")
@@ -84,6 +88,7 @@ class AuthFlowIntegrationTest {
     fun setup() {
         // Czyścimy Redis i bazę przed każdym testem
         redisTemplate.connectionFactory?.connection?.serverCommands()?.flushAll()
+        reservationRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
         companyRepository.deleteAll()

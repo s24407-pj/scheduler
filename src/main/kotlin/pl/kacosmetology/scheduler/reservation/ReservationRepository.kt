@@ -11,28 +11,33 @@ import java.time.LocalDateTime
 @Repository
 interface ReservationRepository : JpaRepository<Reservation, Long> {
 
-    /** Checks if an employee has any active (non-cancelled, non-no-show) reservation overlapping the given time range. */
+    /**
+     * Checks if an employee has any active (non-cancelled, non-no-show) reservation at [companyId] overlapping the
+     * given time range.
+     */
     @Query(
         """
         SELECT COUNT(r) > 0 FROM Reservation r
-        WHERE r.employeeId = :employeeId
+        WHERE r.companyId = :companyId
+        AND r.employeeId = :employeeId
         AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
         AND (:start < r.endTime AND :end > r.startTime)
     """
     )
-    fun existsOverlapping(employeeId: Long, start: LocalDateTime, end: LocalDateTime): Boolean
+    fun existsOverlapping(companyId: Long, employeeId: Long, start: LocalDateTime, end: LocalDateTime): Boolean
 
-    /** Returns active (non-cancelled, non-no-show) reservations overlapping the given time range. */
+    /** Returns active (non-cancelled, non-no-show) reservations at [companyId] overlapping the given time range. */
     @Query(
         """
         SELECT r FROM Reservation r
-        WHERE r.employeeId = :employeeId
+        WHERE r.companyId = :companyId
+        AND r.employeeId = :employeeId
         AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
         AND (:start < r.endTime AND :end > r.startTime)
         ORDER BY r.startTime ASC
     """
     )
-    fun findOverlapping(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<Reservation>
+    fun findOverlapping(companyId: Long, employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<Reservation>
 
     /** Returns the active reservation exactly matching a booking request; used to make booking retries idempotent. */
     @Query(
@@ -49,16 +54,22 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
 
     fun findAllByCustomerIdOrderByStartTimeDesc(customerId: Long): List<Reservation>
 
-    /** Returns an employee's schedule overlapping a given time range (for the staff dashboard). */
+    /** Returns an employee's schedule at [companyId] overlapping a given time range (for the staff dashboard). */
     @Query(
         """
         SELECT r FROM Reservation r
-        WHERE r.employeeId = :employeeId
+        WHERE r.companyId = :companyId
+        AND r.employeeId = :employeeId
         AND (:start < r.endTime AND :end > r.startTime)
         ORDER BY r.startTime ASC
     """
     )
-    fun findEmployeeSchedule(employeeId: Long, start: LocalDateTime, end: LocalDateTime): List<Reservation>
+    fun findEmployeeSchedule(
+        companyId: Long,
+        employeeId: Long,
+        start: LocalDateTime,
+        end: LocalDateTime
+    ): List<Reservation>
 
     /** Returns reservations starting within [windowStart]..[windowEnd] that are active and have not had a reminder sent. */
     @Query(

@@ -15,7 +15,7 @@ class WorkScheduleService(
 ) {
 
     /**
-     * Returns the full weekly schedule for the given employee.
+     * Returns the full weekly schedule for the given employee at [companyId].
      * Throws [NoSuchElementException] if the employee does not belong to [companyId].
      */
     @Transactional(readOnly = true)
@@ -23,11 +23,11 @@ class WorkScheduleService(
         if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
             throw NoSuchElementException("Pracownik nie należy do tej firmy")
         }
-        return workScheduleRepository.findAllByEmployeeId(employeeId).map { it.toResponse() }
+        return workScheduleRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId).map { it.toResponse() }
     }
 
     /**
-     * Atomically replaces the employee's weekly schedule.
+     * Atomically replaces the employee's weekly schedule at [companyId]; schedules at other companies are untouched.
      * An empty or null [SetWeeklyScheduleRequest.entries] list clears all entries.
      * Throws [NoSuchElementException] if the employee does not belong to [companyId].
      * Throws [IllegalArgumentException] for duplicate days or invalid time ranges.
@@ -62,7 +62,7 @@ class WorkScheduleService(
             Triple(day, start, end)
         }
 
-        workScheduleRepository.deleteAllByEmployeeId(employeeId)
+        workScheduleRepository.deleteAllByCompanyIdAndEmployeeId(companyId, employeeId)
         workScheduleRepository.flush()
 
         val saved = workScheduleRepository.saveAll(

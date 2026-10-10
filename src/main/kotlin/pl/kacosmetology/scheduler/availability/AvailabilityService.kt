@@ -9,7 +9,6 @@ import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -19,20 +18,20 @@ import java.time.LocalDateTime
 class AvailabilityService(
     private val offeringRepository: OfferingRepository,
     private val companyRepository: CompanyRepository,
-    private val workScheduleRepository: EmployeeWorkScheduleRepository,
     private val assignmentRepository: EmployeeOfferingAssignmentRepository,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
     private val employeeAvailabilityPolicy: EmployeeAvailabilityPolicy,
+    private val bookableSlotPolicy: BookableSlotPolicy,
     private val clock: Clock
 ) {
 
     /**
      * Returns a list of available booking slots with pricing information.
      *
-     * Uses the employee's work schedule for opening/closing hours (returns empty list if no entry for that day).
-     * The slot interval is still taken from the company configuration.
-     * Throws [ApiException] if the offering is unknown, the employee is not part of the offering's company, or has
-     * offering assignments and the requested offering is not among them.
+     * Candidate slots come from [BookableSlotPolicy] (the employee's work schedule at the offering's company and
+     * the company slot interval); an empty list is returned if there is no schedule entry for that day.
+     * Throws [ApiException] if the offering is unknown or inactive, the employee is not part of the offering's
+     * company, or has offering assignments at that company and the requested offering is not among them.
      * Filters out slots that overlap with existing reservations, schedule blocks, and times not after
      * now + minimum booking advance (per the injected [Clock]).
      * Applies the company's last-minute discount to slots starting within the configured time window.
@@ -42,6 +41,10 @@ class AvailabilityService(
         val offering = offeringRepository.findById(offeringId)
             .orElseThrow { ApiException(ErrorCode.OFFERING_UNAVAILABLE, "Usługa nie istnieje") }
 
+        if (!offering.active) {
+            throw ApiException(ErrorCode.OFFERING_UNAVAILABLE, "Ta usługa nie jest już dostępna")
+        }
+
         val company = companyRepository.findById(offering.companyId)
             .orElseThrow { IllegalArgumentException("Firma nie istnieje") }
 
@@ -49,44 +52,42 @@ class AvailabilityService(
             throw ApiException(ErrorCode.EMPLOYEE_NOT_IN_COMPANY, "Pracownik nie należy do firmy wybranej usługi")
         }
 
-        if (assignmentRepository.existsByEmployeeId(employeeId) &&
+        if (assignmentRepository.existsByCompanyIdAndEmployeeId(offering.companyId, employeeId) &&
             !assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId)
         ) {
             throw ApiException(ErrorCode.EMPLOYEE_OFFERING_NOT_ASSIGNED, "Ten pracownik nie wykonuje wybranej usługi")
         }
 
-        val scheduleEntry = workScheduleRepository.findByEmployeeIdAndDayOfWeek(employeeId, date.dayOfWeek)
-            ?: return emptyList()
-
         val requiredDuration = offering.durationMinutes.toLong()
-        val openingTime = scheduleEntry.startTime
-        val closingTime = scheduleEntry.endTime
-        val slotStep = company.slotIntervalMinutes.toLong()
+        val slotStarts = bookableSlotPolicy.slotStarts(
+            offering.companyId,
+            employeeId,
+            date,
+            offering.durationMinutes,
+            company.slotIntervalMinutes
+        )
+        if (slotStarts.isEmpty()) return emptyList()
 
-        val availableSlots = mutableListOf<AvailableSlotResponse>()
-        var currentSlotStart = date.atTime(openingTime)
-        val endOfWorkDay = date.atTime(closingTime)
         val conflicts = employeeAvailabilityPolicy.findConflicts(
             offering.companyId,
             employeeId,
-            currentSlotStart,
-            endOfWorkDay
+            slotStarts.first(),
+            slotStarts.last().plusMinutes(requiredDuration)
         )
         val now = LocalDateTime.now(clock)
         val earliestBookableTime = now.plusMinutes(company.minBookingAdvanceMinutes.toLong())
 
-        while (!currentSlotStart.plusMinutes(requiredDuration).isAfter(endOfWorkDay)) {
-            val currentSlotEnd = currentSlotStart.plusMinutes(requiredDuration)
-            val isOverlapping = employeeAvailabilityPolicy.overlapsAny(currentSlotStart, currentSlotEnd, conflicts)
-
-            if (!isOverlapping && currentSlotStart.isAfter(earliestBookableTime)) {
-                val slotPrice = company.effectivePrice(offering.price, currentSlotStart, now)
-                availableSlots.add(AvailableSlotResponse(currentSlotStart.toLocalTime(), slotPrice, offering.price))
+        return slotStarts
+            .filter { start ->
+                start.isAfter(earliestBookableTime) &&
+                    !employeeAvailabilityPolicy.overlapsAny(start, start.plusMinutes(requiredDuration), conflicts)
             }
-
-            currentSlotStart = currentSlotStart.plusMinutes(slotStep)
-        }
-
-        return availableSlots
+            .map { start ->
+                AvailableSlotResponse(
+                    start.toLocalTime(),
+                    company.effectivePrice(offering.price, start, now),
+                    offering.price
+                )
+            }
     }
 }

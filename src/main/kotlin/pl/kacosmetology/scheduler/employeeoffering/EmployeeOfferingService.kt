@@ -5,7 +5,6 @@ import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.employeeoffering.dto.EmployeeOfferingAssignmentResponse
 import pl.kacosmetology.scheduler.employeeoffering.dto.toResponse
-import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 
 /** Business logic for managing which offerings an employee is allowed to perform. */
@@ -17,7 +16,7 @@ class EmployeeOfferingService(
 ) {
 
     /**
-     * Returns all offering assignments for the given employee.
+     * Returns all offering assignments for the given employee at [companyId].
      * Throws [NoSuchElementException] if the employee is not in the company.
      */
     @Transactional(readOnly = true)
@@ -25,18 +24,7 @@ class EmployeeOfferingService(
         if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
             throw NoSuchElementException("Pracownik nie należy do tej firmy")
         }
-        return assignmentRepository.findAllByEmployeeId(employeeId).map { it.toResponse() }
-    }
-
-    /**
-     * Returns active offerings assigned to the given employee.
-     * Returns an empty list if the employee has no assignments configured.
-     */
-    @Transactional(readOnly = true)
-    fun getOfferingsForEmployee(employeeId: Long): List<Offering> {
-        if (!assignmentRepository.existsByEmployeeId(employeeId)) return emptyList()
-        val ids = assignmentRepository.findAllByEmployeeId(employeeId).map { it.offeringId }
-        return offeringRepository.findAllById(ids).filter { it.active }
+        return assignmentRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId).map { it.toResponse() }
     }
 
     /**

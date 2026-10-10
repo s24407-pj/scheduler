@@ -16,6 +16,7 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.security.JwtService
@@ -85,7 +86,7 @@ class ReservationNoShowIntegrationTest {
 
     private fun saveReservation(
         status: ReservationStatus = ReservationStatus.PENDING,
-        startTime: LocalDateTime = LocalDateTime.now().plusDays(1)
+        startTime: LocalDateTime = LocalDateTime.now(BUSINESS_ZONE).minusHours(2)
     ): Reservation {
         val service = serviceRepository.save(
             Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 50)
@@ -133,14 +134,48 @@ class ReservationNoShowIntegrationTest {
     }
 
     @Test
-    fun `PATCH no-show on already completed reservation should return 409`() {
-        val reservation = saveReservation(ReservationStatus.COMPLETED)
+    fun `PATCH no-show on reservation completed more than 24 hours ago should return 409`() {
+        val reservation =
+            saveReservation(ReservationStatus.COMPLETED, LocalDateTime.now(BUSINESS_ZONE).minusHours(25))
 
         mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
             header("Authorization", "Bearer $employeeToken")
         }.andExpect {
             status { isConflict() }
+            jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
         }
+
+        assertEquals(ReservationStatus.COMPLETED, reservationRepository.findById(reservation.id!!).get().status)
+    }
+
+    @Test
+    fun `PATCH no-show should correct a reservation completed within the last 24 hours`() {
+        val reservation = saveReservation(ReservationStatus.COMPLETED)
+
+        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
+            header("Authorization", "Bearer $employeeToken")
+        }.andExpect {
+            status { isNoContent() }
+        }
+
+        assertEquals(ReservationStatus.NO_SHOW, reservationRepository.findById(reservation.id!!).get().status)
+        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!)!!
+        assertEquals(1, block.noShowCount)
+    }
+
+    @Test
+    fun `PATCH no-show before the visit starts should return 409`() {
+        val reservation = saveReservation(startTime = LocalDateTime.now(BUSINESS_ZONE).plusHours(1))
+
+        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
+            header("Authorization", "Bearer $employeeToken")
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
+        }
+
+        assertEquals(ReservationStatus.PENDING, reservationRepository.findById(reservation.id!!).get().status)
+        assertEquals(null, companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!))
     }
 
     @Test
@@ -224,7 +259,7 @@ class ReservationNoShowIntegrationTest {
     @Test
     fun `concurrent PATCH no-show requests should preserve every increment and auto-block`() {
         val requestCount = 8
-        val firstStart = LocalDateTime.now().plusDays(1)
+        val firstStart = LocalDateTime.now(BUSINESS_ZONE).minusDays(1)
         val reservations = List(requestCount) { index ->
             saveReservation(startTime = firstStart.plusMinutes(index * 30L))
         }

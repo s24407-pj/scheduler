@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Import
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
@@ -34,10 +35,14 @@ import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
 import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
+import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -77,9 +82,13 @@ class CustomerReservationFlowIntegrationTest {
     @MockkBean
     private lateinit var smsSender: SmsSender
 
+    @Autowired
+    private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
+
     @MockkBean
     private lateinit var s3Client: S3Client
 
+    private var companyId: Long = 0
     private var employeeId: Long = 0
     private var serviceId: Long = 0
 
@@ -88,6 +97,7 @@ class CustomerReservationFlowIntegrationTest {
         // 1. Czyszczenie bazy danych przed testem
         reservationRepository.deleteAll()
         scheduleBlockRepository.deleteAll()
+        workScheduleRepository.deleteAll()
         redisTemplate.connectionFactory?.connection?.serverCommands()?.flushAll()
         serviceRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
@@ -115,9 +125,126 @@ class CustomerReservationFlowIntegrationTest {
             )
         )
 
+        companyId = company.id!!
         employeeId = employee.id!!
         serviceId = service.id!!
+        saveWeeklySchedule(companyId, employeeId)
     }
+
+    private fun saveWeeklySchedule(companyId: Long, employeeId: Long) {
+        DayOfWeek.entries.forEach { day ->
+            workScheduleRepository.save(
+                EmployeeWorkSchedule(
+                    companyId = companyId,
+                    employeeId = employeeId,
+                    dayOfWeek = day,
+                    startTime = LocalTime.of(8, 0),
+                    endTime = LocalTime.of(18, 0)
+                )
+            )
+        }
+    }
+
+    private fun book(token: String, startTime: LocalDateTime, offeringId: Long = serviceId) =
+        mockMvc.post("/api/reservations") {
+            header("Authorization", "Bearer $token")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(
+                CreateReservationRequest(employeeId = employeeId, serviceId = offeringId, startTime = startTime)
+            )
+        }
+
+    @Test
+    fun `customer booking off the slot grid should return 409`() {
+        book(customerToken("+48555700001"), tomorrowAt(10).plusMinutes(7)).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
+            jsonPath("$.detail") { value("Ten termin nie jest dostępny do rezerwacji") }
+        }
+
+        assertEquals(0, reservationRepository.findAll().size)
+    }
+
+    @Test
+    fun `customer booking outside the employee's working hours should return 409`() {
+        val token = customerToken("+48555700002")
+
+        book(token, tomorrowAt(7)).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
+        }
+        // 60-minute offering starting 17:30 would end after 18:00
+        book(token, tomorrowAt(17).plusMinutes(30)).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
+        }
+
+        assertEquals(0, reservationRepository.findAll().size)
+    }
+
+    @Test
+    fun `customer can cancel before the visit starts but not after`() {
+        val customer = userRepository.save(User(phoneNumber = "+48555700003", firstName = "K", lastName = "T"))
+        val token = jwtService.generateCustomerToken(customer)
+        val future = saveReservation(customer.id!!, LocalDateTime.now(BUSINESS_ZONE).plusHours(1))
+        val started = saveReservation(customer.id!!, LocalDateTime.now(BUSINESS_ZONE).minusMinutes(90))
+
+        mockMvc.patch("/api/reservations/${future.id!!}/cancel") {
+            header("Authorization", "Bearer $token")
+        }.andExpect {
+            status { isNoContent() }
+        }
+        mockMvc.patch("/api/reservations/${started.id!!}/cancel") {
+            header("Authorization", "Bearer $token")
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
+        }
+
+        assertEquals(ReservationStatus.CANCELLED, reservationRepository.findById(future.id!!).get().status)
+        assertEquals(ReservationStatus.PENDING, reservationRepository.findById(started.id!!).get().status)
+    }
+
+    @Test
+    fun `employee shared by two companies can be booked at the same time at each company`() {
+        val otherCompany = companyRepository.save(Company(name = "Drugi Salon"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = employeeId, role = "EMPLOYEE")
+        )
+        val otherOffering = serviceRepository.save(
+            Offering(companyId = otherCompany.id!!, name = "Pedicure", durationMinutes = 60, price = 90)
+        )
+        saveWeeklySchedule(otherCompany.id!!, employeeId)
+
+        book(customerToken("+48555700004"), tomorrowAt(10)).andExpect { status { isCreated() } }
+
+        mockMvc.get("/api/availability") {
+            param("employeeId", employeeId.toString())
+            param("serviceId", otherOffering.id!!.toString())
+            param("date", tomorrowAt(10).toLocalDate().toString())
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$[?(@.time == '10:00:00')]") { exists() }
+        }
+        book(customerToken("+48555700005"), tomorrowAt(10), otherOffering.id!!).andExpect {
+            status { isCreated() }
+        }
+
+        assertEquals(2, reservationRepository.findAll().size)
+    }
+
+    private fun saveReservation(customerId: Long, startTime: LocalDateTime): Reservation =
+        reservationRepository.save(
+            Reservation(
+                companyId = companyId,
+                customerId = customerId,
+                employeeId = employeeId,
+                serviceId = serviceId,
+                price = 120,
+                startTime = startTime,
+                endTime = startTime.plusMinutes(60)
+            )
+        )
 
     @Test
     fun `full flow - new customer registers via SMS and creates a reservation`() {

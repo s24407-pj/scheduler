@@ -493,6 +493,15 @@ class ScheduleBlockIntegrationTest {
         val otherOffering = serviceRepository.save(
             Offering(companyId = otherCompanyId, name = "Usługa drugiego salonu", durationMinutes = 60, price = 90)
         )
+        workScheduleRepository.save(
+            EmployeeWorkSchedule(
+                companyId = otherCompanyId,
+                employeeId = employee.id!!,
+                dayOfWeek = testDate.dayOfWeek,
+                startTime = LocalTime.of(9, 0),
+                endTime = LocalTime.of(17, 0)
+            )
+        )
 
         mockMvc.get("/api/schedule-blocks/employee") {
             header("Authorization", "Bearer $otherCompanyOwnerToken")

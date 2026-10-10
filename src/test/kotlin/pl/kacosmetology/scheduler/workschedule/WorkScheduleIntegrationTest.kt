@@ -102,7 +102,48 @@ class WorkScheduleIntegrationTest {
             jsonPath("$.length()") { value(2) }
         }
 
-        assertEquals(2, workScheduleRepository.findAllByEmployeeId(employeeId).size)
+        assertEquals(2, workScheduleRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId).size)
+    }
+
+    @Test
+    fun `PUT work-schedule at one company should keep the employee's schedule at another company`() {
+        val otherCompany = companyRepository.save(Company(name = "Drugi Salon Grafik"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = employeeId, role = "EMPLOYEE")
+        )
+        workScheduleRepository.save(
+            EmployeeWorkSchedule(
+                companyId = otherCompany.id!!,
+                employeeId = employeeId,
+                dayOfWeek = DayOfWeek.MONDAY,
+                startTime = java.time.LocalTime.of(12, 0),
+                endTime = java.time.LocalTime.of(20, 0)
+            )
+        )
+        val body = mapOf(
+            "entries" to listOf(
+                mapOf("dayOfWeek" to "MONDAY", "startTime" to "08:00:00", "endTime" to "12:00:00")
+            )
+        )
+
+        mockMvc.put("/api/employees/$employeeId/work-schedule") {
+            header("Authorization", "Bearer $ownerToken")
+            contentType = MediaType.APPLICATION_JSON
+            content = objectMapper.writeValueAsString(body)
+        }.andExpect {
+            status { isOk() }
+        }
+        mockMvc.get("/api/employees/$employeeId/work-schedule") {
+            header("Authorization", "Bearer $ownerToken")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(1) }
+            jsonPath("$[0].startTime") { value("08:00:00") }
+        }
+
+        val otherSchedule = workScheduleRepository.findAllByCompanyIdAndEmployeeId(otherCompany.id!!, employeeId)
+        assertEquals(1, otherSchedule.size)
+        assertEquals(java.time.LocalTime.of(12, 0), otherSchedule.first().startTime)
     }
 
     @Test
@@ -133,7 +174,7 @@ class WorkScheduleIntegrationTest {
             jsonPath("$[0].dayOfWeek") { value("WEDNESDAY") }
         }
 
-        assertEquals(1, workScheduleRepository.findAllByEmployeeId(employeeId).size)
+        assertEquals(1, workScheduleRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId).size)
     }
 
     @Test
@@ -165,7 +206,7 @@ class WorkScheduleIntegrationTest {
             jsonPath("$[0].startTime") { value("10:00:00") }
         }
 
-        assertEquals(1, workScheduleRepository.findAllByEmployeeId(employeeId).size)
+        assertEquals(1, workScheduleRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId).size)
     }
 
     @Test

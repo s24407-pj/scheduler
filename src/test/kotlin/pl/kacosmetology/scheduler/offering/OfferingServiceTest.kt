@@ -12,6 +12,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.mock.web.MockMultipartFile
+import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignment
+import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 import java.util.*
 
@@ -24,10 +27,56 @@ class OfferingServiceTest {
     @MockK
     private lateinit var offeringImageService: OfferingImageService
 
+    @MockK
+    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+
+    @MockK
+    private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
+
     @InjectMockKs
     private lateinit var offeringService: OfferingService
 
     private val companyId = 1L
+    private val employeeId = 10L
+
+    private val manicure = Offering(id = 1, companyId = companyId, name = "Manicure", durationMinutes = 60, price = 100)
+    private val pedicure = Offering(id = 2, companyId = companyId, name = "Pedicure", durationMinutes = 60, price = 120)
+
+    @Test
+    fun `getPublicEmployeeOfferings should return only active offerings assigned at the company`() {
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
+        every { assignmentRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId) } returns listOf(
+            EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = 1),
+            // assigned but inactive: not returned by findAllByCompanyIdAndActiveTrue
+            EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = 3)
+        )
+        every { offeringRepository.findAllByCompanyIdAndActiveTrue(companyId) } returns listOf(manicure, pedicure)
+
+        val result = offeringService.getPublicEmployeeOfferings(companyId, employeeId)
+
+        assertEquals(listOf(manicure), result)
+    }
+
+    @Test
+    fun `getPublicEmployeeOfferings should return every active company offering when the employee has no assignments there`() {
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
+        every { assignmentRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId) } returns emptyList()
+        every { offeringRepository.findAllByCompanyIdAndActiveTrue(companyId) } returns listOf(manicure, pedicure)
+
+        val result = offeringService.getPublicEmployeeOfferings(companyId, employeeId)
+
+        assertEquals(listOf(manicure, pedicure), result)
+    }
+
+    @Test
+    fun `getPublicEmployeeOfferings should throw when the employee is not employed at the company`() {
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
+
+        assertThrows<NoSuchElementException> {
+            offeringService.getPublicEmployeeOfferings(companyId, employeeId)
+        }
+        verify(exactly = 0) { offeringRepository.findAllByCompanyIdAndActiveTrue(any()) }
+    }
 
     @Test
     fun `getCompanyOfferings should return list of offerings for given company`() {
