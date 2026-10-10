@@ -3,13 +3,13 @@ package pl.kacosmetology.scheduler.security
 import io.jsonwebtoken.Claims
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
+import java.time.Duration
+import java.util.*
+import javax.crypto.SecretKey
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.user.User
-import java.time.Duration
-import java.util.*
-import javax.crypto.SecretKey
 
 /** Verified claims of a signed, unexpired token. */
 data class TokenClaims(
@@ -22,7 +22,7 @@ data class TokenClaims(
     /** Employment scope of a staff token. */
     val employmentId: Long?,
     /** Session ID (`jti`) registered in [SessionStore]. */
-    val sessionId: String?
+    val sessionId: String?,
 )
 
 /** Handles JWT token generation, parsing and validation. Every issued token is registered in [SessionStore]. */
@@ -30,7 +30,7 @@ data class TokenClaims(
 class JwtService(
     @Value($$"${jwt.secret}") private val secret: String,
     @Value($$"${jwt.expiration-ms}") private val expirationMs: Long,
-    private val sessionStore: SessionStore
+    private val sessionStore: SessionStore,
 ) {
 
     private val signingKey: SecretKey by lazy { Keys.hmacShaKeyFor(secret.toByteArray()) }
@@ -47,8 +47,8 @@ class JwtService(
             mapOf(
                 "employmentId" to employmentId,
                 "companyId" to employment.companyId,
-                "role" to employment.role.lowercase()
-            )
+                "role" to employment.role.lowercase(),
+            ),
         )
     }
 
@@ -73,7 +73,7 @@ class JwtService(
             role = claims["role"]?.toString(),
             companyId = claims["companyId"]?.toString()?.toLong(),
             employmentId = claims["employmentId"]?.toString()?.toLong(),
-            sessionId = claims.id
+            sessionId = claims.id,
         )
     }
 
@@ -93,10 +93,6 @@ class JwtService(
     fun extractSessionId(token: String): String? = parse(token).sessionId
 
     private fun extractAllClaims(token: String): Claims {
-        return Jwts.parser()
-            .verifyWith(signingKey)
-            .build()
-            .parseSignedClaims(token)
-            .payload
+        return Jwts.parser().verifyWith(signingKey).build().parseSignedClaims(token).payload
     }
 }

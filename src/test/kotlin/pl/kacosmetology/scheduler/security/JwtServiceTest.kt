@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.security
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import java.time.Duration
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
@@ -10,7 +11,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.user.User
-import java.time.Duration
 
 class JwtServiceTest {
 
@@ -96,10 +96,11 @@ class JwtServiceTest {
         assertThrows<Exception> { jwtService.parse(token) }
     }
 
-    private fun user(id: Long, phone: String) = User(
-        id = id,
-        phoneNumber = phone,
-        firstName = "A",
-        lastName = "B"
-    )
+    private fun user(id: Long, phone: String) =
+        User(
+            id = id,
+            phoneNumber = phone,
+            firstName = "A",
+            lastName = "B",
+        )
 }

@@ -22,16 +22,17 @@ interface UserRepository : JpaRepository<User, Long> {
      */
     @Modifying
     @Query(
-        value = """
+        value =
+            """
         INSERT INTO users (phone_number, first_name, last_name)
         VALUES (:phoneNumber, :firstName, :lastName)
         ON CONFLICT (phone_number) DO NOTHING
         """,
-        nativeQuery = true
+        nativeQuery = true,
     )
     fun insertIfPhoneAbsent(
         @Param("phoneNumber") phoneNumber: String,
         @Param("firstName") firstName: String,
-        @Param("lastName") lastName: String
+        @Param("lastName") lastName: String,
     ): Int
 }

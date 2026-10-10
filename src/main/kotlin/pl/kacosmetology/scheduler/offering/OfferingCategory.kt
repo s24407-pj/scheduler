@@ -8,17 +8,13 @@ import java.time.OffsetDateTime
 @Table(name = "offering_categories")
 class OfferingCategory(
     id: Long? = null,
-
-    @Column(name = "company_id", nullable = false)
-    val companyId: Long,
-
-    @Column(nullable = false, length = 100)
-    val name: String,
-
+    @Column(name = "company_id", nullable = false) val companyId: Long,
+    @Column(nullable = false, length = 100) val name: String,
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
-    val createdAt: OffsetDateTime? = null
+    val createdAt: OffsetDateTime? = null,
 ) {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = id
         protected set
 }

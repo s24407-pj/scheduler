@@ -20,7 +20,7 @@ class NotificationEventListener(private val notificationService: NotificationSer
             .onFailure {
                 logger.warn(
                     "Failed to send booking confirmation for reservation ${event.reservation.id}",
-                    it
+                    it,
                 )
             }
     }
@@ -32,7 +32,7 @@ class NotificationEventListener(private val notificationService: NotificationSer
             .onFailure {
                 logger.warn(
                     "Failed to send cancellation notification for reservation ${event.reservation.id}",
-                    it
+                    it,
                 )
             }
     }

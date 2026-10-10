@@ -7,8 +7,8 @@ import com.lemonappdev.konsist.api.verify.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * Enforces the layering rules from AGENTS.md on production sources:
- * Controller → Service → Repository, and no cross-module service calls.
+ * Enforces the layering rules from AGENTS.md on production sources: Controller → Service → Repository, and no
+ * cross-module service calls.
  */
 class ArchitectureTest {
 
@@ -30,18 +30,14 @@ class ArchitectureTest {
 
     @Test
     fun `controllers should not inject repositories`() {
-        scope.classes()
-            .withNameEndingWith("Controller")
-            .assertFalse { controller ->
-                controller.primaryConstructor?.parameters.orEmpty().any { it.type.name.endsWith("Repository") }
-            }
+        scope.classes().withNameEndingWith("Controller").assertFalse { controller ->
+            controller.primaryConstructor?.parameters.orEmpty().any { it.type.name.endsWith("Repository") }
+        }
     }
 
     /** Returns the top-level module of [packageName] (e.g. `company` for `...scheduler.company.dto`). */
     private fun moduleOf(packageName: String): String? =
-        packageName.removePrefix("$ROOT_PACKAGE.")
-            .takeIf { it != packageName }
-            ?.substringBefore('.')
+        packageName.removePrefix("$ROOT_PACKAGE.").takeIf { it != packageName }?.substringBefore('.')
 
     private companion object {
         const val ROOT_PACKAGE = "pl.kacosmetology.scheduler"

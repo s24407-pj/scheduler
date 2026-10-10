@@ -1,17 +1,17 @@
 package pl.kacosmetology.scheduler.config
 
+import java.net.URI
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.S3Configuration
-import java.net.URI
 
 /** Configuration properties for Cloudflare R2 (S3-compatible object storage). */
 @ConfigurationProperties(prefix = "r2")
@@ -22,7 +22,7 @@ data class R2Properties(
     val secretKey: String = "",
     val bucketName: String = "",
     /** Base URL for publicly accessible objects, e.g. `https://pub-xxx.r2.dev`. */
-    val publicUrl: String = ""
+    val publicUrl: String = "",
 )
 
 /** Registers a pre-configured [S3Client] pointing at the R2 endpoint. */
@@ -38,9 +38,7 @@ class R2Config {
             .credentialsProvider(credentialsProvider(r2Props))
             .region(Region.of("auto"))
             .serviceConfiguration(
-                S3Configuration.builder()
-                    .pathStyleAccessEnabled(true)
-                    .build()
+                S3Configuration.builder().pathStyleAccessEnabled(true).build(),
             )
             .build()
 

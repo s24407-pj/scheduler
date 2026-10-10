@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.reservation
 
 import com.ninjasquad.springmockk.MockkBean
+import java.time.LocalDateTime
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -20,34 +21,25 @@ import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
-import java.time.LocalDateTime
 
 /**
- * Integration tests for [ReservationController.getReservations] — the owner dashboard endpoint
- * `GET /api/reservations?employeeId=&start=&end=`.
+ * Integration tests for [ReservationController.getReservations] — the owner dashboard endpoint `GET
+ * /api/reservations?employeeId=&start=&end=`.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
 class ReservationDashboardIntegrationTest {
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
-    @Autowired
-    private lateinit var jwtService: JwtService
-    @Autowired
-    private lateinit var userRepository: UserRepository
-    @Autowired
-    private lateinit var companyRepository: CompanyRepository
-    @Autowired
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired
-    private lateinit var offeringRepository: OfferingRepository
-    @Autowired
-    private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var companyRepository: CompanyRepository
+    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired private lateinit var offeringRepository: OfferingRepository
+    @Autowired private lateinit var reservationRepository: ReservationRepository
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
     private lateinit var owner: User
     private lateinit var employee: User
@@ -75,16 +67,19 @@ class ReservationDashboardIntegrationTest {
         employee = userRepository.save(User(phoneNumber = "+48100000002", firstName = "Employee", lastName = "Test"))
         customer = userRepository.save(User(phoneNumber = "+48100000003", firstName = "Customer", lastName = "Test"))
 
-        val ownerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
-        )
-        val employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
-        )
+        val ownerEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
+            )
+        val employeeEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
+            )
 
-        val offering = offeringRepository.save(
-            Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80)
-        )
+        val offering =
+            offeringRepository.save(
+                Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80),
+            )
         offeringId = offering.id!!
 
         // Reservation for the employee today at 10:00
@@ -97,8 +92,8 @@ class ReservationDashboardIntegrationTest {
                 price = 80,
                 startTime = rangeStart.withHour(10),
                 endTime = rangeStart.withHour(11),
-                status = ReservationStatus.CONFIRMED
-            )
+                status = ReservationStatus.CONFIRMED,
+            ),
         )
 
         ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
@@ -107,68 +102,77 @@ class ReservationDashboardIntegrationTest {
 
     @Test
     fun `owner should be able to query any employee's reservations`() {
-        mockMvc.get("/api/reservations") {
-            header("Authorization", "Bearer $ownerToken")
-            param("employeeId", employee.id!!.toString())
-            param("start", rangeStart.toString())
-            param("end", rangeEnd.toString())
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].employeeId") { value(employee.id!!) }
-            jsonPath("$[0].customerId") { value(customer.id!!) }
-            jsonPath("$[0].status") { value("CONFIRMED") }
-        }
+        mockMvc
+            .get("/api/reservations") {
+                header("Authorization", "Bearer $ownerToken")
+                param("employeeId", employee.id!!.toString())
+                param("start", rangeStart.toString())
+                param("end", rangeEnd.toString())
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].employeeId") { value(employee.id!!) }
+                jsonPath("$[0].customerId") { value(customer.id!!) }
+                jsonPath("$[0].status") { value("CONFIRMED") }
+            }
     }
 
     @Test
     fun `malformed start date should return bad request`() {
-        mockMvc.get("/api/reservations") {
-            header("Authorization", "Bearer $ownerToken")
-            param("employeeId", employee.id.toString())
-            param("start", "not-a-date")
-            param("end", rangeEnd.toString())
-        }.andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("INVALID_PARAMETER") }
-            jsonPath("$.detail") { value("Nieprawidłowa wartość parametru 'start'") }
-        }
+        mockMvc
+            .get("/api/reservations") {
+                header("Authorization", "Bearer $ownerToken")
+                param("employeeId", employee.id.toString())
+                param("start", "not-a-date")
+                param("end", rangeEnd.toString())
+            }
+            .andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("INVALID_PARAMETER") }
+                jsonPath("$.detail") { value("Nieprawidłowa wartość parametru 'start'") }
+            }
     }
 
     @Test
     fun `employee should be able to query own reservations`() {
-        mockMvc.get("/api/reservations") {
-            header("Authorization", "Bearer $employeeToken")
-            param("employeeId", employee.id!!.toString())
-            param("start", rangeStart.toString())
-            param("end", rangeEnd.toString())
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(1) }
-        }
+        mockMvc
+            .get("/api/reservations") {
+                header("Authorization", "Bearer $employeeToken")
+                param("employeeId", employee.id!!.toString())
+                param("start", rangeStart.toString())
+                param("end", rangeEnd.toString())
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+            }
     }
 
     @Test
     fun `employee should get 403 when querying another employee's reservations`() {
-        val otherEmployee = userRepository.save(
-            User(phoneNumber = "+48199999999", firstName = "Other", lastName = "Employee")
-        )
+        val otherEmployee =
+            userRepository.save(
+                User(phoneNumber = "+48199999999", firstName = "Other", lastName = "Employee"),
+            )
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = companyId,
                 userId = otherEmployee.id!!,
-                role = "EMPLOYEE"
-            )
+                role = "EMPLOYEE",
+            ),
         )
 
-        mockMvc.get("/api/reservations") {
-            header("Authorization", "Bearer $employeeToken")
-            param("employeeId", otherEmployee.id!!.toString())
-            param("start", rangeStart.toString())
-            param("end", rangeEnd.toString())
-        }.andExpect {
-            status { isForbidden() }
-        }
+        mockMvc
+            .get("/api/reservations") {
+                header("Authorization", "Bearer $employeeToken")
+                param("employeeId", otherEmployee.id!!.toString())
+                param("start", rangeStart.toString())
+                param("end", rangeEnd.toString())
+            }
+            .andExpect {
+                status { isForbidden() }
+            }
     }
 
     @Test
@@ -183,20 +187,22 @@ class ReservationDashboardIntegrationTest {
                 price = 80,
                 startTime = rangeStart.plusDays(7).withHour(9),
                 endTime = rangeStart.plusDays(7).withHour(10),
-                status = ReservationStatus.PENDING
-            )
+                status = ReservationStatus.PENDING,
+            ),
         )
 
         // Query only today — should return 1 (the one from @BeforeEach)
-        mockMvc.get("/api/reservations") {
-            header("Authorization", "Bearer $ownerToken")
-            param("employeeId", employee.id!!.toString())
-            param("start", rangeStart.toString())
-            param("end", rangeEnd.toString())
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(1) }
-        }
+        mockMvc
+            .get("/api/reservations") {
+                header("Authorization", "Bearer $ownerToken")
+                param("employeeId", employee.id!!.toString())
+                param("start", rangeStart.toString())
+                param("end", rangeEnd.toString())
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+            }
     }
 
     @Test
@@ -210,36 +216,40 @@ class ReservationDashboardIntegrationTest {
                 price = 80,
                 startTime = rangeStart.minusMinutes(30),
                 endTime = rangeStart.plusMinutes(30),
-                status = ReservationStatus.CONFIRMED
-            )
+                status = ReservationStatus.CONFIRMED,
+            ),
         )
 
-        mockMvc.get("/api/reservations") {
-            header("Authorization", "Bearer $ownerToken")
-            param("employeeId", employee.id!!.toString())
-            param("start", rangeStart.toString())
-            param("end", rangeStart.plusHours(1).toString())
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].startTime") {
-                value(
-                    org.hamcrest.Matchers.startsWith(
-                        rangeStart.minusMinutes(30).toString().substring(0, 16)
-                    )
-                )
+        mockMvc
+            .get("/api/reservations") {
+                header("Authorization", "Bearer $ownerToken")
+                param("employeeId", employee.id!!.toString())
+                param("start", rangeStart.toString())
+                param("end", rangeStart.plusHours(1).toString())
             }
-        }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(1) }
+                jsonPath("$[0].startTime") {
+                    value(
+                        org.hamcrest.Matchers.startsWith(
+                            rangeStart.minusMinutes(30).toString().substring(0, 16),
+                        ),
+                    )
+                }
+            }
     }
 
     @Test
     fun `unauthenticated request should be rejected`() {
-        mockMvc.get("/api/reservations") {
-            param("employeeId", employee.id!!.toString())
-            param("start", rangeStart.toString())
-            param("end", rangeEnd.toString())
-        }.andExpect {
-            status { isUnauthorized() }
-        }
+        mockMvc
+            .get("/api/reservations") {
+                param("employeeId", employee.id!!.toString())
+                param("start", rangeStart.toString())
+                param("end", rangeEnd.toString())
+            }
+            .andExpect {
+                status { isUnauthorized() }
+            }
     }
 }

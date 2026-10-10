@@ -12,5 +12,5 @@ import java.time.LocalTime
 data class AvailableSlotResponse(
     val time: LocalTime,
     val price: Int,
-    val originalPrice: Int
+    val originalPrice: Int,
 )

@@ -5,6 +5,7 @@ import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
+import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
@@ -16,25 +17,19 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignment
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
-import java.util.*
 
 @ExtendWith(MockKExtension::class)
 class OfferingServiceTest {
 
-    @MockK
-    private lateinit var offeringRepository: OfferingRepository
+    @MockK private lateinit var offeringRepository: OfferingRepository
 
-    @MockK
-    private lateinit var offeringImageService: OfferingImageService
+    @MockK private lateinit var offeringImageService: OfferingImageService
 
-    @MockK
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @MockK
-    private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
+    @MockK private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
-    @InjectMockKs
-    private lateinit var offeringService: OfferingService
+    @InjectMockKs private lateinit var offeringService: OfferingService
 
     private val companyId = 1L
     private val employeeId = 10L
@@ -45,11 +40,12 @@ class OfferingServiceTest {
     @Test
     fun `getPublicEmployeeOfferings should return only active offerings assigned at the company`() {
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
-        every { assignmentRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId) } returns listOf(
-            EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = 1),
-            // assigned but inactive: not returned by findAllByCompanyIdAndActiveTrue
-            EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = 3)
-        )
+        every { assignmentRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId) } returns
+            listOf(
+                EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = 1),
+                // assigned but inactive: not returned by findAllByCompanyIdAndActiveTrue
+                EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = 3),
+            )
         every { offeringRepository.findAllByCompanyIdAndActiveTrue(companyId) } returns listOf(manicure, pedicure)
 
         val result = offeringService.getPublicEmployeeOfferings(companyId, employeeId)
@@ -81,10 +77,11 @@ class OfferingServiceTest {
     @Test
     fun `getCompanyOfferings should return list of offerings for given company`() {
         // GIVEN
-        val offerings = listOf(
-            Offering(id = 1, companyId = companyId, name = "Masaż", durationMinutes = 60, price = 200),
-            Offering(id = 2, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80)
-        )
+        val offerings =
+            listOf(
+                Offering(id = 1, companyId = companyId, name = "Masaż", durationMinutes = 60, price = 200),
+                Offering(id = 2, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80),
+            )
         every { offeringRepository.findAllByCompanyIdAndActiveTrue(companyId) } returns offerings
 
         // WHEN
@@ -114,9 +111,10 @@ class OfferingServiceTest {
         every { offeringRepository.findById(999L) } returns Optional.empty()
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalArgumentException> {
-            offeringService.getOfferingById(999L)
-        }
+        val exception =
+            assertThrows<IllegalArgumentException> {
+                offeringService.getOfferingById(999L)
+            }
         assertEquals("Usługa o ID 999 nie istnieje", exception.message)
     }
 
@@ -165,9 +163,10 @@ class OfferingServiceTest {
         every { offeringRepository.findById(1L) } returns Optional.of(existing)
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalStateException> {
-            offeringService.updateOffering(1L, companyId, request)
-        }
+        val exception =
+            assertThrows<IllegalStateException> {
+                offeringService.updateOffering(1L, companyId, request)
+            }
         assertEquals("Brak dostępu do tej usługi", exception.message)
         verify(exactly = 0) { offeringRepository.save(any()) }
     }
@@ -175,8 +174,7 @@ class OfferingServiceTest {
     @Test
     fun `deleteOffering should soft-delete offering belonging to company`() {
         // GIVEN
-        val existing =
-            Offering(id = 1, companyId = companyId, name = "Do usunięcia", durationMinutes = 30, price = 50)
+        val existing = Offering(id = 1, companyId = companyId, name = "Do usunięcia", durationMinutes = 30, price = 50)
         every { offeringRepository.findById(1L) } returns Optional.of(existing)
         // WHEN
         offeringService.deleteOffering(1L, companyId)
@@ -218,7 +216,7 @@ class OfferingServiceTest {
         val file = MockMultipartFile("image", "photo.jpg", "image/jpeg", ByteArray(100))
         every { offeringRepository.findById(1L) } returns Optional.of(offering)
         every { offeringImageService.upload(companyId, 1L, file) } returns
-                OfferingImage(id = 10, offeringId = 1L, imageUrl = "http://cdn/img.jpg")
+            OfferingImage(id = 10, offeringId = 1L, imageUrl = "http://cdn/img.jpg")
 
         // WHEN
         val result = offeringService.uploadImage(1L, companyId, file)

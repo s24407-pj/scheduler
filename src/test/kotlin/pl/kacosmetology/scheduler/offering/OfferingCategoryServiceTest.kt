@@ -5,25 +5,22 @@ import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
+import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.offering.dto.OfferingCategoryRequest
-import java.util.*
 
 @ExtendWith(MockKExtension::class)
 class OfferingCategoryServiceTest {
 
-    @MockK
-    private lateinit var categoryRepository: OfferingCategoryRepository
+    @MockK private lateinit var categoryRepository: OfferingCategoryRepository
 
-    @MockK
-    private lateinit var offeringRepository: OfferingRepository
+    @MockK private lateinit var offeringRepository: OfferingRepository
 
-    @InjectMockKs
-    private lateinit var offeringCategoryService: OfferingCategoryService
+    @InjectMockKs private lateinit var offeringCategoryService: OfferingCategoryService
 
     private val companyId = 1L
     private val categoryId = 50L
@@ -49,9 +46,10 @@ class OfferingCategoryServiceTest {
         val request = OfferingCategoryRequest(name = "Koloryzacja")
         every { categoryRepository.existsByCompanyIdAndName(companyId, "Koloryzacja") } returns true
 
-        val ex = assertThrows<IllegalStateException> {
-            offeringCategoryService.createCategory(companyId, request)
-        }
+        val ex =
+            assertThrows<IllegalStateException> {
+                offeringCategoryService.createCategory(companyId, request)
+            }
         assertEquals("Kategoria o tej nazwie już istnieje", ex.message)
         verify(exactly = 0) { categoryRepository.save(any()) }
     }
@@ -106,14 +104,15 @@ class OfferingCategoryServiceTest {
 
     @Test
     fun `assignCategory with null categoryId should clear category`() {
-        val offering = Offering(
-            id = offeringId,
-            companyId = companyId,
-            name = "Farbowanie",
-            durationMinutes = 60,
-            price = 150,
-            categoryId = categoryId
-        )
+        val offering =
+            Offering(
+                id = offeringId,
+                companyId = companyId,
+                name = "Farbowanie",
+                durationMinutes = 60,
+                price = 150,
+                categoryId = categoryId,
+            )
 
         every { offeringRepository.findById(offeringId) } returns Optional.of(offering)
         offeringCategoryService.assignCategory(offeringId, companyId, null)

@@ -7,5 +7,5 @@ import jakarta.validation.constraints.Size
 data class OfferingCategoryRequest(
     @field:NotBlank(message = "Nazwa kategorii nie może być pusta")
     @field:Size(min = 2, max = 100, message = "Nazwa musi mieć od 2 do 100 znaków")
-    val name: String
+    val name: String,
 )

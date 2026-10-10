@@ -5,5 +5,5 @@ data class PublicEmployeeResponse(
     val id: Long,
     val firstName: String,
     val lastName: String,
-    val photoUrl: String?
+    val photoUrl: String?,
 )

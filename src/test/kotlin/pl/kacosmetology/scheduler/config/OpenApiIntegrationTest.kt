@@ -17,14 +17,11 @@ import software.amazon.awssdk.services.s3.S3Client
 @Import(TestcontainersConfiguration::class)
 class OpenApiIntegrationTest {
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var mockMvc: MockMvc
 
-    @MockkBean
-    private lateinit var smsSender: SmsSender
+    @MockkBean private lateinit var smsSender: SmsSender
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
     @Test
     fun `api docs should describe endpoints and the bearer security scheme`() {

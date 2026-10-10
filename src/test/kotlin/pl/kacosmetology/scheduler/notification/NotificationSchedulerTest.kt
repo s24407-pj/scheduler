@@ -7,6 +7,8 @@ import io.mockk.junit5.MockKExtension
 import io.mockk.just
 import io.mockk.runs
 import io.mockk.verify
+import java.time.Clock
+import java.time.LocalDateTime
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -14,39 +16,34 @@ import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
-import java.time.Clock
-import java.time.LocalDateTime
 
 @ExtendWith(MockKExtension::class)
 class NotificationSchedulerTest {
 
-    @MockK
-    private lateinit var reservationRepository: ReservationRepository
+    @MockK private lateinit var reservationRepository: ReservationRepository
 
-    @MockK
-    private lateinit var notificationService: NotificationService
+    @MockK private lateinit var notificationService: NotificationService
 
-    @MockK
-    private lateinit var clock: Clock
+    @MockK private lateinit var clock: Clock
 
-    @InjectMockKs
-    private lateinit var notificationScheduler: NotificationScheduler
+    @InjectMockKs private lateinit var notificationScheduler: NotificationScheduler
 
     private val now = LocalDateTime.of(2026, 11, 3, 14, 0)
 
     private val startTime = now.plusHours(24)
 
-    private val reservation = Reservation(
-        id = 1L,
-        companyId = 5L,
-        customerId = 1L,
-        employeeId = 2L,
-        serviceId = 10L,
-        price = 200,
-        startTime = startTime,
-        endTime = startTime.plusHours(1),
-        status = ReservationStatus.CONFIRMED
-    )
+    private val reservation =
+        Reservation(
+            id = 1L,
+            companyId = 5L,
+            customerId = 1L,
+            employeeId = 2L,
+            serviceId = 10L,
+            price = 200,
+            startTime = startTime,
+            endTime = startTime.plusHours(1),
+            status = ReservationStatus.CONFIRMED,
+        )
 
     @BeforeEach
     fun setupClock() {

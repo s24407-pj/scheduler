@@ -1,15 +1,15 @@
 package pl.kacosmetology.scheduler.security
 
-import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.stereotype.Component
 import java.security.SecureRandom
 import java.time.Duration
 import java.util.Base64
+import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.stereotype.Component
 
 /**
- * Redis-backed registry of issued tokens. Each token carries a session ID (`jti`) that must exist under
- * `session:<id>` for the token to be accepted, so deleting the key revokes the token before it expires.
- * `user-sessions:<userId>` indexes a user's session IDs for revoking all of them at once.
+ * Redis-backed registry of issued tokens. Each token carries a session ID (`jti`) that must exist under `session:<id>`
+ * for the token to be accepted, so deleting the key revokes the token before it expires. `user-sessions:<userId>`
+ * indexes a user's session IDs for revoking all of them at once.
  */
 @Component
 class SessionStore(private val redisTemplate: StringRedisTemplate) {

@@ -21,26 +21,19 @@ import software.amazon.awssdk.services.s3.S3Client
 @Import(TestcontainersConfiguration::class)
 class CompanyEmployeeControllerIntegrationTest {
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var mockMvc: MockMvc
 
-    @Autowired
-    private lateinit var jwtService: JwtService
+    @Autowired private lateinit var jwtService: JwtService
 
-    @Autowired
-    private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: UserRepository
 
-    @Autowired
-    private lateinit var companyRepository: CompanyRepository
+    @Autowired private lateinit var companyRepository: CompanyRepository
 
-    @Autowired
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @Autowired
-    private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var reservationRepository: ReservationRepository
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
     private var ownerUserId: Long = 0
     private lateinit var employeeToken: String
@@ -62,14 +55,16 @@ class CompanyEmployeeControllerIntegrationTest {
 
         val employee =
             userRepository.save(User(phoneNumber = "+48300200100", firstName = "Employee", lastName = "Test"))
-        val employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = company.id!!, userId = employee.id!!, role = "EMPLOYEE")
-        )
+        val employeeEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = company.id!!, userId = employee.id!!, role = "EMPLOYEE"),
+            )
         employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
 
-        val outsider = userRepository.save(User(phoneNumber = "+48500600700", firstName = "Outsider", lastName = "Test"))
+        val outsider =
+            userRepository.save(User(phoneNumber = "+48500600700", firstName = "Outsider", lastName = "Test"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = outsider.id!!, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = outsider.id!!, role = "EMPLOYEE"),
         )
 
         val customer = userRepository.save(User(phoneNumber = "+48700800900", firstName = "Jan", lastName = "Nowak"))
@@ -78,24 +73,28 @@ class CompanyEmployeeControllerIntegrationTest {
 
     @Test
     fun `GET api-employees should list only own company employees with user ID as id`() {
-        mockMvc.get("/api/employees") {
-            header("Authorization", "Bearer $employeeToken")
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.length()") { value(2) }
-            jsonPath("$[?(@.firstName == 'Owner')].id") { value(ownerUserId.toInt()) }
-            jsonPath("$[?(@.firstName == 'Owner')].userId") { value(ownerUserId.toInt()) }
-            jsonPath("$[?(@.firstName == 'Outsider')]") { isEmpty() }
-        }
+        mockMvc
+            .get("/api/employees") {
+                header("Authorization", "Bearer $employeeToken")
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(2) }
+                jsonPath("$[?(@.firstName == 'Owner')].id") { value(ownerUserId.toInt()) }
+                jsonPath("$[?(@.firstName == 'Owner')].userId") { value(ownerUserId.toInt()) }
+                jsonPath("$[?(@.firstName == 'Outsider')]") { isEmpty() }
+            }
     }
 
     @Test
     fun `GET api-employees should return 403 for customer`() {
-        mockMvc.get("/api/employees") {
-            header("Authorization", "Bearer $customerToken")
-        }.andExpect {
-            status { isForbidden() }
-        }
+        mockMvc
+            .get("/api/employees") {
+                header("Authorization", "Bearer $customerToken")
+            }
+            .andExpect {
+                status { isForbidden() }
+            }
     }
 
     @Test

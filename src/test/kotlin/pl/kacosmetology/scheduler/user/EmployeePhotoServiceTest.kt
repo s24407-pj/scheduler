@@ -4,6 +4,7 @@ import io.mockk.*
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
+import java.util.*
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -21,25 +22,19 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.DeleteObjectResponse
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectResponse
-import java.util.*
 
 @ExtendWith(MockKExtension::class)
 class EmployeePhotoServiceTest {
 
-    @MockK
-    private lateinit var s3Client: S3Client
+    @MockK private lateinit var s3Client: S3Client
 
-    @MockK
-    private lateinit var r2Props: R2Properties
+    @MockK private lateinit var r2Props: R2Properties
 
-    @MockK
-    private lateinit var userRepository: UserRepository
+    @MockK private lateinit var userRepository: UserRepository
 
-    @MockK
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @InjectMockKs
-    private lateinit var employeePhotoService: EmployeePhotoService
+    @InjectMockKs private lateinit var employeePhotoService: EmployeePhotoService
 
     private val companyId = 1L
     private val employeeId = 10L
@@ -63,8 +58,8 @@ class EmployeePhotoServiceTest {
 
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
         every { userRepository.findById(employeeId) } returns Optional.of(user)
-        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder()
-            .build()
+        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns
+            PutObjectResponse.builder().build()
         every { userRepository.save(any()) } answers { firstArg() }
         mockkStatic(TransactionSynchronizationManager::class)
         every { TransactionSynchronizationManager.registerSynchronization(any()) } just Runs
@@ -91,8 +86,8 @@ class EmployeePhotoServiceTest {
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
         every { userRepository.findById(employeeId) } returns Optional.of(user)
         every { s3Client.deleteObject(any<DeleteObjectRequest>()) } returns DeleteObjectResponse.builder().build()
-        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder()
-            .build()
+        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns
+            PutObjectResponse.builder().build()
         every { userRepository.save(any()) } answers { firstArg() }
         val syncSlot = slot<TransactionSynchronization>()
         mockkStatic(TransactionSynchronizationManager::class)
@@ -114,9 +109,10 @@ class EmployeePhotoServiceTest {
         val file = MockMultipartFile("photo", "doc.pdf", "application/pdf", ByteArray(100))
 
         // WHEN & THEN
-        val ex = assertThrows<IllegalArgumentException> {
-            employeePhotoService.upload(companyId, employeeId, file)
-        }
+        val ex =
+            assertThrows<IllegalArgumentException> {
+                employeePhotoService.upload(companyId, employeeId, file)
+            }
         assertTrue(ex.message!!.contains("Niedozwolony typ pliku"))
         verify(exactly = 0) { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) }
     }
@@ -128,9 +124,10 @@ class EmployeePhotoServiceTest {
         val file = MockMultipartFile("photo", "big.jpg", "image/jpeg", ByteArray(6 * 1024 * 1024))
 
         // WHEN & THEN
-        val ex = assertThrows<IllegalArgumentException> {
-            employeePhotoService.upload(companyId, employeeId, file)
-        }
+        val ex =
+            assertThrows<IllegalArgumentException> {
+                employeePhotoService.upload(companyId, employeeId, file)
+            }
         assertTrue(ex.message!!.contains("za duży"))
         verify(exactly = 0) { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) }
     }

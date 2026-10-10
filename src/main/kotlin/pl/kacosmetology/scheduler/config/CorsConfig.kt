@@ -8,10 +8,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 /** CORS configuration. Allowed origins are read from the [cors.allowed-origins] environment variable. */
 @Configuration
 class CorsConfig(
-    @Value($$"${cors.allowed-origins}") private val allowedOrigins: String
+    @Value($$"${cors.allowed-origins}") private val allowedOrigins: String,
 ) : WebMvcConfigurer {
     override fun addCorsMappings(registry: CorsRegistry) {
-        registry.addMapping("/**")
+        registry
+            .addMapping("/**")
             .allowedOrigins(*allowedOrigins.split(",").map { it.trim() }.toTypedArray())
             .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             .allowedHeaders("*")

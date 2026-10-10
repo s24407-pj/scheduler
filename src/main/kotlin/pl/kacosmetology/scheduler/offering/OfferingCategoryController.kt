@@ -10,21 +10,17 @@ import pl.kacosmetology.scheduler.offering.dto.OfferingCategoryResponse
 import pl.kacosmetology.scheduler.offering.dto.toOfferingCategoryResponse
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
-/**
- * REST API for managing offering categories.
- * OWNER and EMPLOYEE can read; only OWNER can create or delete.
- */
+/** REST API for managing offering categories. OWNER and EMPLOYEE can read; only OWNER can create or delete. */
 @RestController
 @RequestMapping("/api/offering-categories")
 class OfferingCategoryController(
-    private val offeringCategoryService: OfferingCategoryService
+    private val offeringCategoryService: OfferingCategoryService,
 ) {
 
     /** Returns all categories for the authenticated user's company. */
     @GetMapping
     fun getCategories(@AuthenticationPrincipal userDetails: CustomUserDetails): List<OfferingCategoryResponse> =
-        offeringCategoryService.getCategories(userDetails.requireCompanyId())
-            .map { it.toOfferingCategoryResponse() }
+        offeringCategoryService.getCategories(userDetails.requireCompanyId()).map { it.toOfferingCategoryResponse() }
 
     /** Creates a new category. Requires OWNER role. */
     @PostMapping
@@ -32,7 +28,7 @@ class OfferingCategoryController(
     @PreAuthorize("hasRole('OWNER')")
     fun createCategory(
         @Valid @RequestBody request: OfferingCategoryRequest,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): OfferingCategoryResponse =
         offeringCategoryService.createCategory(userDetails.requireCompanyId(), request).toOfferingCategoryResponse()
 
@@ -42,6 +38,6 @@ class OfferingCategoryController(
     @PreAuthorize("hasRole('OWNER')")
     fun deleteCategory(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) = offeringCategoryService.deleteCategory(id, userDetails.requireCompanyId())
 }

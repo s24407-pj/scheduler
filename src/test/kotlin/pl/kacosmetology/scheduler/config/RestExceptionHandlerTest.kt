@@ -1,10 +1,10 @@
 package pl.kacosmetology.scheduler.config
 
+import java.sql.SQLException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.orm.ObjectOptimisticLockingFailureException
-import java.sql.SQLException
 
 class RestExceptionHandlerTest {
 
@@ -12,7 +12,8 @@ class RestExceptionHandlerTest {
 
     @Test
     fun `api exception should use the status and code of its error code`() {
-        val response = handler.handleApiException(ApiException(ErrorCode.RESERVATION_NOT_FOUND, "Rezerwacja nie istnieje"))
+        val response =
+            handler.handleApiException(ApiException(ErrorCode.RESERVATION_NOT_FOUND, "Rezerwacja nie istnieje"))
 
         assertEquals(404, response.statusCode.value())
         assertEquals("RESERVATION_NOT_FOUND", response.body!!.properties!!["code"])

@@ -7,5 +7,5 @@ import jakarta.validation.constraints.Size
 data class SetWeeklyScheduleRequest(
     @field:Size(max = 7, message = "Grafik nie może mieć więcej niż 7 wpisów")
     @field:Valid
-    val entries: List<WorkScheduleEntryRequest>?
+    val entries: List<WorkScheduleEntryRequest>?,
 )

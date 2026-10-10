@@ -1,12 +1,13 @@
 package pl.kacosmetology.scheduler.auth
 
+import java.security.SecureRandom
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.auth.dto.AuthResponse
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
-import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffEmploymentOption
+import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginResponse
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginStatus
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
@@ -18,7 +19,6 @@ import pl.kacosmetology.scheduler.security.JwtService
 import pl.kacosmetology.scheduler.security.SessionStore
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
-import java.security.SecureRandom
 
 /** Handles authentication flows: SMS OTP for customers and email/password for staff. */
 @Service
@@ -33,7 +33,7 @@ class AuthService(
     private val loginRateLimiter: LoginRateLimiter,
     private val otpVerificationRateLimiter: OtpVerificationRateLimiter,
     private val otpRequestRateLimiter: OtpRequestRateLimiter,
-    private val sessionStore: SessionStore
+    private val sessionStore: SessionStore,
 ) {
 
     companion object {
@@ -42,14 +42,16 @@ class AuthService(
 
     private val secureRandom = SecureRandom()
 
-    /** Compared against when the account is unknown or has no password, so every failed login costs one bcrypt check. */
+    /**
+     * Compared against when the account is unknown or has no password, so every failed login costs one bcrypt check.
+     */
     private val dummyPasswordHash: String by lazy {
         requireNotNull(passwordEncoder.encode("dummy-password-for-timing-equalization"))
     }
 
     /**
-     * Generates a 6-digit OTP code, stores it in Redis with TTL and sends it via SMS.
-     * Throws [RateLimitExceededException] if [clientIp] or the phone number exceeded its request limit.
+     * Generates a 6-digit OTP code, stores it in Redis with TTL and sends it via SMS. Throws
+     * [RateLimitExceededException] if [clientIp] or the phone number exceeded its request limit.
      */
     fun requestCode(request: RequestCodeRequest, clientIp: String) {
         if (!otpRequestRateLimiter.checkAndIncrement(clientIp)) {
@@ -65,8 +67,8 @@ class AuthService(
     }
 
     /**
-     * Verifies the OTP code and returns a JWT token.
-     * Creates a new user on first verification (requires firstName and lastName).
+     * Verifies the OTP code and returns a JWT token. Creates a new user on first verification (requires firstName and
+     * lastName).
      */
     @Transactional
     fun verifyCode(request: VerifyCodeRequest, clientIp: String): AuthResponse {
@@ -85,13 +87,15 @@ class AuthService(
 
         requireVerified(otpStore.verifyAndConsumeCode(request.phoneNumber, request.code))
 
-        val user = existingUser ?: userRepository.save(
-            User(
-                phoneNumber = request.phoneNumber,
-                firstName = request.firstName!!,
-                lastName = request.lastName!!
-            )
-        )
+        val user =
+            existingUser
+                ?: userRepository.save(
+                    User(
+                        phoneNumber = request.phoneNumber,
+                        firstName = request.firstName!!,
+                        lastName = request.lastName!!,
+                    ),
+                )
 
         return AuthResponse(jwtService.generateCustomerToken(user))
     }
@@ -108,9 +112,9 @@ class AuthService(
     }
 
     /**
-     * Authenticates a staff member using email and password.
-     * Returns a JWT scoped to one employment, or available employments when a selection is required.
-     * Throws [RateLimitExceededException] if [clientIp] has exceeded the allowed login attempt rate.
+     * Authenticates a staff member using email and password. Returns a JWT scoped to one employment, or available
+     * employments when a selection is required. Throws [RateLimitExceededException] if [clientIp] has exceeded the
+     * allowed login attempt rate.
      */
     @Transactional(readOnly = true)
     fun loginStaff(request: StaffLoginRequest, clientIp: String): StaffLoginResponse {
@@ -135,31 +139,36 @@ class AuthService(
         }
 
         if (employments.size > 1 && request.employmentId == null) {
-            val companies = companyRepository.findAllById(employments.map { it.companyId })
-                .associateBy { requireNotNull(it.id) }
-            val options = employments.map { employment ->
-                val company = companies[employment.companyId]
-                    ?: throw IllegalStateException("Firma przypisana do zatrudnienia nie istnieje")
-                StaffEmploymentOption(
-                    employmentId = requireNotNull(employment.id),
-                    companyId = employment.companyId,
-                    companyName = company.name,
-                    role = employment.role
-                )
-            }.sortedWith(compareBy<StaffEmploymentOption> { it.companyName }.thenBy { it.companyId })
+            val companies =
+                companyRepository.findAllById(employments.map { it.companyId }).associateBy { requireNotNull(it.id) }
+            val options =
+                employments
+                    .map { employment ->
+                        val company =
+                            companies[employment.companyId]
+                                ?: throw IllegalStateException("Firma przypisana do zatrudnienia nie istnieje")
+                        StaffEmploymentOption(
+                            employmentId = requireNotNull(employment.id),
+                            companyId = employment.companyId,
+                            companyName = company.name,
+                            role = employment.role,
+                        )
+                    }
+                    .sortedWith(compareBy<StaffEmploymentOption> { it.companyName }.thenBy { it.companyId })
             return StaffLoginResponse(StaffLoginStatus.EMPLOYMENT_SELECTION_REQUIRED, null, options)
         }
 
-        val selected = if (request.employmentId == null) {
-            employments.single()
-        } else {
-            employments.find { it.id == request.employmentId }
-                ?: throw IllegalArgumentException("Nieprawidłowy wybór zatrudnienia")
-        }
+        val selected =
+            if (request.employmentId == null) {
+                employments.single()
+            } else {
+                employments.find { it.id == request.employmentId }
+                    ?: throw IllegalArgumentException("Nieprawidłowy wybór zatrudnienia")
+            }
         return StaffLoginResponse(
             status = StaffLoginStatus.AUTHENTICATED,
             token = jwtService.generateStaffToken(user, selected),
-            employments = emptyList()
+            employments = emptyList(),
         )
     }
 

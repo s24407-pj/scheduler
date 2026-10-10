@@ -14,15 +14,18 @@ import pl.kacosmetology.scheduler.user.dto.UpdateCustomerNotesRequest
 @RestController
 @RequestMapping("/api/customers")
 class CustomerController(
-    private val customerService: CustomerService
+    private val customerService: CustomerService,
 ) {
 
-    /** Returns all customers who have made at least one reservation at the authenticated user's company. Requires OWNER or EMPLOYEE role. */
+    /**
+     * Returns all customers who have made at least one reservation at the authenticated user's company. Requires OWNER
+     * or EMPLOYEE role.
+     */
     @GetMapping
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun listCustomers(@AuthenticationPrincipal userDetails: CustomUserDetails): List<CustomerStatusResponse> {
-        val companyId = userDetails.companyId
-            ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
+        val companyId =
+            userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
         return customerService.listCustomers(companyId)
     }
 
@@ -31,10 +34,10 @@ class CustomerController(
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getCustomerStatus(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): CustomerStatusResponse {
-        val companyId = userDetails.companyId
-            ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
+        val companyId =
+            userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
         return customerService.getCustomerStatus(id, companyId)
     }
 
@@ -44,10 +47,10 @@ class CustomerController(
     @PreAuthorize("hasRole('OWNER')")
     fun blockCustomer(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
-        val companyId = userDetails.companyId
-            ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
+        val companyId =
+            userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
         customerService.blockCustomer(id, companyId)
     }
 
@@ -58,10 +61,10 @@ class CustomerController(
     fun setCustomerNotes(
         @PathVariable id: Long,
         @Valid @RequestBody request: UpdateCustomerNotesRequest,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
-        val companyId = userDetails.companyId
-            ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
+        val companyId =
+            userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
         customerService.setCustomerNotes(id, companyId, request.notes)
     }
 
@@ -71,10 +74,10 @@ class CustomerController(
     @PreAuthorize("hasRole('OWNER')")
     fun unblockCustomer(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
-        val companyId = userDetails.companyId
-            ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
+        val companyId =
+            userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
         customerService.unblockCustomer(id, companyId)
     }
 }

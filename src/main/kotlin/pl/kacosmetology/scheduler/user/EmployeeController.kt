@@ -10,69 +10,67 @@ import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.user.dto.UserProfileResponse
 
 /**
- * REST API for managing employee profile photos. Requires OWNER role.
- * Employee listing endpoints live in `CompanyEmployeeController`.
+ * REST API for managing employee profile photos. Requires OWNER role. Employee listing endpoints live in
+ * `CompanyEmployeeController`.
  */
 @RestController
 @RequestMapping("/api/employees")
 class EmployeeController(
-    private val employeePhotoService: EmployeePhotoService
+    private val employeePhotoService: EmployeePhotoService,
 ) {
 
     /**
-     * Uploads or replaces the profile photo for [id].
-     * Multipart field name: `photo`. Max 5 MB; allowed types: JPEG, PNG, WebP.
-     * Requires OWNER role.
+     * Uploads or replaces the profile photo for [id]. Multipart field name: `photo`. Max 5 MB; allowed types: JPEG,
+     * PNG, WebP. Requires OWNER role.
      */
     @PostMapping("/{id}/photo")
     @PreAuthorize("hasRole('OWNER')")
     fun uploadPhoto(
         @PathVariable id: Long,
         @RequestParam("photo") file: MultipartFile,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): UserProfileResponse {
         val companyId = requireCompanyId(userDetails)
-        val user = try {
-            employeePhotoService.upload(companyId, id, file)
-        } catch (e: NoSuchElementException) {
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, e.message)
-        } catch (e: IllegalArgumentException) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, e.message)
-        }
+        val user =
+            try {
+                employeePhotoService.upload(companyId, id, file)
+            } catch (e: NoSuchElementException) {
+                throw ResponseStatusException(HttpStatus.NOT_FOUND, e.message)
+            } catch (e: IllegalArgumentException) {
+                throw ResponseStatusException(HttpStatus.BAD_REQUEST, e.message)
+            }
         return user.toProfileResponse()
     }
 
-    /**
-     * Removes the profile photo for [id]. If no photo exists, this is a no-op.
-     * Requires OWNER role.
-     */
+    /** Removes the profile photo for [id]. If no photo exists, this is a no-op. Requires OWNER role. */
     @DeleteMapping("/{id}/photo")
     @PreAuthorize("hasRole('OWNER')")
     fun deletePhoto(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): UserProfileResponse {
         val companyId = requireCompanyId(userDetails)
-        val user = try {
-            employeePhotoService.delete(companyId, id)
-        } catch (e: NoSuchElementException) {
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, e.message)
-        }
+        val user =
+            try {
+                employeePhotoService.delete(companyId, id)
+            } catch (e: NoSuchElementException) {
+                throw ResponseStatusException(HttpStatus.NOT_FOUND, e.message)
+            }
         return user.toProfileResponse()
     }
 
     // ---- helpers ----
 
     private fun requireCompanyId(userDetails: CustomUserDetails): Long =
-        userDetails.companyId
-            ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisania do firmy")
+        userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisania do firmy")
 
-    private fun User.toProfileResponse() = UserProfileResponse(
-        id = requireNotNull(id) { "Persisted employee must have an ID" },
-        phoneNumber = phoneNumber,
-        firstName = firstName,
-        lastName = lastName,
-        email = email,
-        photoUrl = photoUrl
-    )
+    private fun User.toProfileResponse() =
+        UserProfileResponse(
+            id = requireNotNull(id) { "Persisted employee must have an ID" },
+            phoneNumber = phoneNumber,
+            firstName = firstName,
+            lastName = lastName,
+            email = email,
+            photoUrl = photoUrl,
+        )
 }

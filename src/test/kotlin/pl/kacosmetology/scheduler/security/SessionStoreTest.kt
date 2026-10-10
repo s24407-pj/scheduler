@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.security
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import java.time.Duration
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -11,16 +12,16 @@ import org.junit.jupiter.api.Test
 import org.springframework.data.redis.core.SetOperations
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
-import java.time.Duration
 
 class SessionStoreTest {
 
     private val valueOps = mockk<ValueOperations<String, String>>(relaxed = true)
     private val setOps = mockk<SetOperations<String, String>>(relaxed = true)
-    private val redisTemplate = mockk<StringRedisTemplate>(relaxed = true) {
-        every { opsForValue() } returns valueOps
-        every { opsForSet() } returns setOps
-    }
+    private val redisTemplate =
+        mockk<StringRedisTemplate>(relaxed = true) {
+            every { opsForValue() } returns valueOps
+            every { opsForSet() } returns setOps
+        }
     private val sessionStore = SessionStore(redisTemplate)
 
     @Test

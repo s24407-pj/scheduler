@@ -9,17 +9,16 @@ import pl.kacosmetology.scheduler.offering.dto.OfferingCategoryRequest
 @Service
 class OfferingCategoryService(
     private val categoryRepository: OfferingCategoryRepository,
-    private val offeringRepository: OfferingRepository
+    private val offeringRepository: OfferingRepository,
 ) {
 
     /** Returns all categories for the given company. */
     @Transactional(readOnly = true)
-    fun getCategories(companyId: Long): List<OfferingCategory> =
-        categoryRepository.findAllByCompanyId(companyId)
+    fun getCategories(companyId: Long): List<OfferingCategory> = categoryRepository.findAllByCompanyId(companyId)
 
     /**
-     * Creates a new category for the company.
-     * Throws [IllegalStateException] if a category with the same name already exists.
+     * Creates a new category for the company. Throws [IllegalStateException] if a category with the same name already
+     * exists.
      */
     @Transactional
     fun createCategory(companyId: Long, request: OfferingCategoryRequest): OfferingCategory {
@@ -30,15 +29,15 @@ class OfferingCategoryService(
     }
 
     /**
-     * Deletes a category. Offerings using it will have their [Offering.categoryId] set to null automatically.
-     * Throws [NoSuchElementException] if the category does not exist.
-     * Throws [IllegalStateException] if the category belongs to a different company.
+     * Deletes a category. Offerings using it will have their [Offering.categoryId] set to null automatically. Throws
+     * [NoSuchElementException] if the category does not exist. Throws [IllegalStateException] if the category belongs
+     * to a different company.
      */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun deleteCategory(categoryId: Long, companyId: Long) {
-        val category = categoryRepository.findById(categoryId)
-            .orElseThrow { NoSuchElementException("Kategoria nie istnieje") }
+        val category =
+            categoryRepository.findById(categoryId).orElseThrow { NoSuchElementException("Kategoria nie istnieje") }
         if (category.companyId != companyId) {
             throw IllegalStateException("Brak dostępu do tej kategorii")
         }
@@ -46,21 +45,20 @@ class OfferingCategoryService(
     }
 
     /**
-     * Assigns or removes a category from an offering.
-     * Pass [categoryId] = null to remove the category assignment.
+     * Assigns or removes a category from an offering. Pass [categoryId] = null to remove the category assignment.
      * Validates that both the offering and category belong to [companyId].
      */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun assignCategory(offeringId: Long, companyId: Long, categoryId: Long?) {
-        val offering = offeringRepository.findById(offeringId)
-            .orElseThrow { NoSuchElementException("Usługa nie istnieje") }
+        val offering =
+            offeringRepository.findById(offeringId).orElseThrow { NoSuchElementException("Usługa nie istnieje") }
         if (offering.companyId != companyId) {
             throw IllegalStateException("Brak dostępu do tej usługi")
         }
         if (categoryId != null) {
-            val category = categoryRepository.findById(categoryId)
-                .orElseThrow { NoSuchElementException("Kategoria nie istnieje") }
+            val category =
+                categoryRepository.findById(categoryId).orElseThrow { NoSuchElementException("Kategoria nie istnieje") }
             if (category.companyId != companyId) {
                 throw IllegalStateException("Brak dostępu do tej kategorii")
             }

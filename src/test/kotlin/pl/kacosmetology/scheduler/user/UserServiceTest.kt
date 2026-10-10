@@ -4,21 +4,19 @@ import io.mockk.every
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
+import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.user.dto.UpdateUserProfileRequest
-import java.util.*
 
 @ExtendWith(MockKExtension::class)
 class UserServiceTest {
 
-    @MockK
-    private lateinit var userRepository: UserRepository
+    @MockK private lateinit var userRepository: UserRepository
 
-    @InjectMockKs
-    private lateinit var userService: UserService
+    @InjectMockKs private lateinit var userService: UserService
 
     @Test
     fun `updateProfile should update user data`() {
@@ -50,17 +48,19 @@ class UserServiceTest {
 
         every { userRepository.findById(userId) } returns Optional.of(existingUser)
         // Symulujemy, że w bazie jest już INNY użytkownik z tym emailem
-        every { userRepository.findByEmail("zajety@mail.com") } returns User(
-            id = 2L,
-            phoneNumber = "999",
-            firstName = "X",
-            lastName = "Y"
-        )
+        every { userRepository.findByEmail("zajety@mail.com") } returns
+            User(
+                id = 2L,
+                phoneNumber = "999",
+                firstName = "X",
+                lastName = "Y",
+            )
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalStateException> {
-            userService.updateProfile(userId, request)
-        }
+        val exception =
+            assertThrows<IllegalStateException> {
+                userService.updateProfile(userId, request)
+            }
         assertEquals("Ten adres e-mail jest już zajęty", exception.message)
     }
 }

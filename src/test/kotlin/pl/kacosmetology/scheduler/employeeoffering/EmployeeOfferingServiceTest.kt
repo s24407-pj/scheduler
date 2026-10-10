@@ -5,6 +5,7 @@ import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
+import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -12,22 +13,17 @@ import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
-import java.util.*
 
 @ExtendWith(MockKExtension::class)
 class EmployeeOfferingServiceTest {
 
-    @MockK
-    private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
+    @MockK private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
-    @MockK
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @MockK
-    private lateinit var offeringRepository: OfferingRepository
+    @MockK private lateinit var offeringRepository: OfferingRepository
 
-    @InjectMockKs
-    private lateinit var service: EmployeeOfferingService
+    @InjectMockKs private lateinit var service: EmployeeOfferingService
 
     private val companyId = 1L
     private val employeeId = 10L

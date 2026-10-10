@@ -34,26 +34,19 @@ import software.amazon.awssdk.services.s3.model.PutObjectResponse
 @Import(TestcontainersConfiguration::class)
 class EmployeePhotoIntegrationTest {
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var mockMvc: MockMvc
 
-    @Autowired
-    private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: UserRepository
 
-    @Autowired
-    private lateinit var companyRepository: CompanyRepository
+    @Autowired private lateinit var companyRepository: CompanyRepository
 
-    @Autowired
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @Autowired
-    private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var reservationRepository: ReservationRepository
 
-    @Autowired
-    private lateinit var jwtService: JwtService
+    @Autowired private lateinit var jwtService: JwtService
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
     private lateinit var owner: User
     private lateinit var employee: User
@@ -74,15 +67,17 @@ class EmployeePhotoIntegrationTest {
         owner = userRepository.save(User(phoneNumber = "+48100000001", firstName = "Owner", lastName = "Test"))
         employee = userRepository.save(User(phoneNumber = "+48100000002", firstName = "Employee", lastName = "Test"))
 
-        ownerEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER")
-        )
-        employeeEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
-        )
+        ownerEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
+            )
+        employeeEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
+            )
 
-        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns PutObjectResponse.builder()
-            .build()
+        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns
+            PutObjectResponse.builder().build()
         every { s3Client.deleteObject(any<DeleteObjectRequest>()) } returns DeleteObjectResponse.builder().build()
     }
 
@@ -94,11 +89,12 @@ class EmployeePhotoIntegrationTest {
     fun `POST photo - owner uploads photo and gets 200 with photoUrl`() {
         val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(1024))
 
-        mockMvc.perform(
-            multipart("/api/employees/${employee.id!!}/photo")
-                .file(file)
-                .header("Authorization", "Bearer ${ownerToken()}")
-        )
+        mockMvc
+            .perform(
+                multipart("/api/employees/${employee.id!!}/photo")
+                    .file(file)
+                    .header("Authorization", "Bearer ${ownerToken()}"),
+            )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.photoUrl").isString)
             .andExpect(jsonPath("$.id").value(employee.id!!))
@@ -108,19 +104,22 @@ class EmployeePhotoIntegrationTest {
     fun `POST photo - uploading replacement deletes old key and returns new URL`() {
         // First upload
         val file1 = MockMultipartFile("photo", "first.jpg", "image/jpeg", ByteArray(512))
-        mockMvc.perform(
-            multipart("/api/employees/${employee.id!!}/photo")
-                .file(file1)
-                .header("Authorization", "Bearer ${ownerToken()}")
-        ).andExpect(status().isOk)
+        mockMvc
+            .perform(
+                multipart("/api/employees/${employee.id!!}/photo")
+                    .file(file1)
+                    .header("Authorization", "Bearer ${ownerToken()}"),
+            )
+            .andExpect(status().isOk)
 
         // Second upload should trigger a delete of the old key
         val file2 = MockMultipartFile("photo", "second.png", "image/png", ByteArray(256))
-        mockMvc.perform(
-            multipart("/api/employees/${employee.id!!}/photo")
-                .file(file2)
-                .header("Authorization", "Bearer ${ownerToken()}")
-        )
+        mockMvc
+            .perform(
+                multipart("/api/employees/${employee.id!!}/photo")
+                    .file(file2)
+                    .header("Authorization", "Bearer ${ownerToken()}"),
+            )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.photoUrl").isString)
 
@@ -132,11 +131,12 @@ class EmployeePhotoIntegrationTest {
     fun `POST photo - employee (non-owner) gets 403`() {
         val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
 
-        mockMvc.perform(
-            multipart("/api/employees/${employee.id!!}/photo")
-                .file(file)
-                .header("Authorization", "Bearer ${employeeToken()}")
-        )
+        mockMvc
+            .perform(
+                multipart("/api/employees/${employee.id!!}/photo")
+                    .file(file)
+                    .header("Authorization", "Bearer ${employeeToken()}"),
+            )
             .andExpect(status().isForbidden)
     }
 
@@ -144,9 +144,10 @@ class EmployeePhotoIntegrationTest {
     fun `POST photo - unauthenticated gets 401`() {
         val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
 
-        mockMvc.perform(
-            multipart("/api/employees/${employee.id!!}/photo").file(file)
-        )
+        mockMvc
+            .perform(
+                multipart("/api/employees/${employee.id!!}/photo").file(file),
+            )
             .andExpect(status().isUnauthorized)
     }
 
@@ -156,11 +157,12 @@ class EmployeePhotoIntegrationTest {
             userRepository.save(User(phoneNumber = "+48199999999", firstName = "Outside", lastName = "Person"))
         val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
 
-        mockMvc.perform(
-            multipart("/api/employees/${outsider.id!!}/photo")
-                .file(file)
-                .header("Authorization", "Bearer ${ownerToken()}")
-        )
+        mockMvc
+            .perform(
+                multipart("/api/employees/${outsider.id!!}/photo")
+                    .file(file)
+                    .header("Authorization", "Bearer ${ownerToken()}"),
+            )
             .andExpect(status().isNotFound)
     }
 
@@ -168,11 +170,12 @@ class EmployeePhotoIntegrationTest {
     fun `POST photo - invalid MIME type returns 400`() {
         val file = MockMultipartFile("photo", "doc.pdf", "application/pdf", ByteArray(100))
 
-        mockMvc.perform(
-            multipart("/api/employees/${employee.id!!}/photo")
-                .file(file)
-                .header("Authorization", "Bearer ${ownerToken()}")
-        )
+        mockMvc
+            .perform(
+                multipart("/api/employees/${employee.id!!}/photo")
+                    .file(file)
+                    .header("Authorization", "Bearer ${ownerToken()}"),
+            )
             .andExpect(status().isBadRequest)
     }
 
@@ -180,11 +183,12 @@ class EmployeePhotoIntegrationTest {
     fun `POST photo - file too large returns 400`() {
         val file = MockMultipartFile("photo", "big.jpg", "image/jpeg", ByteArray(6 * 1024 * 1024))
 
-        mockMvc.perform(
-            multipart("/api/employees/${employee.id!!}/photo")
-                .file(file)
-                .header("Authorization", "Bearer ${ownerToken()}")
-        )
+        mockMvc
+            .perform(
+                multipart("/api/employees/${employee.id!!}/photo")
+                    .file(file)
+                    .header("Authorization", "Bearer ${ownerToken()}"),
+            )
             .andExpect(status().isBadRequest)
     }
 
@@ -194,24 +198,28 @@ class EmployeePhotoIntegrationTest {
         employee.photoUrl = "https://pub.r2.dev/employees/$companyId/${employee.id!!}/abc.jpg"
         userRepository.save(employee)
 
-        mockMvc.delete("/api/employees/${employee.id!!}/photo") {
-            header("Authorization", "Bearer ${ownerToken()}")
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.photoUrl") { value(null) }
-        }
+        mockMvc
+            .delete("/api/employees/${employee.id!!}/photo") {
+                header("Authorization", "Bearer ${ownerToken()}")
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.photoUrl") { value(null) }
+            }
 
         verify(exactly = 1) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
     }
 
     @Test
     fun `DELETE photo - no-op when employee has no photo, returns 200 with null photoUrl`() {
-        mockMvc.delete("/api/employees/${employee.id!!}/photo") {
-            header("Authorization", "Bearer ${ownerToken()}")
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.photoUrl") { value(null) }
-        }
+        mockMvc
+            .delete("/api/employees/${employee.id!!}/photo") {
+                header("Authorization", "Bearer ${ownerToken()}")
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.photoUrl") { value(null) }
+            }
 
         verify(exactly = 0) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
     }

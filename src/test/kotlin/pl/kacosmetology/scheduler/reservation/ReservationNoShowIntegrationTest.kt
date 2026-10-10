@@ -1,6 +1,10 @@
 package pl.kacosmetology.scheduler.reservation
 
 import com.ninjasquad.springmockk.MockkBean
+import java.time.LocalDateTime
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -24,35 +28,22 @@ import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
-import java.time.LocalDateTime
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
 class ReservationNoShowIntegrationTest {
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
-    @Autowired
-    private lateinit var jwtService: JwtService
-    @Autowired
-    private lateinit var userRepository: UserRepository
-    @Autowired
-    private lateinit var companyRepository: CompanyRepository
-    @Autowired
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired
-    private lateinit var serviceRepository: OfferingRepository
-    @Autowired
-    private lateinit var reservationRepository: ReservationRepository
-    @Autowired
-    private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
+    @Autowired private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var companyRepository: CompanyRepository
+    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired private lateinit var serviceRepository: OfferingRepository
+    @Autowired private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
     private lateinit var employee: User
     private lateinit var customer: User
@@ -74,9 +65,10 @@ class ReservationNoShowIntegrationTest {
 
         employee =
             userRepository.save(User(phoneNumber = "+48700111001", firstName = "Pracownik", lastName = "Testowy"))
-        val employment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
-        )
+        val employment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
+            )
 
         customer = userRepository.save(User(phoneNumber = "+48600222001", firstName = "Klient", lastName = "Testowy"))
 
@@ -86,11 +78,12 @@ class ReservationNoShowIntegrationTest {
 
     private fun saveReservation(
         status: ReservationStatus = ReservationStatus.PENDING,
-        startTime: LocalDateTime = LocalDateTime.now(BUSINESS_ZONE).minusHours(2)
+        startTime: LocalDateTime = LocalDateTime.now(BUSINESS_ZONE).minusHours(2),
     ): Reservation {
-        val service = serviceRepository.save(
-            Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 50)
-        )
+        val service =
+            serviceRepository.save(
+                Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 50),
+            )
         return reservationRepository.save(
             Reservation(
                 companyId = companyId,
@@ -100,8 +93,8 @@ class ReservationNoShowIntegrationTest {
                 price = 50,
                 startTime = startTime,
                 endTime = startTime.plusMinutes(30),
-                status = status
-            )
+                status = status,
+            ),
         )
     }
 
@@ -109,11 +102,13 @@ class ReservationNoShowIntegrationTest {
     fun `PATCH no-show as employee should return 204 and mark reservation`() {
         val reservation = saveReservation()
 
-        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
-            header("Authorization", "Bearer $employeeToken")
-        }.andExpect {
-            status { isNoContent() }
-        }
+        mockMvc
+            .patch("/api/reservations/${reservation.id!!}/no-show") {
+                header("Authorization", "Bearer $employeeToken")
+            }
+            .andExpect {
+                status { isNoContent() }
+            }
 
         val updated = reservationRepository.findById(reservation.id!!).get()
         assertEquals(ReservationStatus.NO_SHOW, updated.status)
@@ -126,24 +121,27 @@ class ReservationNoShowIntegrationTest {
     fun `PATCH no-show as customer should return 403`() {
         val reservation = saveReservation()
 
-        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
-            header("Authorization", "Bearer $customerToken")
-        }.andExpect {
-            status { isForbidden() }
-        }
+        mockMvc
+            .patch("/api/reservations/${reservation.id!!}/no-show") {
+                header("Authorization", "Bearer $customerToken")
+            }
+            .andExpect {
+                status { isForbidden() }
+            }
     }
 
     @Test
     fun `PATCH no-show on reservation completed more than 24 hours ago should return 409`() {
-        val reservation =
-            saveReservation(ReservationStatus.COMPLETED, LocalDateTime.now(BUSINESS_ZONE).minusHours(25))
+        val reservation = saveReservation(ReservationStatus.COMPLETED, LocalDateTime.now(BUSINESS_ZONE).minusHours(25))
 
-        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
-            header("Authorization", "Bearer $employeeToken")
-        }.andExpect {
-            status { isConflict() }
-            jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
-        }
+        mockMvc
+            .patch("/api/reservations/${reservation.id!!}/no-show") {
+                header("Authorization", "Bearer $employeeToken")
+            }
+            .andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
+            }
 
         assertEquals(ReservationStatus.COMPLETED, reservationRepository.findById(reservation.id!!).get().status)
     }
@@ -152,11 +150,13 @@ class ReservationNoShowIntegrationTest {
     fun `PATCH no-show should correct a reservation completed within the last 24 hours`() {
         val reservation = saveReservation(ReservationStatus.COMPLETED)
 
-        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
-            header("Authorization", "Bearer $employeeToken")
-        }.andExpect {
-            status { isNoContent() }
-        }
+        mockMvc
+            .patch("/api/reservations/${reservation.id!!}/no-show") {
+                header("Authorization", "Bearer $employeeToken")
+            }
+            .andExpect {
+                status { isNoContent() }
+            }
 
         assertEquals(ReservationStatus.NO_SHOW, reservationRepository.findById(reservation.id!!).get().status)
         val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!)!!
@@ -167,12 +167,14 @@ class ReservationNoShowIntegrationTest {
     fun `PATCH no-show before the visit starts should return 409`() {
         val reservation = saveReservation(startTime = LocalDateTime.now(BUSINESS_ZONE).plusHours(1))
 
-        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
-            header("Authorization", "Bearer $employeeToken")
-        }.andExpect {
-            status { isConflict() }
-            jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
-        }
+        mockMvc
+            .patch("/api/reservations/${reservation.id!!}/no-show") {
+                header("Authorization", "Bearer $employeeToken")
+            }
+            .andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
+            }
 
         assertEquals(ReservationStatus.PENDING, reservationRepository.findById(reservation.id!!).get().status)
         assertEquals(null, companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!))
@@ -182,11 +184,13 @@ class ReservationNoShowIntegrationTest {
     fun `PATCH no-show on cancelled reservation should return 409`() {
         val reservation = saveReservation(ReservationStatus.CANCELLED)
 
-        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
-            header("Authorization", "Bearer $employeeToken")
-        }.andExpect {
-            status { isConflict() }
-        }
+        mockMvc
+            .patch("/api/reservations/${reservation.id!!}/no-show") {
+                header("Authorization", "Bearer $employeeToken")
+            }
+            .andExpect {
+                status { isConflict() }
+            }
     }
 
     @Test
@@ -196,20 +200,23 @@ class ReservationNoShowIntegrationTest {
         // Staff from a different company
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
         val otherOwner = userRepository.save(User(phoneNumber = "+48900000099", firstName = "Obcy", lastName = "Owner"))
-        val otherEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(
-                companyId = otherCompany.id!!,
-                userId = otherOwner.id!!,
-                role = "OWNER"
+        val otherEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(
+                    companyId = otherCompany.id!!,
+                    userId = otherOwner.id!!,
+                    role = "OWNER",
+                ),
             )
-        )
         val otherToken = jwtService.generateStaffToken(otherOwner, otherEmployment)
 
-        mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
-            header("Authorization", "Bearer $otherToken")
-        }.andExpect {
-            status { isNotFound() }
-        }
+        mockMvc
+            .patch("/api/reservations/${reservation.id!!}/no-show") {
+                header("Authorization", "Bearer $otherToken")
+            }
+            .andExpect {
+                status { isNotFound() }
+            }
 
         // Reservation status must be unchanged
         val unchanged = reservationRepository.findById(reservation.id!!).get()
@@ -223,20 +230,23 @@ class ReservationNoShowIntegrationTest {
         val otherCompany = companyRepository.save(Company(name = "Inny Salon B"))
         val otherOwner =
             userRepository.save(User(phoneNumber = "+48900000098", firstName = "Obcy2", lastName = "Owner2"))
-        val otherEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(
-                companyId = otherCompany.id!!,
-                userId = otherOwner.id!!,
-                role = "OWNER"
+        val otherEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(
+                    companyId = otherCompany.id!!,
+                    userId = otherOwner.id!!,
+                    role = "OWNER",
+                ),
             )
-        )
         val otherToken = jwtService.generateStaffToken(otherOwner, otherEmployment)
 
-        mockMvc.patch("/api/reservations/${reservation.id!!}/complete") {
-            header("Authorization", "Bearer $otherToken")
-        }.andExpect {
-            status { isNotFound() }
-        }
+        mockMvc
+            .patch("/api/reservations/${reservation.id!!}/complete") {
+                header("Authorization", "Bearer $otherToken")
+            }
+            .andExpect {
+                status { isNotFound() }
+            }
 
         val unchanged = reservationRepository.findById(reservation.id!!).get()
         assertEquals(ReservationStatus.PENDING, unchanged.status)
@@ -246,9 +256,11 @@ class ReservationNoShowIntegrationTest {
     fun `PATCH no-show three times should auto-block the customer`() {
         repeat(3) {
             val r = saveReservation()
-            mockMvc.patch("/api/reservations/${r.id!!}/no-show") {
-                header("Authorization", "Bearer $employeeToken")
-            }.andExpect { status { isNoContent() } }
+            mockMvc
+                .patch("/api/reservations/${r.id!!}/no-show") {
+                    header("Authorization", "Bearer $employeeToken")
+                }
+                .andExpect { status { isNoContent() } }
         }
 
         val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!)!!
@@ -260,9 +272,10 @@ class ReservationNoShowIntegrationTest {
     fun `concurrent PATCH no-show requests should preserve every increment and auto-block`() {
         val requestCount = 8
         val firstStart = LocalDateTime.now(BUSINESS_ZONE).minusDays(1)
-        val reservations = List(requestCount) { index ->
-            saveReservation(startTime = firstStart.plusMinutes(index * 30L))
-        }
+        val reservations =
+            List(requestCount) { index ->
+                saveReservation(startTime = firstStart.plusMinutes(index * 30L))
+            }
         val ready = CountDownLatch(requestCount)
         val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(requestCount)
@@ -272,9 +285,11 @@ class ReservationNoShowIntegrationTest {
                 executor.submit {
                     ready.countDown()
                     start.await()
-                    mockMvc.patch("/api/reservations/${reservation.id!!}/no-show") {
-                        header("Authorization", "Bearer $employeeToken")
-                    }.andExpect { status { isNoContent() } }
+                    mockMvc
+                        .patch("/api/reservations/${reservation.id!!}/no-show") {
+                            header("Authorization", "Bearer $employeeToken")
+                        }
+                        .andExpect { status { isNoContent() } }
                 }
             }
 

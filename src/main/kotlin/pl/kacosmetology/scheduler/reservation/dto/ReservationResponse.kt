@@ -1,8 +1,8 @@
 package pl.kacosmetology.scheduler.reservation.dto
 
+import java.time.LocalDateTime
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
-import java.time.LocalDateTime
 
 /** Customer-facing DTO — excludes internal fields like companyId, customerId and version. */
 data class ReservationResponse(
@@ -13,7 +13,7 @@ data class ReservationResponse(
     val startTime: LocalDateTime,
     val endTime: LocalDateTime,
     val status: ReservationStatus,
-    val createdAt: LocalDateTime?
+    val createdAt: LocalDateTime?,
 )
 
 /** Staff-facing DTO — includes customerId for the employee's schedule view. */
@@ -25,7 +25,7 @@ data class EmployeeReservationResponse(
     val startTime: LocalDateTime,
     val endTime: LocalDateTime,
     val status: ReservationStatus,
-    val createdAt: LocalDateTime?
+    val createdAt: LocalDateTime?,
 )
 
 /** Dashboard DTO — includes both customerId and employeeId for the owner's cross-employee view. */
@@ -40,44 +40,47 @@ data class DashboardReservationResponse(
     val startTime: LocalDateTime,
     val endTime: LocalDateTime,
     val status: ReservationStatus,
-    val createdAt: LocalDateTime?
+    val createdAt: LocalDateTime?,
 )
 
 /** Maps a [Reservation] to the customer-facing [ReservationResponse]. */
-fun Reservation.toResponse() = ReservationResponse(
-    id = requireNotNull(id) { "Reservation must be persisted before converting to DTO" },
-    employeeId = employeeId,
-    serviceId = serviceId,
-    price = price,
-    startTime = startTime,
-    endTime = endTime,
-    status = status,
-    createdAt = createdAt
-)
+fun Reservation.toResponse() =
+    ReservationResponse(
+        id = requireNotNull(id) { "Reservation must be persisted before converting to DTO" },
+        employeeId = employeeId,
+        serviceId = serviceId,
+        price = price,
+        startTime = startTime,
+        endTime = endTime,
+        status = status,
+        createdAt = createdAt,
+    )
 
 /** Maps a [Reservation] to the staff-facing [EmployeeReservationResponse]. */
-fun Reservation.toEmployeeResponse() = EmployeeReservationResponse(
-    id = requireNotNull(id) { "Reservation must be persisted before converting to DTO" },
-    customerId = customerId,
-    serviceId = serviceId,
-    price = price,
-    startTime = startTime,
-    endTime = endTime,
-    status = status,
-    createdAt = createdAt
-)
+fun Reservation.toEmployeeResponse() =
+    EmployeeReservationResponse(
+        id = requireNotNull(id) { "Reservation must be persisted before converting to DTO" },
+        customerId = customerId,
+        serviceId = serviceId,
+        price = price,
+        startTime = startTime,
+        endTime = endTime,
+        status = status,
+        createdAt = createdAt,
+    )
 
 /** Maps a [Reservation] to the owner dashboard [DashboardReservationResponse] with full employee+customer context. */
-fun Reservation.toDashboardResponse(customerFirstName: String, customerLastName: String) = DashboardReservationResponse(
-    id = requireNotNull(id) { "Reservation must be persisted before converting to DTO" },
-    customerId = customerId,
-    customerFirstName = customerFirstName,
-    customerLastName = customerLastName,
-    employeeId = employeeId,
-    serviceId = serviceId,
-    price = price,
-    startTime = startTime,
-    endTime = endTime,
-    status = status,
-    createdAt = createdAt
-)
+fun Reservation.toDashboardResponse(customerFirstName: String, customerLastName: String) =
+    DashboardReservationResponse(
+        id = requireNotNull(id) { "Reservation must be persisted before converting to DTO" },
+        customerId = customerId,
+        customerFirstName = customerFirstName,
+        customerLastName = customerLastName,
+        employeeId = employeeId,
+        serviceId = serviceId,
+        price = price,
+        startTime = startTime,
+        endTime = endTime,
+        status = status,
+        createdAt = createdAt,
+    )

@@ -6,6 +6,8 @@ import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
 import io.mockk.verifyOrder
+import java.time.LocalDateTime
+import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
@@ -18,23 +20,17 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.ErrorCode
-import java.time.LocalDateTime
-import java.util.*
 
 @ExtendWith(MockKExtension::class)
 class ScheduleBlockServiceTest {
 
-    @MockK
-    private lateinit var scheduleBlockRepository: ScheduleBlockRepository
+    @MockK private lateinit var scheduleBlockRepository: ScheduleBlockRepository
 
-    @MockK
-    private lateinit var employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
+    @MockK private lateinit var employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
 
-    @MockK
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @InjectMockKs
-    private lateinit var scheduleBlockService: ScheduleBlockService
+    @InjectMockKs private lateinit var scheduleBlockService: ScheduleBlockService
 
     private val employeeId = 10L
     private val companyId = 1L
@@ -77,9 +73,10 @@ class ScheduleBlockServiceTest {
         mockLockedMembership()
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalArgumentException> {
-            scheduleBlockService.createBlock(employeeId, companyId, startTime, sameTime, null)
-        }
+        val exception =
+            assertThrows<IllegalArgumentException> {
+                scheduleBlockService.createBlock(employeeId, companyId, startTime, sameTime, null)
+            }
         assertEquals("Czas zakończenia musi być późniejszy niż czas rozpoczęcia", exception.message)
         verify(exactly = 0) { scheduleBlockRepository.save(any()) }
     }
@@ -90,16 +87,18 @@ class ScheduleBlockServiceTest {
         mockLockedMembership()
         every {
             employeeAvailabilityPolicy.findFirstConflict(companyId, employeeId, startTime, endTime)
-        } returns EmployeeAvailabilityConflict(
-            source = EmployeeAvailabilityConflictSource.RESERVATION,
-            startTime = startTime,
-            endTime = endTime
-        )
+        } returns
+            EmployeeAvailabilityConflict(
+                source = EmployeeAvailabilityConflictSource.RESERVATION,
+                startTime = startTime,
+                endTime = endTime,
+            )
 
         // WHEN & THEN
-        val exception = assertThrows<ApiException> {
-            scheduleBlockService.createBlock(employeeId, companyId, startTime, endTime, null)
-        }
+        val exception =
+            assertThrows<ApiException> {
+                scheduleBlockService.createBlock(employeeId, companyId, startTime, endTime, null)
+            }
         assertEquals("W tym czasie istnieje już rezerwacja", exception.message)
         assertEquals(ErrorCode.SLOT_UNAVAILABLE, exception.code)
         verify(exactly = 0) { scheduleBlockRepository.save(any()) }
@@ -111,16 +110,18 @@ class ScheduleBlockServiceTest {
         mockLockedMembership()
         every {
             employeeAvailabilityPolicy.findFirstConflict(companyId, employeeId, startTime, endTime)
-        } returns EmployeeAvailabilityConflict(
-            source = EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK,
-            startTime = startTime,
-            endTime = endTime
-        )
+        } returns
+            EmployeeAvailabilityConflict(
+                source = EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK,
+                startTime = startTime,
+                endTime = endTime,
+            )
 
         // WHEN & THEN
-        val exception = assertThrows<ApiException> {
-            scheduleBlockService.createBlock(employeeId, companyId, startTime, endTime, null)
-        }
+        val exception =
+            assertThrows<ApiException> {
+                scheduleBlockService.createBlock(employeeId, companyId, startTime, endTime, null)
+            }
         assertEquals("W tym czasie istnieje już blokada", exception.message)
         assertEquals(ErrorCode.SLOT_UNAVAILABLE, exception.code)
         verify(exactly = 0) { scheduleBlockRepository.save(any()) }
@@ -140,12 +141,13 @@ class ScheduleBlockServiceTest {
 
     @Test
     fun `getEmployeeBlocks should return company scoped blocks for company employee`() {
-        val block = ScheduleBlock(
-            companyId = companyId,
-            employeeId = employeeId,
-            startTime = startTime,
-            endTime = endTime
-        )
+        val block =
+            ScheduleBlock(
+                companyId = companyId,
+                employeeId = employeeId,
+                startTime = startTime,
+                endTime = endTime,
+            )
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
         every {
             scheduleBlockRepository.findOverlapping(companyId, employeeId, startTime, endTime)
@@ -171,13 +173,14 @@ class ScheduleBlockServiceTest {
     fun `deleteBlock should delete when employee owns the block`() {
         // GIVEN
         val blockId = 99L
-        val block = ScheduleBlock(
-            id = blockId,
-            companyId = companyId,
-            employeeId = employeeId,
-            startTime = startTime,
-            endTime = endTime
-        )
+        val block =
+            ScheduleBlock(
+                id = blockId,
+                companyId = companyId,
+                employeeId = employeeId,
+                startTime = startTime,
+                endTime = endTime,
+            )
         every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
         every { scheduleBlockRepository.delete(block) } returns Unit
 
@@ -195,32 +198,40 @@ class ScheduleBlockServiceTest {
         every { scheduleBlockRepository.findById(blockId) } returns Optional.empty()
 
         // WHEN & THEN
-        val exception = assertThrows<ApiException> {
-            scheduleBlockService.deleteBlock(blockId, requesterId = employeeId, isOwner = false, companyId = companyId)
-        }
+        val exception =
+            assertThrows<ApiException> {
+                scheduleBlockService.deleteBlock(
+                    blockId,
+                    requesterId = employeeId,
+                    isOwner = false,
+                    companyId = companyId,
+                )
+            }
         assertEquals(ErrorCode.SCHEDULE_BLOCK_NOT_FOUND, exception.code)
     }
 
     @Test
     fun `deleteBlock should throw when employee owns block in another company`() {
         val blockId = 99L
-        val block = ScheduleBlock(
-            id = blockId,
-            companyId = 999L,
-            employeeId = employeeId,
-            startTime = startTime,
-            endTime = endTime
-        )
+        val block =
+            ScheduleBlock(
+                id = blockId,
+                companyId = 999L,
+                employeeId = employeeId,
+                startTime = startTime,
+                endTime = endTime,
+            )
         every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
 
-        val exception = assertThrows<ApiException> {
-            scheduleBlockService.deleteBlock(
-                blockId,
-                requesterId = employeeId,
-                isOwner = false,
-                companyId = companyId
-            )
-        }
+        val exception =
+            assertThrows<ApiException> {
+                scheduleBlockService.deleteBlock(
+                    blockId,
+                    requesterId = employeeId,
+                    isOwner = false,
+                    companyId = companyId,
+                )
+            }
 
         assertEquals("Blokada nie istnieje", exception.message)
         assertEquals(ErrorCode.SCHEDULE_BLOCK_NOT_FOUND, exception.code)
@@ -232,19 +243,26 @@ class ScheduleBlockServiceTest {
         // GIVEN
         val blockId = 99L
         val otherEmployeeId = 999L
-        val block = ScheduleBlock(
-            id = blockId,
-            companyId = companyId,
-            employeeId = otherEmployeeId,
-            startTime = startTime,
-            endTime = endTime
-        )
+        val block =
+            ScheduleBlock(
+                id = blockId,
+                companyId = companyId,
+                employeeId = otherEmployeeId,
+                startTime = startTime,
+                endTime = endTime,
+            )
         every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
 
         // WHEN & THEN
-        val exception = assertThrows<ApiException> {
-            scheduleBlockService.deleteBlock(blockId, requesterId = employeeId, isOwner = false, companyId = companyId)
-        }
+        val exception =
+            assertThrows<ApiException> {
+                scheduleBlockService.deleteBlock(
+                    blockId,
+                    requesterId = employeeId,
+                    isOwner = false,
+                    companyId = companyId,
+                )
+            }
         assertEquals("Nie możesz usunąć cudzej blokady", exception.message)
         assertEquals(ErrorCode.ACCESS_DENIED, exception.code)
         verify(exactly = 0) { scheduleBlockRepository.delete(any()) }
@@ -255,13 +273,14 @@ class ScheduleBlockServiceTest {
         // GIVEN
         val blockId = 99L
         val otherEmployeeId = 999L
-        val block = ScheduleBlock(
-            id = blockId,
-            companyId = companyId,
-            employeeId = otherEmployeeId,
-            startTime = startTime,
-            endTime = endTime
-        )
+        val block =
+            ScheduleBlock(
+                id = blockId,
+                companyId = companyId,
+                employeeId = otherEmployeeId,
+                startTime = startTime,
+                endTime = endTime,
+            )
         every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
         every { scheduleBlockRepository.delete(block) } returns Unit
 
@@ -277,19 +296,21 @@ class ScheduleBlockServiceTest {
         // GIVEN
         val blockId = 99L
         val otherCompanyId = 999L
-        val block = ScheduleBlock(
-            id = blockId,
-            companyId = otherCompanyId,
-            employeeId = 5L,
-            startTime = startTime,
-            endTime = endTime
-        )
+        val block =
+            ScheduleBlock(
+                id = blockId,
+                companyId = otherCompanyId,
+                employeeId = 5L,
+                startTime = startTime,
+                endTime = endTime,
+            )
         every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
 
         // WHEN & THEN
-        val exception = assertThrows<ApiException> {
-            scheduleBlockService.deleteBlock(blockId, requesterId = 1L, isOwner = true, companyId = companyId)
-        }
+        val exception =
+            assertThrows<ApiException> {
+                scheduleBlockService.deleteBlock(blockId, requesterId = 1L, isOwner = true, companyId = companyId)
+            }
         assertEquals("Blokada nie istnieje", exception.message)
         assertEquals(ErrorCode.SCHEDULE_BLOCK_NOT_FOUND, exception.code)
         verify(exactly = 0) { scheduleBlockRepository.delete(any()) }

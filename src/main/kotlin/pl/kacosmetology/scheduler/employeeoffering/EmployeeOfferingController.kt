@@ -8,13 +8,13 @@ import pl.kacosmetology.scheduler.employeeoffering.dto.EmployeeOfferingAssignmen
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
 /**
- * REST API for managing employee–offering assignments.
- * Read endpoints require staff authentication; write endpoints require OWNER role.
- * The public list of an employee's offerings is served by [pl.kacosmetology.scheduler.offering.OfferingController].
+ * REST API for managing employee–offering assignments. Read endpoints require staff authentication; write endpoints
+ * require OWNER role. The public list of an employee's offerings is served by
+ * [pl.kacosmetology.scheduler.offering.OfferingController].
  */
 @RestController
 class EmployeeOfferingController(
-    private val employeeOfferingService: EmployeeOfferingService
+    private val employeeOfferingService: EmployeeOfferingService,
 ) {
 
     /** Returns all offering assignments for the given employee. Requires staff authentication. */
@@ -22,7 +22,7 @@ class EmployeeOfferingController(
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getAssignments(
         @PathVariable employeeId: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): List<EmployeeOfferingAssignmentResponse> =
         employeeOfferingService.getAssignments(userDetails.requireCompanyId(), employeeId)
 
@@ -33,7 +33,7 @@ class EmployeeOfferingController(
     fun assignOffering(
         @PathVariable employeeId: Long,
         @PathVariable offeringId: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): EmployeeOfferingAssignmentResponse =
         employeeOfferingService.assignOffering(userDetails.requireCompanyId(), employeeId, offeringId)
 
@@ -44,6 +44,6 @@ class EmployeeOfferingController(
     fun removeAssignment(
         @PathVariable employeeId: Long,
         @PathVariable offeringId: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) = employeeOfferingService.removeAssignment(userDetails.requireCompanyId(), employeeId, offeringId)
 }

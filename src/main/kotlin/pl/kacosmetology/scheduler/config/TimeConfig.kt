@@ -1,9 +1,9 @@
 package pl.kacosmetology.scheduler.config
 
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Configuration
 import java.time.Clock
 import java.time.ZoneId
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
 
 /** ID of the single business time zone; usable in annotations such as `@Scheduled(zone = ...)`. */
 const val BUSINESS_ZONE_ID = "Europe/Warsaw"
@@ -16,6 +16,5 @@ val BUSINESS_ZONE: ZoneId = ZoneId.of(BUSINESS_ZONE_ID)
 class TimeConfig {
 
     /** System clock in [BUSINESS_ZONE]. */
-    @Bean
-    fun clock(): Clock = Clock.system(BUSINESS_ZONE)
+    @Bean fun clock(): Clock = Clock.system(BUSINESS_ZONE)
 }

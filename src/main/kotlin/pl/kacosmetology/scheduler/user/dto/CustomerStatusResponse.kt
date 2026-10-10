@@ -8,5 +8,5 @@ data class CustomerStatusResponse(
     val phoneNumber: String,
     val noShowCount: Int,
     val blocked: Boolean,
-    val notes: String? = null
+    val notes: String? = null,
 )

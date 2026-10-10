@@ -18,9 +18,9 @@ import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
-import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
+import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.JwtService
@@ -33,41 +33,29 @@ private const val DUMMY_HASH = "dummy-hash"
 @ExtendWith(MockKExtension::class)
 class AuthServiceTest {
 
-    @MockK
-    private lateinit var userRepository: UserRepository
+    @MockK private lateinit var userRepository: UserRepository
 
-    @MockK
-    private lateinit var otpStore: OtpStore
+    @MockK private lateinit var otpStore: OtpStore
 
-    @MockK
-    private lateinit var smsSender: SmsSender
+    @MockK private lateinit var smsSender: SmsSender
 
-    @MockK
-    private lateinit var jwtService: JwtService
+    @MockK private lateinit var jwtService: JwtService
 
-    @MockK
-    private lateinit var passwordEncoder: PasswordEncoder
+    @MockK private lateinit var passwordEncoder: PasswordEncoder
 
-    @MockK
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @MockK
-    private lateinit var companyRepository: CompanyRepository
+    @MockK private lateinit var companyRepository: CompanyRepository
 
-    @MockK
-    private lateinit var loginRateLimiter: LoginRateLimiter
+    @MockK private lateinit var loginRateLimiter: LoginRateLimiter
 
-    @MockK
-    private lateinit var otpVerificationRateLimiter: OtpVerificationRateLimiter
+    @MockK private lateinit var otpVerificationRateLimiter: OtpVerificationRateLimiter
 
-    @MockK
-    private lateinit var otpRequestRateLimiter: OtpRequestRateLimiter
+    @MockK private lateinit var otpRequestRateLimiter: OtpRequestRateLimiter
 
-    @MockK
-    private lateinit var sessionStore: SessionStore
+    @MockK private lateinit var sessionStore: SessionStore
 
-    @InjectMockKs
-    private lateinit var authService: AuthService
+    @InjectMockKs private lateinit var authService: AuthService
 
     private val testIp = "127.0.0.1"
 
@@ -121,13 +109,13 @@ class AuthServiceTest {
         // GIVEN
         val request = VerifyCodeRequest(testPhone, "123456")
         every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
-        every { otpStore.verifyCode(testPhone, request.code) } returns
-            OtpVerificationResult.EXPIRED_OR_MISSING
+        every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.EXPIRED_OR_MISSING
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalArgumentException> {
-            authService.verifyCode(request, testIp)
-        }
+        val exception =
+            assertThrows<IllegalArgumentException> {
+                authService.verifyCode(request, testIp)
+            }
         assertEquals("Brak kodu dla tego numeru lub kod wygasł", exception.message)
     }
 
@@ -139,9 +127,10 @@ class AuthServiceTest {
         every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.INVALID
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalArgumentException> {
-            authService.verifyCode(request, testIp)
-        }
+        val exception =
+            assertThrows<IllegalArgumentException> {
+                authService.verifyCode(request, testIp)
+            }
         assertEquals("Nieprawidłowy kod", exception.message)
     }
 
@@ -149,12 +138,12 @@ class AuthServiceTest {
     fun `verifyCode should throw RateLimitExceededException when code attempts are exhausted`() {
         val request = VerifyCodeRequest(testPhone, "111111")
         every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
-        every { otpStore.verifyCode(testPhone, request.code) } returns
-            OtpVerificationResult.ATTEMPTS_EXCEEDED
+        every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.ATTEMPTS_EXCEEDED
 
-        val exception = assertThrows<RateLimitExceededException> {
-            authService.verifyCode(request, testIp)
-        }
+        val exception =
+            assertThrows<RateLimitExceededException> {
+                authService.verifyCode(request, testIp)
+            }
 
         assertEquals("Zbyt wiele nieudanych prób kodu. Poproś o nowy kod.", exception.message)
         verify(exactly = 0) { userRepository.findByPhoneNumber(any()) }
@@ -211,22 +200,24 @@ class AuthServiceTest {
     fun `loginStaff should not reveal that a customer account without password exists`() {
         // GIVEN
         val request = StaffLoginRequest("klient@mail.com", "haslo123")
-        val customer = User(
-            phoneNumber = testPhone,
-            firstName = "A",
-            lastName = "B",
-            email = "klient@mail.com",
-            passwordHash = null
-        )
+        val customer =
+            User(
+                phoneNumber = testPhone,
+                firstName = "A",
+                lastName = "B",
+                email = "klient@mail.com",
+                passwordHash = null,
+            )
 
         every { loginRateLimiter.checkAndIncrement(testIp) } returns true
         every { userRepository.findByEmail(request.email) } returns customer
         stubDummyPasswordCheck()
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalArgumentException> {
-            authService.loginStaff(request, testIp)
-        }
+        val exception =
+            assertThrows<IllegalArgumentException> {
+                authService.loginStaff(request, testIp)
+            }
         assertEquals("Nieprawidłowy email lub hasło", exception.message)
         verify(exactly = 1) { passwordEncoder.matches("haslo123", DUMMY_HASH) }
     }
@@ -240,9 +231,10 @@ class AuthServiceTest {
         stubDummyPasswordCheck()
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalArgumentException> {
-            authService.loginStaff(request, testIp)
-        }
+        val exception =
+            assertThrows<IllegalArgumentException> {
+                authService.loginStaff(request, testIp)
+            }
         assertEquals("Nieprawidłowy email lub hasło", exception.message)
         verify(exactly = 1) { passwordEncoder.matches("haslo123", DUMMY_HASH) }
     }
@@ -251,38 +243,45 @@ class AuthServiceTest {
     fun `loginStaff should throw when password is incorrect`() {
         // GIVEN
         val request = StaffLoginRequest("pracownik@mail.com", "zlehaslo")
-        val employee = User(
-            phoneNumber = testPhone,
-            firstName = "A",
-            lastName = "B",
-            email = "pracownik@mail.com",
-            passwordHash = "hashed_password"
-        )
+        val employee =
+            User(
+                phoneNumber = testPhone,
+                firstName = "A",
+                lastName = "B",
+                email = "pracownik@mail.com",
+                passwordHash = "hashed_password",
+            )
 
         every { loginRateLimiter.checkAndIncrement(testIp) } returns true
         every { userRepository.findByEmail(request.email) } returns employee
         every { passwordEncoder.matches("zlehaslo", "hashed_password") } returns false
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalArgumentException> {
-            authService.loginStaff(request, testIp)
-        }
+        val exception =
+            assertThrows<IllegalArgumentException> {
+                authService.loginStaff(request, testIp)
+            }
         assertEquals("Nieprawidłowy email lub hasło", exception.message)
     }
 
     @Test
     fun `loginStaff should return same error message for non-existent email and wrong password`() {
-        // GIVEN - Oba scenariusze powinny zwracać identyczny komunikat (bezpieczeństwo — nie ujawniamy czy email istnieje)
+        // GIVEN - Oba scenariusze powinny zwracać identyczny komunikat (bezpieczeństwo — nie ujawniamy czy email
+        // istnieje)
         val requestBadEmail = StaffLoginRequest("nieistnieje@mail.com", "haslo123")
         every { loginRateLimiter.checkAndIncrement(testIp) } returns true
         every { userRepository.findByEmail("nieistnieje@mail.com") } returns null
         stubDummyPasswordCheck()
 
         val requestBadPassword = StaffLoginRequest("istnieje@mail.com", "zlehaslo")
-        val existingUser = User(
-            phoneNumber = testPhone, firstName = "A", lastName = "B",
-            email = "istnieje@mail.com", passwordHash = "hashed"
-        )
+        val existingUser =
+            User(
+                phoneNumber = testPhone,
+                firstName = "A",
+                lastName = "B",
+                email = "istnieje@mail.com",
+                passwordHash = "hashed",
+            )
         every { userRepository.findByEmail("istnieje@mail.com") } returns existingUser
         every { passwordEncoder.matches("zlehaslo", "hashed") } returns false
 
@@ -293,8 +292,9 @@ class AuthServiceTest {
 
         // THEN - Komunikaty MUSZĄ być identyczne
         assertEquals(
-            exBadEmail.message, exBadPassword.message,
-            "Komunikat dla złego emaila i hasła musi być identyczny aby nie ujawniać czy email istnieje"
+            exBadEmail.message,
+            exBadPassword.message,
+            "Komunikat dla złego emaila i hasła musi być identyczny aby nie ujawniać czy email istnieje",
         )
     }
 
@@ -458,19 +458,21 @@ class AuthServiceTest {
         every { passwordEncoder.matches(any(), DUMMY_HASH) } returns false
     }
 
-    private fun principal(sessionId: String?) = CustomUserDetails(
-        staffUser(),
-        null,
-        listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")),
-        sessionId = sessionId
-    )
+    private fun principal(sessionId: String?) =
+        CustomUserDetails(
+            staffUser(),
+            null,
+            listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")),
+            sessionId = sessionId,
+        )
 
-    private fun staffUser() = User(
-        id = 7L,
-        phoneNumber = testPhone,
-        firstName = "A",
-        lastName = "B",
-        email = "owner@mail.com",
-        passwordHash = "hash"
-    )
+    private fun staffUser() =
+        User(
+            id = 7L,
+            phoneNumber = testPhone,
+            firstName = "A",
+            lastName = "B",
+            email = "owner@mail.com",
+            passwordHash = "hash",
+        )
 }

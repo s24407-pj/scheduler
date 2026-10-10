@@ -19,14 +19,11 @@ import software.amazon.awssdk.services.s3.S3Client
 @Import(TestcontainersConfiguration::class)
 class ErrorContractIntegrationTest {
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var mockMvc: MockMvc
 
-    @MockkBean
-    private lateinit var smsSender: SmsSender
+    @MockkBean private lateinit var smsSender: SmsSender
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
     @Test
     fun `request without token should return 401 problem detail`() {
@@ -40,36 +37,42 @@ class ErrorContractIntegrationTest {
 
     @Test
     fun `request with invalid token should return 401`() {
-        mockMvc.get("/api/reservations/me") {
-            header("Authorization", "Bearer not-a-jwt")
-        }.andExpect {
-            status { isUnauthorized() }
-            jsonPath("$.code") { value("UNAUTHORIZED") }
-        }
+        mockMvc
+            .get("/api/reservations/me") {
+                header("Authorization", "Bearer not-a-jwt")
+            }
+            .andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("UNAUTHORIZED") }
+            }
     }
 
     @Test
     fun `validation failure should list field errors`() {
-        mockMvc.post("/api/auth/request-code") {
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"phoneNumber":"abc"}"""
-        }.andExpect {
-            status { isBadRequest() }
-            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
-            jsonPath("$.code") { value("VALIDATION_FAILED") }
-            jsonPath("$.errors.phoneNumber") { value("Nieprawidłowy format numeru telefonu") }
-        }
+        mockMvc
+            .post("/api/auth/request-code") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"phoneNumber":"abc"}"""
+            }
+            .andExpect {
+                status { isBadRequest() }
+                content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+                jsonPath("$.code") { value("VALIDATION_FAILED") }
+                jsonPath("$.errors.phoneNumber") { value("Nieprawidłowy format numeru telefonu") }
+            }
     }
 
     @Test
     fun `malformed json should return MALFORMED_REQUEST`() {
-        mockMvc.post("/api/auth/login-staff") {
-            contentType = MediaType.APPLICATION_JSON
-            content = "{"
-        }.andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("MALFORMED_REQUEST") }
-        }
+        mockMvc
+            .post("/api/auth/login-staff") {
+                contentType = MediaType.APPLICATION_JSON
+                content = "{"
+            }
+            .andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("MALFORMED_REQUEST") }
+            }
     }
 
     @Test

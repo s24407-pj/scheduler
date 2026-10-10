@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.reservation
 
 import com.ninjasquad.springmockk.MockkBean
+import java.time.LocalDateTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -19,30 +20,21 @@ import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
-import java.time.LocalDateTime
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
 class AutoCompleteIntegrationTest {
 
-    @Autowired
-    private lateinit var notificationScheduler: NotificationScheduler
-    @Autowired
-    private lateinit var reservationRepository: ReservationRepository
-    @Autowired
-    private lateinit var userRepository: UserRepository
-    @Autowired
-    private lateinit var companyRepository: CompanyRepository
-    @Autowired
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired
-    private lateinit var offeringRepository: OfferingRepository
-    @Autowired
-    private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
+    @Autowired private lateinit var notificationScheduler: NotificationScheduler
+    @Autowired private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var companyRepository: CompanyRepository
+    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired private lateinit var offeringRepository: OfferingRepository
+    @Autowired private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
     private var companyId: Long = 0
     private var employeeId: Long = 0
@@ -67,9 +59,10 @@ class AutoCompleteIntegrationTest {
         val customer = userRepository.save(User(phoneNumber = "+48200", firstName = "Anna", lastName = "Nowak"))
         customerId = customer.id!!
 
-        val offering = offeringRepository.save(
-            Offering(companyId = companyId, name = "Haircut", durationMinutes = 60, price = 100)
-        )
+        val offering =
+            offeringRepository.save(
+                Offering(companyId = companyId, name = "Haircut", durationMinutes = 60, price = 100),
+            )
         offeringId = offering.id!!
     }
 
@@ -85,8 +78,8 @@ class AutoCompleteIntegrationTest {
                 price = 100,
                 startTime = pastStart,
                 endTime = pastStart.plusHours(1),
-                status = ReservationStatus.PENDING
-            )
+                status = ReservationStatus.PENDING,
+            ),
         )
 
         notificationScheduler.autoCompleteElapsedReservations()
@@ -107,8 +100,8 @@ class AutoCompleteIntegrationTest {
                 price = 100,
                 startTime = pastStart,
                 endTime = pastStart.plusHours(1),
-                status = ReservationStatus.CONFIRMED
-            )
+                status = ReservationStatus.CONFIRMED,
+            ),
         )
 
         notificationScheduler.autoCompleteElapsedReservations()
@@ -129,8 +122,8 @@ class AutoCompleteIntegrationTest {
                 price = 100,
                 startTime = futureStart,
                 endTime = futureStart.plusHours(1),
-                status = ReservationStatus.PENDING
-            )
+                status = ReservationStatus.PENDING,
+            ),
         )
 
         notificationScheduler.autoCompleteElapsedReservations()
@@ -151,8 +144,8 @@ class AutoCompleteIntegrationTest {
                 price = 100,
                 startTime = pastStart,
                 endTime = pastStart.plusHours(1),
-                status = ReservationStatus.CANCELLED
-            )
+                status = ReservationStatus.CANCELLED,
+            ),
         )
 
         notificationScheduler.autoCompleteElapsedReservations()

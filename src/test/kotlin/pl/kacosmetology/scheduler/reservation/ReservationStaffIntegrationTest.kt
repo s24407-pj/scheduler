@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.reservation
 
 import com.ninjasquad.springmockk.MockkBean
+import java.time.LocalDateTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.BeforeEach
@@ -28,34 +29,23 @@ import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
-import java.time.LocalDateTime
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
 class ReservationStaffIntegrationTest {
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
-    @Autowired
-    private lateinit var objectMapper: ObjectMapper
-    @Autowired
-    private lateinit var jwtService: JwtService
-    @Autowired
-    private lateinit var userRepository: UserRepository
-    @Autowired
-    private lateinit var companyRepository: CompanyRepository
-    @Autowired
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired
-    private lateinit var serviceRepository: OfferingRepository
-    @Autowired
-    private lateinit var reservationRepository: ReservationRepository
-    @Autowired
-    private lateinit var scheduleBlockRepository: ScheduleBlockRepository
+    @Autowired private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var objectMapper: ObjectMapper
+    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var companyRepository: CompanyRepository
+    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired private lateinit var serviceRepository: OfferingRepository
+    @Autowired private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var scheduleBlockRepository: ScheduleBlockRepository
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
     private lateinit var employee: User
     private var companyId: Long = 0
@@ -77,13 +67,15 @@ class ReservationStaffIntegrationTest {
         companyId = company.id!!
 
         employee = userRepository.save(User(phoneNumber = "+48700111222", firstName = "Styl", lastName = "Pracownik"))
-        val employment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE")
-        )
+        val employment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
+            )
 
-        val service = serviceRepository.save(
-            Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 90, price = 300)
-        )
+        val service =
+            serviceRepository.save(
+                Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 90, price = 300),
+            )
         serviceId = service.id!!
 
         staffToken = jwtService.generateStaffToken(employee, employment)
@@ -92,27 +84,31 @@ class ReservationStaffIntegrationTest {
     @Test
     fun `POST reservations-staff should create reservation for existing client`() {
         // GIVEN - Klient już istnieje w bazie
-        val existingClient = userRepository.save(
-            User(phoneNumber = "+48555444333", firstName = "Istniejący", lastName = "Klient")
-        )
+        val existingClient =
+            userRepository.save(
+                User(phoneNumber = "+48555444333", firstName = "Istniejący", lastName = "Klient"),
+            )
 
-        val body = mapOf(
-            "employeeId" to employee.id!!,
-            "serviceId" to serviceId,
-            "startTime" to reservationTime.toString(),
-            "customerPhone" to existingClient.phoneNumber
-        )
+        val body =
+            mapOf(
+                "employeeId" to employee.id!!,
+                "serviceId" to serviceId,
+                "startTime" to reservationTime.toString(),
+                "customerPhone" to existingClient.phoneNumber,
+            )
 
         // WHEN & THEN
-        mockMvc.post("/api/reservations/staff") {
-            header("Authorization", "Bearer $staffToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isCreated() }
-            jsonPath("$.serviceId") { value(serviceId) }
-            jsonPath("$.price") { value(300) }
-        }
+        mockMvc
+            .post("/api/reservations/staff") {
+                header("Authorization", "Bearer $staffToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isCreated() }
+                jsonPath("$.serviceId") { value(serviceId) }
+                jsonPath("$.price") { value(300) }
+            }
 
         val reservations = reservationRepository.findAll()
         assertEquals(1, reservations.size)
@@ -121,31 +117,39 @@ class ReservationStaffIntegrationTest {
 
     @Test
     fun `POST reservations-staff should return existing reservation with 200 when request is repeated`() {
-        val body = mapOf(
-            "employeeId" to employee.id!!,
-            "serviceId" to serviceId,
-            "startTime" to reservationTime.toString(),
-            "customerPhone" to "+48555444999",
-            "customerFirstName" to "Powtórny",
-            "customerLastName" to "Klient"
-        )
+        val body =
+            mapOf(
+                "employeeId" to employee.id!!,
+                "serviceId" to serviceId,
+                "startTime" to reservationTime.toString(),
+                "customerPhone" to "+48555444999",
+                "customerFirstName" to "Powtórny",
+                "customerLastName" to "Klient",
+            )
 
-        val firstId = mockMvc.post("/api/reservations/staff") {
-            header("Authorization", "Bearer $staffToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isCreated() }
-        }.andReturn().let { objectMapper.readTree(it.response.contentAsString).get("id").asLong() }
+        val firstId =
+            mockMvc
+                .post("/api/reservations/staff") {
+                    header("Authorization", "Bearer $staffToken")
+                    contentType = MediaType.APPLICATION_JSON
+                    content = objectMapper.writeValueAsString(body)
+                }
+                .andExpect {
+                    status { isCreated() }
+                }
+                .andReturn()
+                .let { objectMapper.readTree(it.response.contentAsString).get("id").asLong() }
 
-        mockMvc.post("/api/reservations/staff") {
-            header("Authorization", "Bearer $staffToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.id") { value(firstId) }
-        }
+        mockMvc
+            .post("/api/reservations/staff") {
+                header("Authorization", "Bearer $staffToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.id") { value(firstId) }
+            }
 
         assertEquals(1, reservationRepository.findAll().size)
     }
@@ -154,22 +158,25 @@ class ReservationStaffIntegrationTest {
     fun `POST reservations-staff should create new client and reservation when phone is unknown`() {
         val newClientPhone = "+48666777888"
 
-        val body = mapOf(
-            "employeeId" to employee.id!!,
-            "serviceId" to serviceId,
-            "startTime" to reservationTime.toString(),
-            "customerPhone" to newClientPhone,
-            "customerFirstName" to "Nowy",
-            "customerLastName" to "Klient"
-        )
+        val body =
+            mapOf(
+                "employeeId" to employee.id!!,
+                "serviceId" to serviceId,
+                "startTime" to reservationTime.toString(),
+                "customerPhone" to newClientPhone,
+                "customerFirstName" to "Nowy",
+                "customerLastName" to "Klient",
+            )
 
-        mockMvc.post("/api/reservations/staff") {
-            header("Authorization", "Bearer $staffToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isCreated() }
-        }
+        mockMvc
+            .post("/api/reservations/staff") {
+                header("Authorization", "Bearer $staffToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isCreated() }
+            }
 
         // Sprawdzamy, że nowy klient pojawił się w bazie
         val newClient = userRepository.findByPhoneNumber(newClientPhone)
@@ -185,21 +192,24 @@ class ReservationStaffIntegrationTest {
     fun `POST reservations-staff should return 400 when new client phone but no name provided`() {
         val unknownPhone = "+48100200300"
 
-        val body = mapOf(
-            "employeeId" to employee.id!!,
-            "serviceId" to serviceId,
-            "startTime" to reservationTime.toString(),
-            "customerPhone" to unknownPhone
-            // Brak imienia i nazwiska dla nowego klienta!
-        )
+        val body =
+            mapOf(
+                "employeeId" to employee.id!!,
+                "serviceId" to serviceId,
+                "startTime" to reservationTime.toString(),
+                "customerPhone" to unknownPhone,
+                // Brak imienia i nazwiska dla nowego klienta!
+            )
 
-        mockMvc.post("/api/reservations/staff") {
-            header("Authorization", "Bearer $staffToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isBadRequest() }
-        }
+        mockMvc
+            .post("/api/reservations/staff") {
+                header("Authorization", "Bearer $staffToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isBadRequest() }
+            }
 
         // Upewniamy się, że żadna rezerwacja ani użytkownik nie zostali zapisani
         assertEquals(0, reservationRepository.findAll().size)
@@ -210,33 +220,38 @@ class ReservationStaffIntegrationTest {
     @Test
     fun `POST reservations-staff should return 400 when service belongs to another company`() {
         val otherCompany = companyRepository.save(Company(name = "Obcy Salon"))
-        val otherEmployee = userRepository.save(
-            User(phoneNumber = "+48777111222", firstName = "Obcy", lastName = "Pracownik")
-        )
+        val otherEmployee =
+            userRepository.save(
+                User(phoneNumber = "+48777111222", firstName = "Obcy", lastName = "Pracownik"),
+            )
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE"),
         )
-        val otherService = serviceRepository.save(
-            Offering(companyId = otherCompany.id!!, name = "Obca usługa", durationMinutes = 30, price = 90)
-        )
+        val otherService =
+            serviceRepository.save(
+                Offering(companyId = otherCompany.id!!, name = "Obca usługa", durationMinutes = 30, price = 90),
+            )
         val unknownPhone = "+48123999888"
 
-        val body = mapOf(
-            "employeeId" to otherEmployee.id!!,
-            "serviceId" to otherService.id!!,
-            "startTime" to reservationTime.toString(),
-            "customerPhone" to unknownPhone,
-            "customerFirstName" to "Nowy",
-            "customerLastName" to "Klient"
-        )
+        val body =
+            mapOf(
+                "employeeId" to otherEmployee.id!!,
+                "serviceId" to otherService.id!!,
+                "startTime" to reservationTime.toString(),
+                "customerPhone" to unknownPhone,
+                "customerFirstName" to "Nowy",
+                "customerLastName" to "Klient",
+            )
 
-        mockMvc.post("/api/reservations/staff") {
-            header("Authorization", "Bearer $staffToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isBadRequest() }
-        }
+        mockMvc
+            .post("/api/reservations/staff") {
+                header("Authorization", "Bearer $staffToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isBadRequest() }
+            }
 
         assertEquals(0, reservationRepository.findAll().size)
         assertEquals(null, userRepository.findByPhoneNumber(unknownPhone))
@@ -244,49 +259,56 @@ class ReservationStaffIntegrationTest {
 
     @Test
     fun `POST reservations-staff should return 401 without token`() {
-        val body = mapOf(
-            "employeeId" to employee.id!!,
-            "serviceId" to serviceId,
-            "startTime" to reservationTime.toString(),
-            "customerPhone" to "+48000000000"
-        )
+        val body =
+            mapOf(
+                "employeeId" to employee.id!!,
+                "serviceId" to serviceId,
+                "startTime" to reservationTime.toString(),
+                "customerPhone" to "+48000000000",
+            )
 
-        mockMvc.post("/api/reservations/staff") {
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isUnauthorized() }
-            jsonPath("$.code") { value("UNAUTHORIZED") }
-        }
+        mockMvc
+            .post("/api/reservations/staff") {
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("UNAUTHORIZED") }
+            }
     }
 
     @Test
     fun `POST reservations-staff should return 409 when requested time overlaps schedule block`() {
-        val existingClient = userRepository.save(
-            User(phoneNumber = "+48555000111", firstName = "Istniejący", lastName = "Klient")
-        )
+        val existingClient =
+            userRepository.save(
+                User(phoneNumber = "+48555000111", firstName = "Istniejący", lastName = "Klient"),
+            )
         scheduleBlockRepository.save(
             ScheduleBlock(
                 companyId = companyId,
                 employeeId = employee.id!!,
                 startTime = reservationTime,
-                endTime = reservationTime.plusHours(1)
+                endTime = reservationTime.plusHours(1),
+            ),
+        )
+        val body =
+            mapOf(
+                "employeeId" to employee.id!!,
+                "serviceId" to serviceId,
+                "startTime" to reservationTime.plusMinutes(30).toString(),
+                "customerPhone" to existingClient.phoneNumber,
             )
-        )
-        val body = mapOf(
-            "employeeId" to employee.id!!,
-            "serviceId" to serviceId,
-            "startTime" to reservationTime.plusMinutes(30).toString(),
-            "customerPhone" to existingClient.phoneNumber
-        )
 
-        mockMvc.post("/api/reservations/staff") {
-            header("Authorization", "Bearer $staffToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(body)
-        }.andExpect {
-            status { isConflict() }
-        }
+        mockMvc
+            .post("/api/reservations/staff") {
+                header("Authorization", "Bearer $staffToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(body)
+            }
+            .andExpect {
+                status { isConflict() }
+            }
 
         assertEquals(0, reservationRepository.findAll().size)
     }
@@ -301,8 +323,8 @@ class ReservationStaffIntegrationTest {
                 serviceId = serviceId,
                 price = 300,
                 startTime = startTime,
-                endTime = startTime.plusMinutes(90)
-            )
+                endTime = startTime.plusMinutes(90),
+            ),
         )
     }
 
@@ -310,11 +332,13 @@ class ReservationStaffIntegrationTest {
     fun `PATCH cancel-by-staff should cancel a reservation that already started`() {
         val reservation = saveReservation(LocalDateTime.now(BUSINESS_ZONE).minusMinutes(30))
 
-        mockMvc.patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
-            header("Authorization", "Bearer $staffToken")
-        }.andExpect {
-            status { isNoContent() }
-        }
+        mockMvc
+            .patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
+                header("Authorization", "Bearer $staffToken")
+            }
+            .andExpect {
+                status { isNoContent() }
+            }
 
         assertEquals(ReservationStatus.CANCELLED, reservationRepository.findById(reservation.id!!).get().status)
     }
@@ -324,16 +348,19 @@ class ReservationStaffIntegrationTest {
         val reservation = saveReservation(reservationTime)
         val otherCompany = companyRepository.save(Company(name = "Obcy Salon Anulowanie"))
         val otherOwner = userRepository.save(User(phoneNumber = "+48777000999", firstName = "Obcy", lastName = "Owner"))
-        val otherEmployment = companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = otherOwner.id!!, role = "OWNER")
-        )
+        val otherEmployment =
+            companyEmployeeRepository.save(
+                CompanyEmployee(companyId = otherCompany.id!!, userId = otherOwner.id!!, role = "OWNER"),
+            )
 
-        mockMvc.patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
-            header("Authorization", "Bearer ${jwtService.generateStaffToken(otherOwner, otherEmployment)}")
-        }.andExpect {
-            status { isNotFound() }
-            jsonPath("$.code") { value("RESERVATION_NOT_FOUND") }
-        }
+        mockMvc
+            .patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
+                header("Authorization", "Bearer ${jwtService.generateStaffToken(otherOwner, otherEmployment)}")
+            }
+            .andExpect {
+                status { isNotFound() }
+                jsonPath("$.code") { value("RESERVATION_NOT_FOUND") }
+            }
 
         assertEquals(ReservationStatus.PENDING, reservationRepository.findById(reservation.id!!).get().status)
     }
@@ -343,11 +370,13 @@ class ReservationStaffIntegrationTest {
         val reservation = saveReservation(reservationTime)
         val customer = userRepository.findById(reservation.customerId).get()
 
-        mockMvc.patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
-            header("Authorization", "Bearer ${jwtService.generateCustomerToken(customer)}")
-        }.andExpect {
-            status { isForbidden() }
-        }
+        mockMvc
+            .patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
+                header("Authorization", "Bearer ${jwtService.generateCustomerToken(customer)}")
+            }
+            .andExpect {
+                status { isForbidden() }
+            }
     }
 
     @Test
@@ -356,11 +385,13 @@ class ReservationStaffIntegrationTest {
         reservation.status = ReservationStatus.COMPLETED
         reservationRepository.save(reservation)
 
-        mockMvc.patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
-            header("Authorization", "Bearer $staffToken")
-        }.andExpect {
-            status { isConflict() }
-            jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
-        }
+        mockMvc
+            .patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
+                header("Authorization", "Bearer $staffToken")
+            }
+            .andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
+            }
     }
 }

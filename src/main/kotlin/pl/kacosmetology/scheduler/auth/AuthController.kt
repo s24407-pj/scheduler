@@ -16,21 +16,21 @@ import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
 /**
- * REST API for customer (SMS OTP) and staff (email/password) authentication, and session logout.
- * Client IP for rate limiting is `remoteAddr`; `X-Forwarded-For` is applied by the servlet container only
- * when the direct peer matches `TRUSTED_PROXIES`.
+ * REST API for customer (SMS OTP) and staff (email/password) authentication, and session logout. Client IP for rate
+ * limiting is `remoteAddr`; `X-Forwarded-For` is applied by the servlet container only when the direct peer matches
+ * `TRUSTED_PROXIES`.
  */
 @RestController
 @RequestMapping("/api/auth")
 class AuthController(
-    private val authService: AuthService
+    private val authService: AuthService,
 ) {
 
     /** Sends an OTP code via SMS to the given phone number. */
     @PostMapping("/request-code")
     fun requestCode(
         @Valid @RequestBody request: RequestCodeRequest,
-        httpRequest: HttpServletRequest
+        httpRequest: HttpServletRequest,
     ): ResponseEntity<Map<String, String>> {
         authService.requestCode(request, httpRequest.remoteAddr)
         return ResponseEntity.ok(mapOf("message" to "Kod wysłany!"))
@@ -40,7 +40,7 @@ class AuthController(
     @PostMapping("/verify-code")
     fun verifyCode(
         @Valid @RequestBody request: VerifyCodeRequest,
-        httpRequest: HttpServletRequest
+        httpRequest: HttpServletRequest,
     ): ResponseEntity<AuthResponse> {
         return ResponseEntity.ok(authService.verifyCode(request, httpRequest.remoteAddr))
     }
@@ -49,7 +49,7 @@ class AuthController(
     @PostMapping("/login-staff")
     fun loginStaff(
         @Valid @RequestBody request: StaffLoginRequest,
-        httpRequest: HttpServletRequest
+        httpRequest: HttpServletRequest,
     ): ResponseEntity<StaffLoginResponse> {
         return ResponseEntity.ok(authService.loginStaff(request, httpRequest.remoteAddr))
     }

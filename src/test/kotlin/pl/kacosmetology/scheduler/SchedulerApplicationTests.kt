@@ -10,11 +10,7 @@ import software.amazon.awssdk.services.s3.S3Client
 @SpringBootTest
 class SchedulerApplicationTests {
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
-    @Test
-    fun contextLoads() {
-    }
-
+    @Test fun contextLoads() {}
 }

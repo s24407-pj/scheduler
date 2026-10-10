@@ -3,8 +3,8 @@ package pl.kacosmetology.scheduler.config
 import org.springframework.http.HttpStatus
 
 /**
- * Stable, machine-readable error codes returned in the `code` field of error responses.
- * Names are part of the public API contract; do not rename them.
+ * Stable, machine-readable error codes returned in the `code` field of error responses. Names are part of the public
+ * API contract; do not rename them.
  */
 enum class ErrorCode(val status: HttpStatus) {
     VALIDATION_FAILED(HttpStatus.BAD_REQUEST),
@@ -18,30 +18,24 @@ enum class ErrorCode(val status: HttpStatus) {
     CUSTOMER_BLOCKED(HttpStatus.BAD_REQUEST),
     BOOKING_ADVANCE_REQUIRED(HttpStatus.BAD_REQUEST),
     CUSTOMER_NAME_REQUIRED(HttpStatus.BAD_REQUEST),
-
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED),
-
     ACCESS_DENIED(HttpStatus.FORBIDDEN),
-
     NOT_FOUND(HttpStatus.NOT_FOUND),
     RESERVATION_NOT_FOUND(HttpStatus.NOT_FOUND),
     CUSTOMER_NOT_FOUND(HttpStatus.NOT_FOUND),
     SCHEDULE_BLOCK_NOT_FOUND(HttpStatus.NOT_FOUND),
-
     CONFLICT(HttpStatus.CONFLICT),
     SLOT_UNAVAILABLE(HttpStatus.CONFLICT),
     INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT),
     CONCURRENT_MODIFICATION(HttpStatus.CONFLICT),
     DATA_CONFLICT(HttpStatus.CONFLICT),
-
     RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS),
-
-    INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR)
+    INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR),
 }
 
 /**
- * Business error with a stable [code]. [RestExceptionHandler] renders it as a ProblemDetail with
- * the code's HTTP status, [message] as `detail`, and the code name as `code`.
+ * Business error with a stable [code]. [RestExceptionHandler] renders it as a ProblemDetail with the code's HTTP
+ * status, [message] as `detail`, and the code name as `code`.
  */
 class ApiException(val code: ErrorCode, message: String) : RuntimeException(message)

@@ -5,6 +5,8 @@ import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
+import java.time.LocalTime
+import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -15,29 +17,21 @@ import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
-import java.time.LocalTime
-import java.util.*
 
 @ExtendWith(MockKExtension::class)
 class CompanyServiceTest {
 
-    @MockK
-    private lateinit var companyRepository: CompanyRepository
+    @MockK private lateinit var companyRepository: CompanyRepository
 
-    @MockK
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @MockK
-    private lateinit var userRepository: UserRepository
+    @MockK private lateinit var userRepository: UserRepository
 
-    @MockK
-    private lateinit var offeringRepository: OfferingRepository
+    @MockK private lateinit var offeringRepository: OfferingRepository
 
-    @MockK
-    private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
+    @MockK private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
-    @InjectMockKs
-    private lateinit var companyService: CompanyService
+    @InjectMockKs private lateinit var companyService: CompanyService
 
     private val companyId = 1L
     private val company = Company(id = companyId, name = "Test Salon")
@@ -64,11 +58,12 @@ class CompanyServiceTest {
 
     @Test
     fun `updateSettings should mutate managed company and return response`() {
-        val request = UpdateCompanySettingsRequest(
-            openingTime = LocalTime.of(8, 0),
-            closingTime = LocalTime.of(18, 0),
-            slotIntervalMinutes = 15
-        )
+        val request =
+            UpdateCompanySettingsRequest(
+                openingTime = LocalTime.of(8, 0),
+                closingTime = LocalTime.of(18, 0),
+                slotIntervalMinutes = 15,
+            )
         every { companyRepository.findById(companyId) } returns Optional.of(company)
 
         val result = companyService.updateSettings(companyId, request)
@@ -84,11 +79,12 @@ class CompanyServiceTest {
 
     @Test
     fun `updateSettings should throw when closingTime equals openingTime`() {
-        val request = UpdateCompanySettingsRequest(
-            openingTime = LocalTime.of(9, 0),
-            closingTime = LocalTime.of(9, 0),
-            slotIntervalMinutes = 30
-        )
+        val request =
+            UpdateCompanySettingsRequest(
+                openingTime = LocalTime.of(9, 0),
+                closingTime = LocalTime.of(9, 0),
+                slotIntervalMinutes = 30,
+            )
         every { companyRepository.findById(companyId) } returns Optional.of(company)
 
         val ex = assertThrows<IllegalArgumentException> { companyService.updateSettings(companyId, request) }
@@ -98,11 +94,12 @@ class CompanyServiceTest {
 
     @Test
     fun `updateSettings should throw when closingTime is before openingTime`() {
-        val request = UpdateCompanySettingsRequest(
-            openingTime = LocalTime.of(17, 0),
-            closingTime = LocalTime.of(9, 0),
-            slotIntervalMinutes = 30
-        )
+        val request =
+            UpdateCompanySettingsRequest(
+                openingTime = LocalTime.of(17, 0),
+                closingTime = LocalTime.of(9, 0),
+                slotIntervalMinutes = 30,
+            )
         every { companyRepository.findById(companyId) } returns Optional.of(company)
 
         assertThrows<IllegalArgumentException> { companyService.updateSettings(companyId, request) }
@@ -154,7 +151,15 @@ class CompanyServiceTest {
     @Test
     fun `getPublicBookableEmployees should filter by offering assignment`() {
         val offeringId = 5L
-        val offering = Offering(id = offeringId, companyId = companyId, name = "Manicure", durationMinutes = 60, price = 100, active = true)
+        val offering =
+            Offering(
+                id = offeringId,
+                companyId = companyId,
+                name = "Manicure",
+                durationMinutes = 60,
+                price = 100,
+                active = true,
+            )
         val user = User(id = 10L, phoneNumber = "+48100000001", firstName = "Anna", lastName = "Kowalska")
         val ce = CompanyEmployee(id = 1L, companyId = companyId, userId = 10L, role = "EMPLOYEE")
 
@@ -174,11 +179,12 @@ class CompanyServiceTest {
 
     @Test
     fun `updateSettings should throw when company does not exist`() {
-        val request = UpdateCompanySettingsRequest(
-            openingTime = LocalTime.of(9, 0),
-            closingTime = LocalTime.of(17, 0),
-            slotIntervalMinutes = 30
-        )
+        val request =
+            UpdateCompanySettingsRequest(
+                openingTime = LocalTime.of(9, 0),
+                closingTime = LocalTime.of(17, 0),
+                slotIntervalMinutes = 30,
+            )
         every { companyRepository.findById(companyId) } returns Optional.empty()
 
         assertThrows<NoSuchElementException> { companyService.updateSettings(companyId, request) }

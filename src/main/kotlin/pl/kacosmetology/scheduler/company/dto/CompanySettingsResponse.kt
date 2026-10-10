@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.company.dto
 
-import pl.kacosmetology.scheduler.company.Company
 import java.time.LocalTime
+import pl.kacosmetology.scheduler.company.Company
 
 /** Response body containing company business hour settings. */
 data class CompanySettingsResponse(
@@ -13,18 +13,19 @@ data class CompanySettingsResponse(
     val maxNoShows: Int,
     val lastMinuteDiscountPercent: Int,
     val lastMinuteDiscountHours: Int,
-    val minBookingAdvanceMinutes: Int
+    val minBookingAdvanceMinutes: Int,
 )
 
 /** Maps a [Company] entity to a [CompanySettingsResponse] DTO. */
-fun Company.toSettingsResponse() = CompanySettingsResponse(
-    id = requireNotNull(id) { "Persisted company must have an ID" },
-    name = name,
-    openingTime = openingTime,
-    closingTime = closingTime,
-    slotIntervalMinutes = slotIntervalMinutes,
-    maxNoShows = maxNoShows,
-    lastMinuteDiscountPercent = lastMinuteDiscountPercent,
-    lastMinuteDiscountHours = lastMinuteDiscountHours,
-    minBookingAdvanceMinutes = minBookingAdvanceMinutes
-)
+fun Company.toSettingsResponse() =
+    CompanySettingsResponse(
+        id = requireNotNull(id) { "Persisted company must have an ID" },
+        name = name,
+        openingTime = openingTime,
+        closingTime = closingTime,
+        slotIntervalMinutes = slotIntervalMinutes,
+        maxNoShows = maxNoShows,
+        lastMinuteDiscountPercent = lastMinuteDiscountPercent,
+        lastMinuteDiscountHours = lastMinuteDiscountHours,
+        minBookingAdvanceMinutes = minBookingAdvanceMinutes,
+    )

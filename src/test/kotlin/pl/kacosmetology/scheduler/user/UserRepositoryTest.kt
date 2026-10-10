@@ -13,8 +13,7 @@ import pl.kacosmetology.scheduler.TestcontainersConfiguration
 @Import(TestcontainersConfiguration::class)
 class UserRepositoryTest {
 
-    @Autowired
-    private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: UserRepository
 
     @Test
     fun `insertIfPhoneAbsent should create a user when the phone is new`() {

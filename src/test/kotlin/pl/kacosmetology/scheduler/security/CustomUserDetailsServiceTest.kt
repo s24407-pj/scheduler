@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
+import java.util.Optional
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -13,19 +14,15 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
-import java.util.Optional
 
 @ExtendWith(MockKExtension::class)
 class CustomUserDetailsServiceTest {
 
-    @MockK
-    private lateinit var userRepository: UserRepository
+    @MockK private lateinit var userRepository: UserRepository
 
-    @MockK
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @InjectMockKs
-    private lateinit var customUserDetailsService: CustomUserDetailsService
+    @InjectMockKs private lateinit var customUserDetailsService: CustomUserDetailsService
 
     private val testPhone = "+48111222333"
 
@@ -33,9 +30,10 @@ class CustomUserDetailsServiceTest {
     fun `should throw exception when user not found`() {
         every { userRepository.findByPhoneNumber(testPhone) } returns null
 
-        val exception = assertThrows<UsernameNotFoundException> {
-            customUserDetailsService.loadUserByUsername(testPhone)
-        }
+        val exception =
+            assertThrows<UsernameNotFoundException> {
+                customUserDetailsService.loadUserByUsername(testPhone)
+            }
         Assertions.assertEquals("User not found with phone number: $testPhone", exception.message)
     }
 
@@ -79,9 +77,10 @@ class CustomUserDetailsServiceTest {
     fun `staff loading should reject employment owned by another user`() {
         val user = User(id = 1, phoneNumber = testPhone, firstName = "Anna", lastName = "Nowak")
         every { userRepository.findByPhoneNumber(testPhone) } returns user
-        every { companyEmployeeRepository.findById(8L) } returns Optional.of(
-            CompanyEmployee(id = 8L, companyId = 99L, userId = 2L, role = "OWNER")
-        )
+        every { companyEmployeeRepository.findById(8L) } returns
+            Optional.of(
+                CompanyEmployee(id = 8L, companyId = 99L, userId = 2L, role = "OWNER"),
+            )
 
         assertThrows<UsernameNotFoundException> {
             customUserDetailsService.loadStaffByEmployment(testPhone, 8L)

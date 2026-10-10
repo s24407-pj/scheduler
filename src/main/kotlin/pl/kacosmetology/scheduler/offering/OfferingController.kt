@@ -12,14 +12,14 @@ import pl.kacosmetology.scheduler.offering.dto.OfferingResponse
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
 /**
- * REST API for managing salon offerings.
- * Public read endpoints are available without authentication; write operations require the OWNER role.
+ * REST API for managing salon offerings. Public read endpoints are available without authentication; write operations
+ * require the OWNER role.
  */
 @RestController
 @RequestMapping("/api/offerings")
 class OfferingController(
     private val offeringService: OfferingService,
-    private val offeringImageService: OfferingImageService
+    private val offeringImageService: OfferingImageService,
 ) {
 
     /** Returns all active offerings for a given company. Public — no authentication required. */
@@ -30,19 +30,21 @@ class OfferingController(
     }
 
     /**
-     * Returns the active offerings of [companyId] that [employeeId] performs there, for employee-first booking.
-     * Public — no authentication required. Returns 404 when the employee is not employed at the company.
+     * Returns the active offerings of [companyId] that [employeeId] performs there, for employee-first booking. Public
+     * — no authentication required. Returns 404 when the employee is not employed at the company.
      */
     @GetMapping("/public/company/{companyId}/employee/{employeeId}")
     fun getPublicEmployeeOfferings(
         @PathVariable companyId: Long,
-        @PathVariable employeeId: Long
+        @PathVariable employeeId: Long,
     ): List<OfferingResponse> = enrichWithImages(offeringService.getPublicEmployeeOfferings(companyId, employeeId))
 
-    /** Returns all offerings (including inactive) for the authenticated user's company. Requires EMPLOYEE or OWNER role. */
+    /**
+     * Returns all offerings (including inactive) for the authenticated user's company. Requires EMPLOYEE or OWNER role.
+     */
     @GetMapping("")
     fun getCompanyOfferings(
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): List<OfferingResponse> {
         val offerings = offeringService.getAllCompanyOfferings(requireCompanyId(userDetails))
         return enrichWithImages(offerings)
@@ -52,7 +54,7 @@ class OfferingController(
     @GetMapping("/{id}")
     fun getOfferingById(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): OfferingResponse {
         val offering = findOfferingOrThrow(id)
         if (offering.companyId != userDetails.companyId) {
@@ -67,7 +69,7 @@ class OfferingController(
     @PreAuthorize("hasAnyRole('OWNER')")
     fun createOffering(
         @Valid @RequestBody request: OfferingRequest,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): OfferingResponse {
         val offering = offeringService.createOffering(requireCompanyId(userDetails), request)
         return enrichWithImages(offering)
@@ -79,7 +81,7 @@ class OfferingController(
     fun updateOffering(
         @PathVariable id: Long,
         @Valid @RequestBody request: OfferingRequest,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): OfferingResponse {
         return try {
             val offering = offeringService.updateOffering(id, requireCompanyId(userDetails), request)
@@ -97,7 +99,7 @@ class OfferingController(
     @PreAuthorize("hasAnyRole('OWNER')")
     fun activateOffering(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
         try {
             offeringService.activateOffering(id, requireCompanyId(userDetails))
@@ -114,7 +116,7 @@ class OfferingController(
     @PreAuthorize("hasAnyRole('OWNER')")
     fun deleteOffering(
         @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
         try {
             offeringService.deleteOffering(id, requireCompanyId(userDetails))
@@ -126,16 +128,15 @@ class OfferingController(
     }
 
     /**
-     * Uploads an image for the offering (multipart field `image`).
-     * Max 5 images per offering; max 5 MB per file; allowed types: JPEG, PNG, WebP.
-     * Requires OWNER role.
+     * Uploads an image for the offering (multipart field `image`). Max 5 images per offering; max 5 MB per file;
+     * allowed types: JPEG, PNG, WebP. Requires OWNER role.
      */
     @PostMapping("/{id}/image")
     @PreAuthorize("hasAnyRole('OWNER')")
     fun uploadImage(
         @PathVariable id: Long,
         @RequestParam("image") file: MultipartFile,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): OfferingResponse {
         findOfferingOrThrow(id) // throws 404 before file validation runs
         return try {
@@ -149,16 +150,13 @@ class OfferingController(
         }
     }
 
-    /**
-     * Deletes one image from the offering by [imageId].
-     * Requires OWNER role.
-     */
+    /** Deletes one image from the offering by [imageId]. Requires OWNER role. */
     @DeleteMapping("/{id}/image/{imageId}")
     @PreAuthorize("hasAnyRole('OWNER')")
     fun deleteImage(
         @PathVariable id: Long,
         @PathVariable imageId: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): OfferingResponse {
         return try {
             val offering = offeringService.deleteImage(id, imageId, requireCompanyId(userDetails))
@@ -173,8 +171,7 @@ class OfferingController(
     // ---- helpers ----
 
     private fun requireCompanyId(userDetails: CustomUserDetails): Long =
-        userDetails.companyId
-            ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisania do firmy")
+        userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisania do firmy")
 
     private fun findOfferingOrThrow(id: Long): Offering =
         try {

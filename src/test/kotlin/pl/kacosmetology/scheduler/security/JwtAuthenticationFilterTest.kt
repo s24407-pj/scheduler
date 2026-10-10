@@ -40,8 +40,7 @@ class JwtAuthenticationFilterTest {
         every { sessionStore.isActive("session-1", 1L) } returns true
     }
 
-    @AfterEach
-    fun teardown() = SecurityContextHolder.clearContext()
+    @AfterEach fun teardown() = SecurityContextHolder.clearContext()
 
     @Test
     fun `missing header should remain anonymous`() {
@@ -170,7 +169,7 @@ class JwtAuthenticationFilterTest {
             user,
             20L,
             listOf(SimpleGrantedAuthority("ROLE_EMPLOYEE")),
-            employmentId = 10L
+            employmentId = 10L,
         )
     }
 }

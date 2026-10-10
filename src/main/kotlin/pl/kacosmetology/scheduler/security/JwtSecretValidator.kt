@@ -6,13 +6,13 @@ import org.springframework.core.env.Profiles
 import org.springframework.stereotype.Component
 
 /**
- * Stops startup when the JWT signing secret is shorter than 256 bits, or when the public development default
- * is used outside the `dev` and `test` profiles. A known secret lets anyone forge owner tokens.
+ * Stops startup when the JWT signing secret is shorter than 256 bits, or when the public development default is used
+ * outside the `dev` and `test` profiles. A known secret lets anyone forge owner tokens.
  */
 @Component
 class JwtSecretValidator(
     @Value($$"${jwt.secret}") secret: String,
-    environment: Environment
+    environment: Environment,
 ) {
 
     companion object {

@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.scheduleblock.dto
 
-import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 import java.time.LocalDateTime
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 
 /** Response DTO for a [ScheduleBlock]. */
 data class ScheduleBlockResponse(
@@ -9,14 +9,15 @@ data class ScheduleBlockResponse(
     val startTime: LocalDateTime,
     val endTime: LocalDateTime,
     val reason: String?,
-    val createdAt: LocalDateTime?
+    val createdAt: LocalDateTime?,
 )
 
 /** Maps a [ScheduleBlock] to its response DTO. */
-fun ScheduleBlock.toResponse() = ScheduleBlockResponse(
-    id = requireNotNull(id) { "Persisted schedule block must have an ID" },
-    startTime = startTime,
-    endTime = endTime,
-    reason = reason,
-    createdAt = createdAt
-)
+fun ScheduleBlock.toResponse() =
+    ScheduleBlockResponse(
+        id = requireNotNull(id) { "Persisted schedule block must have an ID" },
+        startTime = startTime,
+        endTime = endTime,
+        reason = reason,
+        createdAt = createdAt,
+    )

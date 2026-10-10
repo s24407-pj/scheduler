@@ -5,30 +5,25 @@ import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
 import io.mockk.verify
+import java.util.*
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import java.util.*
 
 @ExtendWith(MockKExtension::class)
 class CustomerServiceTest {
 
-    @MockK
-    private lateinit var userRepository: UserRepository
+    @MockK private lateinit var userRepository: UserRepository
 
-    @MockK
-    private lateinit var reservationRepository: ReservationRepository
+    @MockK private lateinit var reservationRepository: ReservationRepository
 
-    @MockK
-    private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
+    @MockK private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
 
-    @MockK
-    private lateinit var companyCustomerRepository: CompanyCustomerRepository
+    @MockK private lateinit var companyCustomerRepository: CompanyCustomerRepository
 
-    @InjectMockKs
-    private lateinit var customerService: CustomerService
+    @InjectMockKs private lateinit var customerService: CustomerService
 
     private val companyId = 1L
     private val customerId = 100L
@@ -111,7 +106,7 @@ class CustomerServiceTest {
         every {
             companyCustomerBlockRepository.findByCompanyIdAndCustomerId(
                 companyId,
-                customerId
+                customerId,
             )
         } returns existingBlock
         every { companyCustomerBlockRepository.save(any()) } answers { firstArg() }
@@ -176,9 +171,10 @@ class CustomerServiceTest {
         every { reservationRepository.existsByCustomerIdAndCompanyId(customerId, companyId) } returns false
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalArgumentException> {
-            customerService.blockCustomer(customerId, companyId)
-        }
+        val exception =
+            assertThrows<IllegalArgumentException> {
+                customerService.blockCustomer(customerId, companyId)
+            }
         assertEquals("Klient nie ma żadnych rezerwacji w tej firmie", exception.message)
         verify(exactly = 0) { companyCustomerBlockRepository.save(any()) }
     }
@@ -190,9 +186,10 @@ class CustomerServiceTest {
         every { reservationRepository.existsByCustomerIdAndCompanyId(customerId, companyId) } returns false
 
         // WHEN & THEN
-        val exception = assertThrows<IllegalArgumentException> {
-            customerService.unblockCustomer(customerId, companyId)
-        }
+        val exception =
+            assertThrows<IllegalArgumentException> {
+                customerService.unblockCustomer(customerId, companyId)
+            }
         assertEquals("Klient nie ma żadnych rezerwacji w tej firmie", exception.message)
         verify(exactly = 0) { companyCustomerBlockRepository.save(any()) }
     }
@@ -204,7 +201,7 @@ class CustomerServiceTest {
         every { userRepository.findById(customerId) } returns Optional.of(customer)
         every { companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) } returns null
         every { companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId) } returns
-                CompanyCustomer(companyId = companyId, userId = customerId, notes = "VIP klient")
+            CompanyCustomer(companyId = companyId, userId = customerId, notes = "VIP klient")
 
         // WHEN
         val result = customerService.getCustomerStatus(customerId, companyId)
@@ -240,7 +237,9 @@ class CustomerServiceTest {
 
         // THEN
         verify(exactly = 1) {
-            companyCustomerRepository.save(match { it.notes == "Ważny klient" && it.companyId == companyId && it.userId == customerId })
+            companyCustomerRepository.save(
+                match { it.notes == "Ważny klient" && it.companyId == companyId && it.userId == customerId },
+            )
         }
     }
 

@@ -4,6 +4,10 @@ import com.ninjasquad.springmockk.MockkBean
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.LocalTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.BeforeEach
@@ -39,54 +43,37 @@ import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
-import java.time.DayOfWeek
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.LocalTime
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
 class CustomerReservationFlowIntegrationTest {
 
-    @Autowired
-    private lateinit var mockMvc: MockMvc
+    @Autowired private lateinit var mockMvc: MockMvc
 
-    @Autowired
-    private lateinit var objectMapper: ObjectMapper
+    @Autowired private lateinit var objectMapper: ObjectMapper
 
-    @Autowired
-    private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: UserRepository
 
-    @Autowired
-    private lateinit var companyRepository: CompanyRepository
+    @Autowired private lateinit var companyRepository: CompanyRepository
 
-    @Autowired
-    private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
+    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @Autowired
-    private lateinit var serviceRepository: OfferingRepository
+    @Autowired private lateinit var serviceRepository: OfferingRepository
 
-    @Autowired
-    private lateinit var redisTemplate: StringRedisTemplate
+    @Autowired private lateinit var redisTemplate: StringRedisTemplate
 
-    @Autowired
-    private lateinit var reservationRepository: ReservationRepository
+    @Autowired private lateinit var reservationRepository: ReservationRepository
 
-    @Autowired
-    private lateinit var scheduleBlockRepository: ScheduleBlockRepository
+    @Autowired private lateinit var scheduleBlockRepository: ScheduleBlockRepository
 
-    @Autowired
-    private lateinit var jwtService: JwtService
+    @Autowired private lateinit var jwtService: JwtService
 
-    @MockkBean
-    private lateinit var smsSender: SmsSender
+    @MockkBean private lateinit var smsSender: SmsSender
 
-    @Autowired
-    private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
+    @Autowired private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
 
-    @MockkBean
-    private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var s3Client: S3Client
 
     private var companyId: Long = 0
     private var employeeId: Long = 0
@@ -115,15 +102,19 @@ class CustomerReservationFlowIntegrationTest {
             CompanyEmployee(
                 companyId = company.id!!,
                 userId = employee.id!!,
-                role = "EMPLOYEE"
-            )
+                role = "EMPLOYEE",
+            ),
         )
 
-        val service = serviceRepository.save(
-            Offering(
-                companyId = company.id!!, name = "Manicure", durationMinutes = 60, price = 120
+        val service =
+            serviceRepository.save(
+                Offering(
+                    companyId = company.id!!,
+                    name = "Manicure",
+                    durationMinutes = 60,
+                    price = 120,
+                ),
             )
-        )
 
         companyId = company.id!!
         employeeId = employee.id!!
@@ -139,8 +130,8 @@ class CustomerReservationFlowIntegrationTest {
                     employeeId = employeeId,
                     dayOfWeek = day,
                     startTime = LocalTime.of(8, 0),
-                    endTime = LocalTime.of(18, 0)
-                )
+                    endTime = LocalTime.of(18, 0),
+                ),
             )
         }
     }
@@ -149,9 +140,10 @@ class CustomerReservationFlowIntegrationTest {
         mockMvc.post("/api/reservations") {
             header("Authorization", "Bearer $token")
             contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(
-                CreateReservationRequest(employeeId = employeeId, serviceId = offeringId, startTime = startTime)
-            )
+            content =
+                objectMapper.writeValueAsString(
+                    CreateReservationRequest(employeeId = employeeId, serviceId = offeringId, startTime = startTime),
+                )
         }
 
     @Test
@@ -189,17 +181,21 @@ class CustomerReservationFlowIntegrationTest {
         val future = saveReservation(customer.id!!, LocalDateTime.now(BUSINESS_ZONE).plusHours(1))
         val started = saveReservation(customer.id!!, LocalDateTime.now(BUSINESS_ZONE).minusMinutes(90))
 
-        mockMvc.patch("/api/reservations/${future.id!!}/cancel") {
-            header("Authorization", "Bearer $token")
-        }.andExpect {
-            status { isNoContent() }
-        }
-        mockMvc.patch("/api/reservations/${started.id!!}/cancel") {
-            header("Authorization", "Bearer $token")
-        }.andExpect {
-            status { isConflict() }
-            jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
-        }
+        mockMvc
+            .patch("/api/reservations/${future.id!!}/cancel") {
+                header("Authorization", "Bearer $token")
+            }
+            .andExpect {
+                status { isNoContent() }
+            }
+        mockMvc
+            .patch("/api/reservations/${started.id!!}/cancel") {
+                header("Authorization", "Bearer $token")
+            }
+            .andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
+            }
 
         assertEquals(ReservationStatus.CANCELLED, reservationRepository.findById(future.id!!).get().status)
         assertEquals(ReservationStatus.PENDING, reservationRepository.findById(started.id!!).get().status)
@@ -209,23 +205,26 @@ class CustomerReservationFlowIntegrationTest {
     fun `employee shared by two companies can be booked at the same time at each company`() {
         val otherCompany = companyRepository.save(Company(name = "Drugi Salon"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = employeeId, role = "EMPLOYEE")
+            CompanyEmployee(companyId = otherCompany.id!!, userId = employeeId, role = "EMPLOYEE"),
         )
-        val otherOffering = serviceRepository.save(
-            Offering(companyId = otherCompany.id!!, name = "Pedicure", durationMinutes = 60, price = 90)
-        )
+        val otherOffering =
+            serviceRepository.save(
+                Offering(companyId = otherCompany.id!!, name = "Pedicure", durationMinutes = 60, price = 90),
+            )
         saveWeeklySchedule(otherCompany.id!!, employeeId)
 
         book(customerToken("+48555700004"), tomorrowAt(10)).andExpect { status { isCreated() } }
 
-        mockMvc.get("/api/availability") {
-            param("employeeId", employeeId.toString())
-            param("serviceId", otherOffering.id!!.toString())
-            param("date", tomorrowAt(10).toLocalDate().toString())
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$[?(@.time == '10:00:00')]") { exists() }
-        }
+        mockMvc
+            .get("/api/availability") {
+                param("employeeId", employeeId.toString())
+                param("serviceId", otherOffering.id!!.toString())
+                param("date", tomorrowAt(10).toLocalDate().toString())
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$[?(@.time == '10:00:00')]") { exists() }
+            }
         book(customerToken("+48555700005"), tomorrowAt(10), otherOffering.id!!).andExpect {
             status { isCreated() }
         }
@@ -242,8 +241,8 @@ class CustomerReservationFlowIntegrationTest {
                 serviceId = serviceId,
                 price = 120,
                 startTime = startTime,
-                endTime = startTime.plusMinutes(60)
-            )
+                endTime = startTime.plusMinutes(60),
+            ),
         )
 
     @Test
@@ -255,12 +254,14 @@ class CustomerReservationFlowIntegrationTest {
         // ==========================================
         val requestCodeReq = RequestCodeRequest(phoneNumber = newCustomerPhone)
 
-        mockMvc.post("/api/auth/request-code") {
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(requestCodeReq)
-        }.andExpect {
-            status { isOk() }
-        }
+        mockMvc
+            .post("/api/auth/request-code") {
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(requestCodeReq)
+            }
+            .andExpect {
+                status { isOk() }
+            }
 
         // Odczytujemy kod z Redis
         val generatedCode = redisTemplate.opsForValue().get("otp:$newCustomerPhone")
@@ -269,21 +270,26 @@ class CustomerReservationFlowIntegrationTest {
         // ==========================================
         // KROK 2: Klient weryfikuje kod i podaje dane
         // ==========================================
-        val verifyCodeReq = VerifyCodeRequest(
-            phoneNumber = newCustomerPhone,
-            code = generatedCode!!,
-            firstName = "Julia",
-            lastName = "Nowak"
-        )
+        val verifyCodeReq =
+            VerifyCodeRequest(
+                phoneNumber = newCustomerPhone,
+                code = generatedCode!!,
+                firstName = "Julia",
+                lastName = "Nowak",
+            )
 
         // Wyciągamy token JWT z odpowiedzi JSON!
-        val verifyResponse = mockMvc.post("/api/auth/verify-code") {
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(verifyCodeReq)
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.token") { exists() }
-        }.andReturn()
+        val verifyResponse =
+            mockMvc
+                .post("/api/auth/verify-code") {
+                    contentType = MediaType.APPLICATION_JSON
+                    content = objectMapper.writeValueAsString(verifyCodeReq)
+                }
+                .andExpect {
+                    status { isOk() }
+                    jsonPath("$.token") { exists() }
+                }
+                .andReturn()
 
         // Parsujemy odpowiedź, aby zdobyć czysty string z tokenem
         val responseBody = verifyResponse.response.contentAsString
@@ -295,19 +301,22 @@ class CustomerReservationFlowIntegrationTest {
         // Wybieramy datę w przyszłości, żeby przejść przez Twoją nową walidację @Future!
         val reservationTime = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
 
-        val createReservationReq = CreateReservationRequest(
-            employeeId = employeeId,
-            serviceId = serviceId,
-            startTime = reservationTime
-        )
+        val createReservationReq =
+            CreateReservationRequest(
+                employeeId = employeeId,
+                serviceId = serviceId,
+                startTime = reservationTime,
+            )
 
-        mockMvc.post("/api/reservations") {
-            header("Authorization", "Bearer $jwtToken") // KLUCZOWE: Używamy zdobytego tokena!
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(createReservationReq)
-        }.andExpect {
-            status { isCreated() } // Oczekujemy 201 Created
-        }
+        mockMvc
+            .post("/api/reservations") {
+                header("Authorization", "Bearer $jwtToken") // KLUCZOWE: Używamy zdobytego tokena!
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(createReservationReq)
+            }
+            .andExpect {
+                status { isCreated() } // Oczekujemy 201 Created
+            }
 
         // ==========================================
         // KROK 4: Weryfikacja efektu końcowego w bazie
@@ -332,29 +341,36 @@ class CustomerReservationFlowIntegrationTest {
         val customerPhone = "+48555111222"
         val requestCodeReq = RequestCodeRequest(phoneNumber = customerPhone)
 
-        mockMvc.post("/api/auth/request-code") {
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(requestCodeReq)
-        }.andExpect {
-            status { isOk() }
-        }
+        mockMvc
+            .post("/api/auth/request-code") {
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(requestCodeReq)
+            }
+            .andExpect {
+                status { isOk() }
+            }
 
         val generatedCode = redisTemplate.opsForValue().get("otp:$customerPhone")
         assertNotNull(generatedCode)
 
-        val verifyResponse = mockMvc.post("/api/auth/verify-code") {
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(
-                VerifyCodeRequest(
-                    phoneNumber = customerPhone,
-                    code = generatedCode!!,
-                    firstName = "Adam",
-                    lastName = "Testowy"
-                )
-            )
-        }.andExpect {
-            status { isOk() }
-        }.andReturn()
+        val verifyResponse =
+            mockMvc
+                .post("/api/auth/verify-code") {
+                    contentType = MediaType.APPLICATION_JSON
+                    content =
+                        objectMapper.writeValueAsString(
+                            VerifyCodeRequest(
+                                phoneNumber = customerPhone,
+                                code = generatedCode!!,
+                                firstName = "Adam",
+                                lastName = "Testowy",
+                            ),
+                        )
+                }
+                .andExpect {
+                    status { isOk() }
+                }
+                .andReturn()
 
         val jwtToken = objectMapper.readTree(verifyResponse.response.contentAsString).get("token").stringValue()
         val blockStart = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
@@ -363,28 +379,31 @@ class CustomerReservationFlowIntegrationTest {
                 companyId = companyRepository.findAll().first().id!!,
                 employeeId = employeeId,
                 startTime = blockStart,
-                endTime = blockStart.plusHours(1)
+                endTime = blockStart.plusHours(1),
+            ),
+        )
+
+        val createReservationReq =
+            CreateReservationRequest(
+                employeeId = employeeId,
+                serviceId = serviceId,
+                startTime = blockStart.plusMinutes(30),
             )
-        )
 
-        val createReservationReq = CreateReservationRequest(
-            employeeId = employeeId,
-            serviceId = serviceId,
-            startTime = blockStart.plusMinutes(30)
-        )
-
-        mockMvc.post("/api/reservations") {
-            header("Authorization", "Bearer $jwtToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(createReservationReq)
-        }.andExpect {
-            status { isConflict() }
-            content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
-            jsonPath("$.status") { value(409) }
-            jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
-            jsonPath("$.detail") { value("Ten termin jest już zajęty") }
-            jsonPath("$.instance") { value("/api/reservations") }
-        }
+        mockMvc
+            .post("/api/reservations") {
+                header("Authorization", "Bearer $jwtToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(createReservationReq)
+            }
+            .andExpect {
+                status { isConflict() }
+                content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
+                jsonPath("$.status") { value(409) }
+                jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
+                jsonPath("$.detail") { value("Ten termin jest już zajęty") }
+                jsonPath("$.instance") { value("/api/reservations") }
+            }
 
         assertEquals(0, reservationRepository.findAll().size)
     }
@@ -392,26 +411,34 @@ class CustomerReservationFlowIntegrationTest {
     @Test
     fun `repeating an identical booking request should return the existing reservation with 200`() {
         val token = customerToken("+48555333444")
-        val body = objectMapper.writeValueAsString(
-            CreateReservationRequest(employeeId = employeeId, serviceId = serviceId, startTime = tomorrowAt(11))
-        )
+        val body =
+            objectMapper.writeValueAsString(
+                CreateReservationRequest(employeeId = employeeId, serviceId = serviceId, startTime = tomorrowAt(11)),
+            )
 
-        val firstId = mockMvc.post("/api/reservations") {
-            header("Authorization", "Bearer $token")
-            contentType = MediaType.APPLICATION_JSON
-            content = body
-        }.andExpect {
-            status { isCreated() }
-        }.andReturn().let { objectMapper.readTree(it.response.contentAsString).get("id").asLong() }
+        val firstId =
+            mockMvc
+                .post("/api/reservations") {
+                    header("Authorization", "Bearer $token")
+                    contentType = MediaType.APPLICATION_JSON
+                    content = body
+                }
+                .andExpect {
+                    status { isCreated() }
+                }
+                .andReturn()
+                .let { objectMapper.readTree(it.response.contentAsString).get("id").asLong() }
 
-        mockMvc.post("/api/reservations") {
-            header("Authorization", "Bearer $token")
-            contentType = MediaType.APPLICATION_JSON
-            content = body
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.id") { value(firstId) }
-        }
+        mockMvc
+            .post("/api/reservations") {
+                header("Authorization", "Bearer $token")
+                contentType = MediaType.APPLICATION_JSON
+                content = body
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.id") { value(firstId) }
+            }
 
         assertEquals(1, reservationRepository.findAll().size)
     }
@@ -419,24 +446,29 @@ class CustomerReservationFlowIntegrationTest {
     @Test
     fun `booking a local time skipped by the daylight saving change should return 400`() {
         val token = customerToken("+48555333555")
-        val transition = generateSequence(BUSINESS_ZONE.rules.nextTransition(Instant.now())) {
-            BUSINESS_ZONE.rules.nextTransition(it.instant)
-        }.first { it.isGap }
+        val transition =
+            generateSequence(BUSINESS_ZONE.rules.nextTransition(Instant.now())) {
+                    BUSINESS_ZONE.rules.nextTransition(it.instant)
+                }
+                .first { it.isGap }
 
-        mockMvc.post("/api/reservations") {
-            header("Authorization", "Bearer $token")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(
-                CreateReservationRequest(
-                    employeeId = employeeId,
-                    serviceId = serviceId,
-                    startTime = transition.dateTimeBefore.plusMinutes(30)
-                )
-            )
-        }.andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("INVALID_LOCAL_TIME") }
-        }
+        mockMvc
+            .post("/api/reservations") {
+                header("Authorization", "Bearer $token")
+                contentType = MediaType.APPLICATION_JSON
+                content =
+                    objectMapper.writeValueAsString(
+                        CreateReservationRequest(
+                            employeeId = employeeId,
+                            serviceId = serviceId,
+                            startTime = transition.dateTimeBefore.plusMinutes(30),
+                        ),
+                    )
+            }
+            .andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("INVALID_LOCAL_TIME") }
+            }
 
         assertEquals(0, reservationRepository.findAll().size)
     }
@@ -444,29 +476,41 @@ class CustomerReservationFlowIntegrationTest {
     @Test
     fun `cancelling another customer's reservation should return 404`() {
         val ownerToken = customerToken("+48555333666")
-        val reservationId = mockMvc.post("/api/reservations") {
-            header("Authorization", "Bearer $ownerToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(
-                CreateReservationRequest(employeeId = employeeId, serviceId = serviceId, startTime = tomorrowAt(12))
-            )
-        }.andExpect {
-            status { isCreated() }
-        }.andReturn().let { objectMapper.readTree(it.response.contentAsString).get("id").asLong() }
+        val reservationId =
+            mockMvc
+                .post("/api/reservations") {
+                    header("Authorization", "Bearer $ownerToken")
+                    contentType = MediaType.APPLICATION_JSON
+                    content =
+                        objectMapper.writeValueAsString(
+                            CreateReservationRequest(
+                                employeeId = employeeId,
+                                serviceId = serviceId,
+                                startTime = tomorrowAt(12),
+                            ),
+                        )
+                }
+                .andExpect {
+                    status { isCreated() }
+                }
+                .andReturn()
+                .let { objectMapper.readTree(it.response.contentAsString).get("id").asLong() }
 
-        mockMvc.patch("/api/reservations/$reservationId/cancel") {
-            header("Authorization", "Bearer ${customerToken("+48555333777")}")
-        }.andExpect {
-            status { isNotFound() }
-            jsonPath("$.code") { value("RESERVATION_NOT_FOUND") }
-        }
+        mockMvc
+            .patch("/api/reservations/$reservationId/cancel") {
+                header("Authorization", "Bearer ${customerToken("+48555333777")}")
+            }
+            .andExpect {
+                status { isNotFound() }
+                jsonPath("$.code") { value("RESERVATION_NOT_FOUND") }
+            }
 
         assertEquals(ReservationStatus.PENDING, reservationRepository.findById(reservationId).get().status)
     }
 
     private fun customerToken(phone: String): String =
         jwtService.generateCustomerToken(
-            userRepository.save(User(phoneNumber = phone, firstName = "Klient", lastName = "Testowy"))
+            userRepository.save(User(phoneNumber = phone, firstName = "Klient", lastName = "Testowy")),
         )
 
     private fun tomorrowAt(hour: Int): LocalDateTime =
@@ -477,29 +521,36 @@ class CustomerReservationFlowIntegrationTest {
         val customerPhone = "+48555111999"
         val requestCodeReq = RequestCodeRequest(phoneNumber = customerPhone)
 
-        mockMvc.post("/api/auth/request-code") {
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(requestCodeReq)
-        }.andExpect {
-            status { isOk() }
-        }
+        mockMvc
+            .post("/api/auth/request-code") {
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(requestCodeReq)
+            }
+            .andExpect {
+                status { isOk() }
+            }
 
         val generatedCode = redisTemplate.opsForValue().get("otp:$customerPhone")
         assertNotNull(generatedCode)
 
-        val verifyResponse = mockMvc.post("/api/auth/verify-code") {
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(
-                VerifyCodeRequest(
-                    phoneNumber = customerPhone,
-                    code = generatedCode!!,
-                    firstName = "Ewa",
-                    lastName = "Testowa"
-                )
-            )
-        }.andExpect {
-            status { isOk() }
-        }.andReturn()
+        val verifyResponse =
+            mockMvc
+                .post("/api/auth/verify-code") {
+                    contentType = MediaType.APPLICATION_JSON
+                    content =
+                        objectMapper.writeValueAsString(
+                            VerifyCodeRequest(
+                                phoneNumber = customerPhone,
+                                code = generatedCode!!,
+                                firstName = "Ewa",
+                                lastName = "Testowa",
+                            ),
+                        )
+                }
+                .andExpect {
+                    status { isOk() }
+                }
+                .andReturn()
 
         val jwtToken = objectMapper.readTree(verifyResponse.response.contentAsString).get("token").stringValue()
         val otherCompany = companyRepository.save(Company(name = "Obcy Salon"))
@@ -509,24 +560,27 @@ class CustomerReservationFlowIntegrationTest {
             CompanyEmployee(
                 companyId = otherCompany.id!!,
                 userId = otherEmployee.id!!,
-                role = "EMPLOYEE"
-            )
+                role = "EMPLOYEE",
+            ),
         )
         val reservationTime = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
 
-        val createReservationReq = CreateReservationRequest(
-            employeeId = otherEmployee.id!!,
-            serviceId = serviceId,
-            startTime = reservationTime
-        )
+        val createReservationReq =
+            CreateReservationRequest(
+                employeeId = otherEmployee.id!!,
+                serviceId = serviceId,
+                startTime = reservationTime,
+            )
 
-        mockMvc.post("/api/reservations") {
-            header("Authorization", "Bearer $jwtToken")
-            contentType = MediaType.APPLICATION_JSON
-            content = objectMapper.writeValueAsString(createReservationReq)
-        }.andExpect {
-            status { isBadRequest() }
-        }
+        mockMvc
+            .post("/api/reservations") {
+                header("Authorization", "Bearer $jwtToken")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(createReservationReq)
+            }
+            .andExpect {
+                status { isBadRequest() }
+            }
 
         assertEquals(0, reservationRepository.findAll().size)
     }

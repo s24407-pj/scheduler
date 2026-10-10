@@ -7,18 +7,17 @@ import org.springframework.web.bind.annotation.*
 import pl.kacosmetology.scheduler.company.dto.CompanyEmployeeResponse
 import pl.kacosmetology.scheduler.company.dto.CompanyPublicProfileResponse
 import pl.kacosmetology.scheduler.company.dto.CompanySettingsResponse
-import pl.kacosmetology.scheduler.company.dto.PublicEmployeeResponse
 import pl.kacosmetology.scheduler.company.dto.UpdateCompanySettingsRequest
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
 /**
- * REST API for reading and updating company settings (business hours, slot interval).
- * OWNER and EMPLOYEE can read; only OWNER can update.
+ * REST API for reading and updating company settings (business hours, slot interval). OWNER and EMPLOYEE can read; only
+ * OWNER can update.
  */
 @RestController
 @RequestMapping("/api/company")
 class CompanyController(
-    private val companyService: CompanyService
+    private val companyService: CompanyService,
 ) {
 
     /** Returns public company profile for customer booking pages. No authentication required. */
@@ -41,6 +40,6 @@ class CompanyController(
     @PreAuthorize("hasRole('OWNER')")
     fun updateSettings(
         @Valid @RequestBody request: UpdateCompanySettingsRequest,
-        @AuthenticationPrincipal userDetails: CustomUserDetails
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): CompanySettingsResponse = companyService.updateSettings(userDetails.requireCompanyId(), request)
 }
