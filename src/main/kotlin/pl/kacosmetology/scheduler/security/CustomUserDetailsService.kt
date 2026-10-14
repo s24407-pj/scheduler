@@ -1,6 +1,5 @@
 package pl.kacosmetology.scheduler.security
 
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.security.core.userdetails.UsernameNotFoundException
@@ -21,9 +20,10 @@ class CustomUserDetailsService(
                 ?: throw UsernameNotFoundException("User not found with phone number: $username")
 
         return CustomUserDetails(
-            user = user,
+            id = requireNotNull(user.id),
+            phoneNumber = user.phoneNumber,
             companyId = null,
-            authorities = listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")),
+            role = "ROLE_CUSTOMER",
         )
     }
 
@@ -40,10 +40,14 @@ class CustomUserDetailsService(
             throw UsernameNotFoundException("Employment does not belong to user: $username")
         }
 
+        if (employment.role !in setOf("OWNER", "EMPLOYEE")) {
+            throw UsernameNotFoundException("Unsupported employment role")
+        }
         return CustomUserDetails(
-            user = user,
+            id = requireNotNull(user.id),
+            phoneNumber = user.phoneNumber,
             companyId = employment.companyId,
-            authorities = listOf(SimpleGrantedAuthority("ROLE_${employment.role.uppercase()}")),
+            role = "ROLE_${employment.role.uppercase()}",
             employmentId = employment.id,
         )
     }

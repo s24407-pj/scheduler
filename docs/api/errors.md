@@ -30,7 +30,7 @@ Validation failures (Jakarta Validation on a `@Valid` request body) add `errors`
 
 - `detail` is Polish and safe to show to end users. Do not branch on it.
 - `code` is stable and part of the contract. Branch on it.
-- 401 responses from Spring Security (missing, invalid, or revoked JWT) use the same format.
+- 401 responses from Spring Security (missing, invalid, or revoked authenticated session) use the same format.
 
 ## Error codes
 
@@ -49,7 +49,7 @@ Codes are defined in `config/ApiException.kt` (`ErrorCode`); each code has a fix
 | `BOOKING_ADVANCE_REQUIRED` | 400 | Slot starts sooner than the company's `minBookingAdvanceMinutes` |
 | `CUSTOMER_NAME_REQUIRED` | 400 | Staff booking for a new phone number without first and last name |
 | `BAD_REQUEST` | 400 | Uncoded business-rule rejection (fallback) |
-| `UNAUTHORIZED` | 401 | Missing, invalid, or revoked JWT |
+| `UNAUTHORIZED` | 401 | Missing, invalid, or revoked authenticated session |
 | `INVALID_CREDENTIALS` | 401 | Wrong staff email or password |
 | `ACCESS_DENIED` | 403 | Role not allowed, or another employee's resource in the same company |
 | `RESERVATION_NOT_FOUND` | 404 | Reservation does not exist or is not visible to the caller |

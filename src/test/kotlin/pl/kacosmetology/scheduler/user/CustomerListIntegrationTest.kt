@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.user
 
 import com.ninjasquad.springmockk.MockkBean
+import jakarta.servlet.http.Cookie
 import java.time.LocalDateTime
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -20,7 +21,7 @@ import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import software.amazon.awssdk.services.s3.S3Client
 
 @SpringBootTest
@@ -29,7 +30,7 @@ import software.amazon.awssdk.services.s3.S3Client
 class CustomerListIntegrationTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
     @Autowired private lateinit var userRepository: UserRepository
     @Autowired private lateinit var companyRepository: CompanyRepository
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
@@ -45,9 +46,9 @@ class CustomerListIntegrationTest {
     private lateinit var customer: User
     private var companyId: Long = 0
     private var offeringId: Long = 0
-    private lateinit var ownerToken: String
-    private lateinit var employeeToken: String
-    private lateinit var customerToken: String
+    private lateinit var ownerSession: Cookie
+    private lateinit var employeeSession: Cookie
+    private lateinit var customerSession: Cookie
 
     @BeforeEach
     fun setup() {
@@ -67,17 +68,17 @@ class CustomerListIntegrationTest {
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
             )
-        ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
+        ownerSession = testSessions.staff(owner, ownerEmployment)
 
         employee = userRepository.save(User(phoneNumber = "+48811222001", firstName = "Employee", lastName = "List"))
         val employeeEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
             )
-        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
+        employeeSession = testSessions.staff(employee, employeeEmployment)
 
         customer = userRepository.save(User(phoneNumber = "+48811333001", firstName = "Anna", lastName = "Kowalska"))
-        customerToken = jwtService.generateCustomerToken(customer)
+        customerSession = testSessions.customer(customer)
 
         val offering =
             offeringRepository.save(
@@ -103,7 +104,7 @@ class CustomerListIntegrationTest {
     fun `GET customers as owner should return customer list with phone number`() {
         mockMvc
             .get("/api/customers") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isOk() }
@@ -121,7 +122,7 @@ class CustomerListIntegrationTest {
     fun `GET customers as employee should return customer list`() {
         mockMvc
             .get("/api/customers") {
-                header("Authorization", "Bearer $employeeToken")
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isOk() }
@@ -137,7 +138,7 @@ class CustomerListIntegrationTest {
 
         mockMvc
             .get("/api/customers") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isOk() }
@@ -154,7 +155,7 @@ class CustomerListIntegrationTest {
 
         mockMvc
             .get("/api/customers") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isOk() }
@@ -168,7 +169,7 @@ class CustomerListIntegrationTest {
 
         mockMvc
             .get("/api/customers") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isOk() }
@@ -187,7 +188,7 @@ class CustomerListIntegrationTest {
     fun `GET customers as customer role should return 403`() {
         mockMvc
             .get("/api/customers") {
-                header("Authorization", "Bearer $customerToken")
+                cookie(customerSession)
             }
             .andExpect {
                 status { isForbidden() }
@@ -220,7 +221,7 @@ class CustomerListIntegrationTest {
 
         mockMvc
             .get("/api/customers") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isOk() }

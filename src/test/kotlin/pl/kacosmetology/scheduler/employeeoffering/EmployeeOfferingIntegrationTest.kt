@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.employeeoffering
 
 import com.ninjasquad.springmockk.MockkBean
+import jakarta.servlet.http.Cookie
 import java.time.LocalDateTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
@@ -10,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
@@ -24,7 +26,7 @@ import pl.kacosmetology.scheduler.offering.OfferingImage
 import pl.kacosmetology.scheduler.offering.OfferingImageRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -39,7 +41,7 @@ class EmployeeOfferingIntegrationTest {
 
     @Autowired private lateinit var objectMapper: ObjectMapper
 
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
 
     @Autowired private lateinit var userRepository: UserRepository
 
@@ -60,8 +62,8 @@ class EmployeeOfferingIntegrationTest {
     private var companyId: Long = 0
     private var employeeId: Long = 0
     private var offeringId: Long = 0
-    private lateinit var ownerToken: String
-    private lateinit var employeeToken: String
+    private lateinit var ownerSession: Cookie
+    private lateinit var employeeSession: Cookie
 
     @BeforeEach
     fun setup() {
@@ -81,7 +83,7 @@ class EmployeeOfferingIntegrationTest {
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
             )
-        ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
+        ownerSession = testSessions.staff(owner, ownerEmployment)
 
         val employee = userRepository.save(User(phoneNumber = "+48200200200", firstName = "Emp", lastName = "Test"))
         val employeeEmployment =
@@ -89,7 +91,7 @@ class EmployeeOfferingIntegrationTest {
                 CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
             )
         employeeId = employee.id!!
-        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
+        employeeSession = testSessions.staff(employee, employeeEmployment)
 
         val offering =
             offeringRepository.save(
@@ -102,7 +104,8 @@ class EmployeeOfferingIntegrationTest {
     fun `POST assign offering should return 201`() {
         mockMvc
             .post("/api/employees/$employeeId/offerings/$offeringId") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isCreated() }
@@ -125,7 +128,8 @@ class EmployeeOfferingIntegrationTest {
 
         mockMvc
             .post("/api/employees/$employeeId/offerings/$offeringId") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isCreated() }
@@ -146,7 +150,8 @@ class EmployeeOfferingIntegrationTest {
 
         mockMvc
             .delete("/api/employees/$employeeId/offerings/$offeringId") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isNoContent() }
@@ -159,7 +164,8 @@ class EmployeeOfferingIntegrationTest {
     fun `DELETE remove assignment should return 404 when assignment does not exist`() {
         mockMvc
             .delete("/api/employees/$employeeId/offerings/$offeringId") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isNotFound() }
@@ -178,7 +184,7 @@ class EmployeeOfferingIntegrationTest {
 
         mockMvc
             .get("/api/employees/$employeeId/offerings") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isOk() }
@@ -192,11 +198,11 @@ class EmployeeOfferingIntegrationTest {
     fun `GET assignments should return 403 for customer`() {
         val customer =
             userRepository.save(User(phoneNumber = "+48300300300", firstName = "Customer", lastName = "Test"))
-        val customerToken = jwtService.generateCustomerToken(customer)
+        val customerSession = testSessions.customer(customer)
 
         mockMvc
             .get("/api/employees/$employeeId/offerings") {
-                header("Authorization", "Bearer $customerToken")
+                cookie(customerSession)
             }
             .andExpect {
                 status { isForbidden() }
@@ -214,7 +220,7 @@ class EmployeeOfferingIntegrationTest {
 
         mockMvc
             .get("/api/employees/${otherEmployee.id!!}/offerings") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isNotFound() }
@@ -333,7 +339,8 @@ class EmployeeOfferingIntegrationTest {
 
         mockMvc
             .post("/api/reservations/staff") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }

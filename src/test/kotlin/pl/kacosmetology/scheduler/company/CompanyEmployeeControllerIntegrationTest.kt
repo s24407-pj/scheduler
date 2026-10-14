@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.company
 
 import com.ninjasquad.springmockk.MockkBean
+import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -11,7 +12,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -23,7 +24,7 @@ class CompanyEmployeeControllerIntegrationTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
 
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
 
     @Autowired private lateinit var userRepository: UserRepository
 
@@ -36,8 +37,8 @@ class CompanyEmployeeControllerIntegrationTest {
     @MockkBean private lateinit var s3Client: S3Client
 
     private var ownerUserId: Long = 0
-    private lateinit var employeeToken: String
-    private lateinit var customerToken: String
+    private lateinit var employeeSession: Cookie
+    private lateinit var customerSession: Cookie
 
     @BeforeEach
     fun setup() {
@@ -59,7 +60,7 @@ class CompanyEmployeeControllerIntegrationTest {
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = company.id!!, userId = employee.id!!, role = "EMPLOYEE"),
             )
-        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
+        employeeSession = testSessions.staff(employee, employeeEmployment)
 
         val outsider =
             userRepository.save(User(phoneNumber = "+48500600700", firstName = "Outsider", lastName = "Test"))
@@ -68,14 +69,14 @@ class CompanyEmployeeControllerIntegrationTest {
         )
 
         val customer = userRepository.save(User(phoneNumber = "+48700800900", firstName = "Jan", lastName = "Nowak"))
-        customerToken = jwtService.generateCustomerToken(customer)
+        customerSession = testSessions.customer(customer)
     }
 
     @Test
     fun `GET api-employees should list only own company employees with user ID as id`() {
         mockMvc
             .get("/api/employees") {
-                header("Authorization", "Bearer $employeeToken")
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isOk() }
@@ -90,7 +91,7 @@ class CompanyEmployeeControllerIntegrationTest {
     fun `GET api-employees should return 403 for customer`() {
         mockMvc
             .get("/api/employees") {
-                header("Authorization", "Bearer $customerToken")
+                cookie(customerSession)
             }
             .andExpect {
                 status { isForbidden() }
@@ -98,7 +99,7 @@ class CompanyEmployeeControllerIntegrationTest {
     }
 
     @Test
-    fun `GET api-employees should return 401 without token`() {
+    fun `GET api-employees should return 401 without session`() {
         mockMvc.get("/api/employees").andExpect {
             status { isUnauthorized() }
         }

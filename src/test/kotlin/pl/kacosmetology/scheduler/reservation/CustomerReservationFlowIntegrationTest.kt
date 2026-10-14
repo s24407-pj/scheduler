@@ -4,6 +4,7 @@ import com.ninjasquad.springmockk.MockkBean
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
+import jakarta.servlet.http.Cookie
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDateTime
@@ -18,6 +19,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.patch
@@ -36,7 +38,7 @@ import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.dto.CreateReservationRequest
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
@@ -67,7 +69,7 @@ class CustomerReservationFlowIntegrationTest {
 
     @Autowired private lateinit var scheduleBlockRepository: ScheduleBlockRepository
 
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
 
     @MockkBean private lateinit var smsSender: SmsSender
 
@@ -136,9 +138,10 @@ class CustomerReservationFlowIntegrationTest {
         }
     }
 
-    private fun book(token: String, startTime: LocalDateTime, offeringId: Long = serviceId) =
+    private fun book(session: Cookie, startTime: LocalDateTime, offeringId: Long = serviceId) =
         mockMvc.post("/api/reservations") {
-            header("Authorization", "Bearer $token")
+            with(csrf())
+            cookie(session)
             contentType = MediaType.APPLICATION_JSON
             content =
                 objectMapper.writeValueAsString(
@@ -148,7 +151,7 @@ class CustomerReservationFlowIntegrationTest {
 
     @Test
     fun `customer booking off the slot grid should return 409`() {
-        book(customerToken("+48555700001"), tomorrowAt(10).plusMinutes(7)).andExpect {
+        book(customerSession("+48555700001"), tomorrowAt(10).plusMinutes(7)).andExpect {
             status { isConflict() }
             jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
             jsonPath("$.detail") { value("Ten termin nie jest dostępny do rezerwacji") }
@@ -159,14 +162,14 @@ class CustomerReservationFlowIntegrationTest {
 
     @Test
     fun `customer booking outside the employee's working hours should return 409`() {
-        val token = customerToken("+48555700002")
+        val session = customerSession("+48555700002")
 
-        book(token, tomorrowAt(7)).andExpect {
+        book(session, tomorrowAt(7)).andExpect {
             status { isConflict() }
             jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
         }
         // 60-minute offering starting 17:30 would end after 18:00
-        book(token, tomorrowAt(17).plusMinutes(30)).andExpect {
+        book(session, tomorrowAt(17).plusMinutes(30)).andExpect {
             status { isConflict() }
             jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
         }
@@ -177,20 +180,22 @@ class CustomerReservationFlowIntegrationTest {
     @Test
     fun `customer can cancel before the visit starts but not after`() {
         val customer = userRepository.save(User(phoneNumber = "+48555700003", firstName = "K", lastName = "T"))
-        val token = jwtService.generateCustomerToken(customer)
+        val session = testSessions.customer(customer)
         val future = saveReservation(customer.id!!, LocalDateTime.now(BUSINESS_ZONE).plusHours(1))
         val started = saveReservation(customer.id!!, LocalDateTime.now(BUSINESS_ZONE).minusMinutes(90))
 
         mockMvc
             .patch("/api/reservations/${future.id!!}/cancel") {
-                header("Authorization", "Bearer $token")
+                with(csrf())
+                cookie(session)
             }
             .andExpect {
                 status { isNoContent() }
             }
         mockMvc
             .patch("/api/reservations/${started.id!!}/cancel") {
-                header("Authorization", "Bearer $token")
+                with(csrf())
+                cookie(session)
             }
             .andExpect {
                 status { isConflict() }
@@ -213,7 +218,7 @@ class CustomerReservationFlowIntegrationTest {
             )
         saveWeeklySchedule(otherCompany.id!!, employeeId)
 
-        book(customerToken("+48555700004"), tomorrowAt(10)).andExpect { status { isCreated() } }
+        book(customerSession("+48555700004"), tomorrowAt(10)).andExpect { status { isCreated() } }
 
         mockMvc
             .get("/api/availability") {
@@ -225,7 +230,7 @@ class CustomerReservationFlowIntegrationTest {
                 status { isOk() }
                 jsonPath("$[?(@.time == '10:00:00')]") { exists() }
             }
-        book(customerToken("+48555700005"), tomorrowAt(10), otherOffering.id!!).andExpect {
+        book(customerSession("+48555700005"), tomorrowAt(10), otherOffering.id!!).andExpect {
             status { isCreated() }
         }
 
@@ -256,6 +261,7 @@ class CustomerReservationFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/request-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(requestCodeReq)
             }
@@ -278,25 +284,26 @@ class CustomerReservationFlowIntegrationTest {
                 lastName = "Nowak",
             )
 
-        // Wyciągamy token JWT z odpowiedzi JSON!
+        // The credential is supplied in the HttpOnly session cookie.
         val verifyResponse =
             mockMvc
                 .post("/api/auth/verify-code") {
+                    with(csrf())
                     contentType = MediaType.APPLICATION_JSON
                     content = objectMapper.writeValueAsString(verifyCodeReq)
                 }
                 .andExpect {
                     status { isOk() }
-                    jsonPath("$.token") { exists() }
+                    jsonPath("$.token") { doesNotExist() }
+                    cookie { exists("SESSION") }
                 }
                 .andReturn()
 
-        // Parsujemy odpowiedź, aby zdobyć czysty string z tokenem
-        val responseBody = verifyResponse.response.contentAsString
-        val jwtToken = objectMapper.readTree(responseBody).get("token").stringValue()
+        // Retain the cookie for subsequent requests.
+        val sessionCookie = requireNotNull(verifyResponse.response.getCookie("SESSION"))
 
         // ==========================================
-        // KROK 3: Klient tworzy rezerwację z użyciem JWT
+        // KROK 3: Klient tworzy rezerwację z użyciem session
         // ==========================================
         // Wybieramy datę w przyszłości, żeby przejść przez Twoją nową walidację @Future!
         val reservationTime = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
@@ -310,7 +317,8 @@ class CustomerReservationFlowIntegrationTest {
 
         mockMvc
             .post("/api/reservations") {
-                header("Authorization", "Bearer $jwtToken") // KLUCZOWE: Używamy zdobytego tokena!
+                with(csrf())
+                cookie(sessionCookie) // Reuse the authenticated session cookie.
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(createReservationReq)
             }
@@ -343,6 +351,7 @@ class CustomerReservationFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/request-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(requestCodeReq)
             }
@@ -356,6 +365,7 @@ class CustomerReservationFlowIntegrationTest {
         val verifyResponse =
             mockMvc
                 .post("/api/auth/verify-code") {
+                    with(csrf())
                     contentType = MediaType.APPLICATION_JSON
                     content =
                         objectMapper.writeValueAsString(
@@ -372,7 +382,7 @@ class CustomerReservationFlowIntegrationTest {
                 }
                 .andReturn()
 
-        val jwtToken = objectMapper.readTree(verifyResponse.response.contentAsString).get("token").stringValue()
+        val sessionCookie = requireNotNull(verifyResponse.response.getCookie("SESSION"))
         val blockStart = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
         scheduleBlockRepository.save(
             ScheduleBlock(
@@ -392,7 +402,8 @@ class CustomerReservationFlowIntegrationTest {
 
         mockMvc
             .post("/api/reservations") {
-                header("Authorization", "Bearer $jwtToken")
+                with(csrf())
+                cookie(sessionCookie)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(createReservationReq)
             }
@@ -410,7 +421,7 @@ class CustomerReservationFlowIntegrationTest {
 
     @Test
     fun `repeating an identical booking request should return the existing reservation with 200`() {
-        val token = customerToken("+48555333444")
+        val session = customerSession("+48555333444")
         val body =
             objectMapper.writeValueAsString(
                 CreateReservationRequest(employeeId = employeeId, serviceId = serviceId, startTime = tomorrowAt(11)),
@@ -419,7 +430,8 @@ class CustomerReservationFlowIntegrationTest {
         val firstId =
             mockMvc
                 .post("/api/reservations") {
-                    header("Authorization", "Bearer $token")
+                    with(csrf())
+                    cookie(session)
                     contentType = MediaType.APPLICATION_JSON
                     content = body
                 }
@@ -431,7 +443,8 @@ class CustomerReservationFlowIntegrationTest {
 
         mockMvc
             .post("/api/reservations") {
-                header("Authorization", "Bearer $token")
+                with(csrf())
+                cookie(session)
                 contentType = MediaType.APPLICATION_JSON
                 content = body
             }
@@ -445,7 +458,7 @@ class CustomerReservationFlowIntegrationTest {
 
     @Test
     fun `booking a local time skipped by the daylight saving change should return 400`() {
-        val token = customerToken("+48555333555")
+        val session = customerSession("+48555333555")
         val transition =
             generateSequence(BUSINESS_ZONE.rules.nextTransition(Instant.now())) {
                     BUSINESS_ZONE.rules.nextTransition(it.instant)
@@ -454,7 +467,8 @@ class CustomerReservationFlowIntegrationTest {
 
         mockMvc
             .post("/api/reservations") {
-                header("Authorization", "Bearer $token")
+                with(csrf())
+                cookie(session)
                 contentType = MediaType.APPLICATION_JSON
                 content =
                     objectMapper.writeValueAsString(
@@ -475,11 +489,12 @@ class CustomerReservationFlowIntegrationTest {
 
     @Test
     fun `cancelling another customer's reservation should return 404`() {
-        val ownerToken = customerToken("+48555333666")
+        val ownerSession = customerSession("+48555333666")
         val reservationId =
             mockMvc
                 .post("/api/reservations") {
-                    header("Authorization", "Bearer $ownerToken")
+                    with(csrf())
+                    cookie(ownerSession)
                     contentType = MediaType.APPLICATION_JSON
                     content =
                         objectMapper.writeValueAsString(
@@ -498,7 +513,8 @@ class CustomerReservationFlowIntegrationTest {
 
         mockMvc
             .patch("/api/reservations/$reservationId/cancel") {
-                header("Authorization", "Bearer ${customerToken("+48555333777")}")
+                with(csrf())
+                cookie(customerSession("+48555333777"))
             }
             .andExpect {
                 status { isNotFound() }
@@ -508,8 +524,8 @@ class CustomerReservationFlowIntegrationTest {
         assertEquals(ReservationStatus.PENDING, reservationRepository.findById(reservationId).get().status)
     }
 
-    private fun customerToken(phone: String): String =
-        jwtService.generateCustomerToken(
+    private fun customerSession(phone: String): Cookie =
+        testSessions.customer(
             userRepository.save(User(phoneNumber = phone, firstName = "Klient", lastName = "Testowy")),
         )
 
@@ -523,6 +539,7 @@ class CustomerReservationFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/request-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(requestCodeReq)
             }
@@ -536,6 +553,7 @@ class CustomerReservationFlowIntegrationTest {
         val verifyResponse =
             mockMvc
                 .post("/api/auth/verify-code") {
+                    with(csrf())
                     contentType = MediaType.APPLICATION_JSON
                     content =
                         objectMapper.writeValueAsString(
@@ -552,7 +570,7 @@ class CustomerReservationFlowIntegrationTest {
                 }
                 .andReturn()
 
-        val jwtToken = objectMapper.readTree(verifyResponse.response.contentAsString).get("token").stringValue()
+        val sessionCookie = requireNotNull(verifyResponse.response.getCookie("SESSION"))
         val otherCompany = companyRepository.save(Company(name = "Obcy Salon"))
         val otherEmployee =
             userRepository.save(User(phoneNumber = "+48999123123", firstName = "Obcy", lastName = "Pracownik"))
@@ -574,7 +592,8 @@ class CustomerReservationFlowIntegrationTest {
 
         mockMvc
             .post("/api/reservations") {
-                header("Authorization", "Bearer $jwtToken")
+                with(csrf())
+                cookie(sessionCookie)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(createReservationReq)
             }

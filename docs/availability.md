@@ -19,7 +19,7 @@ Company `openingTime`/`closingTime` are **not** used for slot calculation; they 
 
 ## Work schedules
 
-`PUT /api/employees/{employeeId}/work-schedule` (OWNER) replaces the weekly schedule; `GET` (OWNER, EMPLOYEE) reads it. One entry per day of week with `startTime` < `endTime`. A day without an entry is a day off. Schedules are per (company, employee): both endpoints read and replace only the JWT company's schedule, so an employee of two salons has an independent week at each. Changing a schedule does not affect existing bookings.
+`PUT /api/employees/{employeeId}/work-schedule` (OWNER) replaces the weekly schedule; `GET` (OWNER, EMPLOYEE) reads it. One entry per day of week with `startTime` < `endTime`. A day without an entry is a day off. Schedules are per (company, employee): both endpoints read and replace only the authenticated session company's schedule, so an employee of two salons has an independent week at each. Changing a schedule does not affect existing bookings.
 
 ## Schedule blocks
 
@@ -33,7 +33,7 @@ Time ranges when an employee is unavailable (breaks, leave).
 
 ## Offering assignments
 
-`POST|DELETE /api/employees/{employeeId}/offerings/{offeringId}` (OWNER). If an employee has **no** assignments at a company, they can perform every offering of that company (backward-compatible default). Once any assignment exists there, only assigned offerings of that company are bookable; assignments at another salon do not count. The same rule drives the public employee list, and `GET /api/employees/{employeeId}/offerings` lists only the JWT company's assignments.
+`POST|DELETE /api/employees/{employeeId}/offerings/{offeringId}` (OWNER). If an employee has **no** assignments at a company, they can perform every offering of that company (backward-compatible default). Once any assignment exists there, only assigned offerings of that company are bookable; assignments at another salon do not count. The same rule drives the public employee list, and `GET /api/employees/{employeeId}/offerings` lists only the authenticated session company's assignments.
 
 ## Company settings that affect booking
 

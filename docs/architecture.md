@@ -1,12 +1,12 @@
 # Architecture
 
-Spring Boot backend for beauty and barber salon scheduling. Customers authenticate by SMS one-time code; staff by email and password. Both receive a JWT.
+Spring Boot backend for beauty and barber salon scheduling. Customers authenticate by SMS one-time code; staff by email and password. Both authenticate using Redis-backed Spring Security sessions.
 
 ## Modules
 
 ```
 src/main/kotlin/pl/kacosmetology/scheduler/
-├── auth/              # SMS OTP + staff login → JWT issuance, rate limiters, SmsSender
+├── auth/              # SMS OTP + staff login → Spring Security sessions, rate limiters, SmsSender
 ├── availability/      # Free-slot calculation (public), shared EmployeeAvailabilityPolicy
 ├── company/           # Company entity, settings, public booking profile, public employee list
 ├── config/            # Security, CORS, Redis + cache, R2 client, error handler, dev seed
@@ -15,7 +15,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 ├── offering/          # Offering catalog, categories, images (R2)
 ├── reservation/       # Booking lifecycle
 ├── scheduleblock/     # Employee time blocks (breaks, unavailability)
-├── security/          # JWT filter, SessionStore, secret check, CustomUserDetails, CustomUserDetailsService
+├── security/          # session authentication bridge, scope validation filter, scalar CustomUserDetails
 ├── user/              # Profiles, customers (block/unblock, notes), employee photos
 └── workschedule/      # Weekly working hours per employee
 ```
@@ -24,28 +24,42 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 
 ## Authentication
 
-| Flow | Endpoint(s) | Token contents |
-| ---- | ----------- | -------------- |
-| Customer | `POST /api/auth/request-code` → `POST /api/auth/verify-code` | Role `customer` only. Not scoped to a company. |
-| Staff | `POST /api/auth/login-staff` with `email`, `password`, optional `employmentId` | One `employmentId`, its `companyId`, one role (`owner` or `employee`). |
+| Flow | Endpoint(s) | Authenticated session scope |
+| ---- | ----------- | --------------------------- |
+| Customer | `POST /api/auth/request-code` → `POST /api/auth/verify-code` | `ROLE_CUSTOMER`, no company or employment |
+| Staff | `POST /api/auth/login-staff` with `email`, `password`, optional `employmentId` | Exactly one `employmentId`, its `companyId`, and `ROLE_OWNER` or `ROLE_EMPLOYEE` |
 
-A staff user with several employments who omits `employmentId` gets status `EMPLOYMENT_SELECTION_REQUIRED` and an `employments` list (`employmentId`, `companyId`, `companyName`, `role`); the client repeats the request with the selected `employmentId`.
+All unsafe calls, including anonymous authentication endpoints, require CSRF. A staff member with multiple employments who omits `employmentId` receives `EMPLOYMENT_SELECTION_REQUIRED` and the existing sorted options (`employmentId`, `companyId`, `companyName`, `role`). This creates no authenticated session. Repeat the password login with the selected employment. An already authenticated browser must log out first; login returns 409 rather than replacing its identity or company scope.
 
-`JwtService.generateCustomerToken()` and `generateStaffToken()` build the tokens. `CustomUserDetails` exposes `id` (user ID), `sessionId`, and for staff `companyId` and one authority (`ROLE_OWNER` or `ROLE_EMPLOYEE`). Customers get `ROLE_CUSTOMER`.
+After verification, `AuthService` returns only a safe identity after its transaction commits. `SessionAuthenticationService` invokes Spring's `ChangeSessionIdAuthenticationStrategy` and `CsrfAuthenticationStrategy`, creates a fresh `SecurityContext`, and explicitly saves it through the shared `HttpSessionSecurityContextRepository`. Setting the holder alone is insufficient with Security 7's explicit-save mode. The credential is Spring Session's normal `SESSION` cookie; auth JSON contains status/options, never a credential. `GET /api/auth/me` returns `userId`, `username`, `authorities`, `companyId`, and `employmentId`; `/api/users/me` loads current profile data separately.
 
-### Sessions and logout
+### Redis sessions, revocation and serialization
 
-Every token is HS256-signed and carries a session ID in `jti` ([ADR-0009](./adr/0009-revocable-sessions.md)). `SessionStore` registers it in Redis as `session:<jti>` → user ID with the token's TTL (`JWT_EXPIRATION_MS`) and indexes it in `user-sessions:<userId>`. On every request `JwtAuthenticationFilter` parses the token once, reloads the user (and for staff the employment, rejecting a changed role or company), and accepts the token only if its session still exists for that user. Tokens without `jti` are rejected.
+Boot's `spring-boot-starter-session-data-redis` configures `RedisIndexedSessionRepository` (`spring.session.data.redis.repository-type=indexed`), with namespace `scheduler:sessions`. The default `spring.session.timeout=24h` preserves the previous 24-hour duration as a standard **inactivity timeout**; activity extends the session, unlike the old absolute token expiration. It is configurable through normal Boot properties. Redis remains required for OTP, rate limits and cache as well.
 
-- `POST /api/auth/logout` deletes the current session (204).
-- `POST /api/auth/logout-all` deletes every session of the user, on all devices and employments (204).
+Spring Session persists the SecurityContext using its supported default JDK serializer. The final `CustomUserDetails` is an immutable, versioned `UserDetails` containing only account ID, phone/username, role, company ID and employment ID. It contains no JPA entities, lazy proxies, password hashes, OTPs, repositories or session IDs; Authentication credentials/details are null. Only trusted application instances may access Redis. Serialization changes require a deliberate compatibility decision or session invalidation; no custom domain-model serialization or polymorphic JSON configuration is introduced.
 
-The token format and claims are unchanged, so frontends that decode the JWT payload keep working. Flushing Redis logs everyone out.
+`SessionAuthorizationFilter` runs after context restoration and before CSRF/authorization. It reloads the user and exact employment from PostgreSQL on every authenticated request and compares identity, employment ownership, role, company and authentication authorities. Deleted users, recycled/changed phone identities, removed/reassigned employments or changed roles/companies invalidate the session and clear authentication. It never refreshes an old session into a different scope. Database failures fail the request; they cannot allow cached privileges. Existing method security and company checks remain in force.
 
-### Secret and login hardening
+- `POST /api/auth/logout`: Spring's `SecurityContextLogoutHandler` invalidates only the current HttpSession; Spring Session expires `SESSION`, and `CsrfLogoutHandler` clears `XSRF-TOKEN`. Returns 204 and is idempotent with a fresh CSRF token even when anonymous.
+- `POST /api/auth/logout-all`: requires authentication; `FindByIndexNameSessionRepository.findByPrincipalName` finds and deletes all account sessions, then logs out this browser. The principal index uses **stable user ID**, shared across customer and all staff employments, rather than phone or company. Returns 204; later calls with deleted credentials are unauthenticated.
+- Expired/revoked sessions fail on subsequent requests, including requests routed through a different application instance. Already executing requests are not cancelled; logout-all enumerates sessions existing at lookup time, so a concurrent new login can create a new session.
+- Losing/flushing Redis logs everyone out. Old bearer credentials no longer authenticate. ADR-0009 is preserved as history and [superseded by ADR-0011](./adr/0011-spring-session-redis.md).
 
-- `JwtSecretValidator` stops startup when `JWT_SECRET` is shorter than 32 bytes, or equals the public development default while neither the `dev` nor the `test` profile is active. Gradle runs tests with the `test` profile.
-- Staff login returns the same message ("Nieprawidłowy email lub hasło") for an unknown email, an SMS-only account without a password, and a wrong password, and runs one bcrypt comparison in each case so response time does not reveal which.
+### CSRF, cookies and frontend contract
+
+Security 7's `csrf.spa()` uses standard cookie tokens and SPA request handling, including raw headers and BREACH-safe request attributes. The repository is shared with REST login/logout strategies. CSRF is enabled for every unsafe method; there are no authentication exclusions.
+
+1. Fetch `GET /api/auth/csrf` with `credentials: 'include'` before the first unsafe call. It materializes a JavaScript-readable, host-only `XSRF-TOKEN` cookie (Path=/, SameSite=Lax) and returns `{token, headerName: "X-XSRF-TOKEN"}`. Its `token` is only a CSRF token, never the session credential. Cross-origin frontends should use this response rather than trying to read the API host's cookie.
+2. Send `X-XSRF-TOKEN: <token>` and credentials/cookies on POST/PUT/PATCH/DELETE, including login, OTP requests/verification and both logout endpoints. Missing/invalid CSRF returns 403 ProblemDetail.
+3. Successful authentication and logout clear the prior CSRF cookie. Fetch `/api/auth/csrf` again afterward before the next unsafe request. Refresh on a CSRF failure; do not blindly retry non-idempotent operations.
+4. Remove localStorage JWT handling and bearer headers, and stop decoding credential claims. Use `/api/auth/me` for scope/authorities and `/api/users/me` for profile. Handle 401 by clearing local identity state and returning to sign-in. Use fetch `credentials: 'include'` or Axios `withCredentials: true` on all API requests.
+
+`SESSION` is HttpOnly, Path=/, host-only (no Domain), SameSite=Lax and Secure in `prod`; development works on HTTP localhost. Different localhost ports and HTTPS subdomains under the same registrable domain are cross-origin but same-site, so Lax works with explicit credentialed CORS origins. Deploy frontend/API on the same site. Unrelated sites require a deliberate deployment change (including Secure SameSite=None cookies and browser third-party-cookie constraints); they are not assumed here. Never use wildcard origins with credentialed CORS. OPTIONS preflight remains unauthenticated and bypasses CSRF normally.
+
+### Login hardening
+
+Staff login keeps the same error message for unknown email, SMS-only accounts and wrong passwords and runs one bcrypt comparison in each case. OTP registration, Lua verification/consumption, validation, SMS and rate limits are unchanged.
 
 ### Rate limiting (Redis)
 
@@ -61,8 +75,8 @@ OTP codes live under `otp:<phone>` with TTL `OTP_TTL_MINUTES`. A Lua script veri
 
 ## Authorization and company isolation
 
-- Method security: `@PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")` or `hasRole('OWNER')`. Endpoints without `@PreAuthorize` require any valid JWT. Public paths are listed in `SecurityConfig` (see [endpoints](./api/endpoints.md)).
-- Every staff operation is scoped to the JWT's `companyId`. Services verify that the target resource (reservation, offering, employee, block) belongs to that company. The status code for a mismatch is currently inconsistent; see [API errors](./api/errors.md).
+- Method security: `@PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")` or `hasRole('OWNER')`. Endpoints without `@PreAuthorize` require a valid authenticated session. Public paths are listed in `SecurityConfig` (see [endpoints](./api/endpoints.md)).
+- Every staff operation is scoped to the session principal's `companyId`. Services verify that the target resource (reservation, offering, employee, block) belongs to that company. The status code for a mismatch is currently inconsistent; see [API errors](./api/errors.md).
 - Database-level isolation exists for schedule blocks: a composite foreign key `(company_id, employee_id)` → `company_employees (company_id, user_id)`.
 
 ## Customer blocking and no-shows

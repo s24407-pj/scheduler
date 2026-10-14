@@ -37,7 +37,7 @@ data class StaffLoginRequest(
 )
 
 data class AuthResponse(
-    val token: String,
+    val status: StaffLoginStatus = StaffLoginStatus.AUTHENTICATED,
 )
 
 /** Possible outcomes of a staff login request. */
@@ -54,9 +54,17 @@ data class StaffEmploymentOption(
     val role: String,
 )
 
-/** Staff login result, either a scoped JWT or the employments available for selection. */
+/** Staff login result; the HttpOnly cookie, never the response body, carries authentication. */
 data class StaffLoginResponse(
     val status: StaffLoginStatus,
-    val token: String?,
     val employments: List<StaffEmploymentOption>,
+)
+
+/** Safe identity and exact authorization scope; the credential is never included. */
+data class AuthenticatedSessionResponse(
+    val userId: Long,
+    val username: String,
+    val authorities: List<String>,
+    val companyId: Long?,
+    val employmentId: Long?,
 )

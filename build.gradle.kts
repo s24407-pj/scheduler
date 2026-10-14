@@ -49,10 +49,8 @@ dependencies {
     // OpenAPI spec + Swagger UI (enabled only in the dev profile)
     implementation(libs.springdoc.openapi.webmvc.ui)
 
-    // JWT
-    implementation(libs.jjwt.api)
-    runtimeOnly(libs.jjwt.impl)
-    runtimeOnly(libs.jjwt.jackson)
+    // Redis-backed servlet sessions (Spring Boot managed)
+    implementation("org.springframework.boot:spring-boot-starter-session-data-redis")
 
     // Test - Spring Boot
     testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")

@@ -2,6 +2,8 @@
 
 **Status:** Accepted — implemented
 
+Authentication references below describe the original credential scheme. [ADR-0011](./0011-spring-session-redis.md) replaces it with cookie sessions and CSRF; the error contract/generated documentation decision remains accepted.
+
 ## Context
 
 The API has about 50 endpoints. Their contracts were described only in prose and in the hand-maintained [endpoint index](../api/endpoints.md), which drifts as controllers change. Frontends hand-write their request and response types.

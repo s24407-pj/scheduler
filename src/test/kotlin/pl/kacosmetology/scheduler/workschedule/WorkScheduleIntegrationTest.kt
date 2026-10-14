@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.workschedule
 
 import com.ninjasquad.springmockk.MockkBean
+import jakarta.servlet.http.Cookie
 import java.time.DayOfWeek
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
@@ -10,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.put
@@ -20,7 +22,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -33,7 +35,7 @@ class WorkScheduleIntegrationTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
     @Autowired private lateinit var objectMapper: ObjectMapper
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
     @Autowired private lateinit var userRepository: UserRepository
     @Autowired private lateinit var companyRepository: CompanyRepository
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
@@ -45,8 +47,8 @@ class WorkScheduleIntegrationTest {
 
     private var companyId: Long = 0
     private var employeeId: Long = 0
-    private lateinit var ownerToken: String
-    private lateinit var employeeToken: String
+    private lateinit var ownerSession: Cookie
+    private lateinit var employeeSession: Cookie
 
     @BeforeEach
     fun setup() {
@@ -65,7 +67,7 @@ class WorkScheduleIntegrationTest {
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
             )
-        ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
+        ownerSession = testSessions.staff(owner, ownerEmployment)
 
         val employee = userRepository.save(User(phoneNumber = "+48333222111", firstName = "Emp", lastName = "Test"))
         val employeeEmployment =
@@ -73,7 +75,7 @@ class WorkScheduleIntegrationTest {
                 CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
             )
         employeeId = employee.id!!
-        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
+        employeeSession = testSessions.staff(employee, employeeEmployment)
     }
 
     @Test
@@ -89,7 +91,8 @@ class WorkScheduleIntegrationTest {
 
         mockMvc
             .put("/api/employees/$employeeId/work-schedule") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -126,7 +129,8 @@ class WorkScheduleIntegrationTest {
 
         mockMvc
             .put("/api/employees/$employeeId/work-schedule") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -135,7 +139,7 @@ class WorkScheduleIntegrationTest {
             }
         mockMvc
             .get("/api/employees/$employeeId/work-schedule") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isOk() }
@@ -170,7 +174,8 @@ class WorkScheduleIntegrationTest {
 
         mockMvc
             .put("/api/employees/$employeeId/work-schedule") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -205,7 +210,8 @@ class WorkScheduleIntegrationTest {
 
         mockMvc
             .put("/api/employees/$employeeId/work-schedule") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -225,7 +231,8 @@ class WorkScheduleIntegrationTest {
 
         mockMvc
             .put("/api/employees/$employeeId/work-schedule") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -247,7 +254,8 @@ class WorkScheduleIntegrationTest {
 
         mockMvc
             .put("/api/employees/$employeeId/work-schedule") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -268,7 +276,8 @@ class WorkScheduleIntegrationTest {
 
         mockMvc
             .put("/api/employees/$employeeId/work-schedule") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -291,7 +300,7 @@ class WorkScheduleIntegrationTest {
 
         mockMvc
             .get("/api/employees/$employeeId/work-schedule") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isOk() }
@@ -314,7 +323,7 @@ class WorkScheduleIntegrationTest {
 
         mockMvc
             .get("/api/employees/$employeeId/work-schedule") {
-                header("Authorization", "Bearer $employeeToken")
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isOk() }
@@ -327,11 +336,11 @@ class WorkScheduleIntegrationTest {
     fun `GET work-schedule should return 403 for customer`() {
         val customer =
             userRepository.save(User(phoneNumber = "+48300300300", firstName = "Customer", lastName = "Test"))
-        val customerToken = jwtService.generateCustomerToken(customer)
+        val customerSession = testSessions.customer(customer)
 
         mockMvc
             .get("/api/employees/$employeeId/work-schedule") {
-                header("Authorization", "Bearer $customerToken")
+                cookie(customerSession)
             }
             .andExpect {
                 status { isForbidden() }
@@ -349,7 +358,7 @@ class WorkScheduleIntegrationTest {
 
         mockMvc
             .get("/api/employees/${otherEmployee.id!!}/work-schedule") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isNotFound() }

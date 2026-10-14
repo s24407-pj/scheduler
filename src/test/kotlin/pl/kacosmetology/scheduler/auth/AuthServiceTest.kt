@@ -12,7 +12,6 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.crypto.password.PasswordEncoder
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
@@ -22,9 +21,6 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.security.CustomUserDetails
-import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.security.SessionStore
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 
@@ -39,8 +35,6 @@ class AuthServiceTest {
 
     @MockK private lateinit var smsSender: SmsSender
 
-    @MockK private lateinit var jwtService: JwtService
-
     @MockK private lateinit var passwordEncoder: PasswordEncoder
 
     @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
@@ -52,8 +46,6 @@ class AuthServiceTest {
     @MockK private lateinit var otpVerificationRateLimiter: OtpVerificationRateLimiter
 
     @MockK private lateinit var otpRequestRateLimiter: OtpRequestRateLimiter
-
-    @MockK private lateinit var sessionStore: SessionStore
 
     @InjectMockKs private lateinit var authService: AuthService
 
@@ -162,7 +154,7 @@ class AuthServiceTest {
     }
 
     @Test
-    fun `verifyCode should create new user and issue token when code is valid`() {
+    fun `verifyCode should create new user and return identity when code is valid`() {
         // GIVEN
         val request = VerifyCodeRequest(testPhone, "123456", "Jan", "Kowalski")
         every { otpVerificationRateLimiter.checkAndIncrement(testIp) } returns true
@@ -173,13 +165,12 @@ class AuthServiceTest {
         val savedUser = User(id = 1, phoneNumber = testPhone, firstName = "Jan", lastName = "Kowalski")
         every { userRepository.save(any()) } returns savedUser
 
-        every { jwtService.generateCustomerToken(savedUser) } returns "DUMMY_JWT_TOKEN"
-
         // WHEN
         val response = authService.verifyCode(request, testIp)
 
         // THEN
-        assertEquals("DUMMY_JWT_TOKEN", response.token)
+        assertEquals(1L, response.id)
+        assertEquals("ROLE_CUSTOMER", response.role)
         verify(exactly = 1) { userRepository.save(any()) }
         verify(exactly = 1) { otpStore.verifyAndConsumeCode(testPhone, request.code) }
     }
@@ -336,19 +327,19 @@ class AuthServiceTest {
         every { otpStore.verifyCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
         every { otpStore.verifyAndConsumeCode(testPhone, request.code) } returns OtpVerificationResult.VERIFIED
         every { userRepository.findByPhoneNumber(testPhone) } returns existingUser // Użytkownik JUŻ istnieje!
-        every { jwtService.generateCustomerToken(existingUser) } returns "EXISTING_USER_TOKEN"
 
         // WHEN
         val response = authService.verifyCode(request, testIp)
 
         // THEN
-        assertEquals("EXISTING_USER_TOKEN", response.token)
+        assertEquals(1L, response.id)
+        assertEquals("ROLE_CUSTOMER", response.role)
         verify(exactly = 0) { userRepository.save(any()) } // NIE tworzymy duplikatu!
         verify(exactly = 1) { otpStore.verifyAndConsumeCode(testPhone, request.code) }
     }
 
     @Test
-    fun `loginStaff should issue token for the only employment and exact role`() {
+    fun `loginStaff should return identity for the only employment and exact role`() {
         val request = StaffLoginRequest("owner@mail.com", "password123")
         val user = staffUser()
         val employment = CompanyEmployee(11L, 22L, user.id!!, "OWNER")
@@ -356,14 +347,13 @@ class AuthServiceTest {
         every { userRepository.findByEmail(request.email) } returns user
         every { passwordEncoder.matches(request.password, user.passwordHash) } returns true
         every { companyEmployeeRepository.findAllByUserId(user.id!!) } returns listOf(employment)
-        every { jwtService.generateStaffToken(user, employment) } returns "SCOPED_TOKEN"
 
         val response = authService.loginStaff(request, testIp)
 
-        assertEquals("AUTHENTICATED", response.status.name)
-        assertEquals("SCOPED_TOKEN", response.token)
-        assertEquals(emptyList<Any>(), response.employments)
-        verify { jwtService.generateStaffToken(user, employment) }
+        assertEquals("AUTHENTICATED", response.response.status.name)
+        assertEquals(11L, response.principal?.employmentId)
+        assertEquals("ROLE_OWNER", response.principal?.role)
+        assertEquals(emptyList<Any>(), response.response.employments)
     }
 
     @Test
@@ -381,13 +371,13 @@ class AuthServiceTest {
 
         val response = authService.loginStaff(request, testIp)
 
-        assertEquals("EMPLOYMENT_SELECTION_REQUIRED", response.status.name)
-        assertNull(response.token)
-        assertEquals(listOf(11L, 12L), response.employments.map { it.employmentId })
+        assertEquals("EMPLOYMENT_SELECTION_REQUIRED", response.response.status.name)
+        assertNull(response.principal)
+        assertEquals(listOf(11L, 12L), response.response.employments.map { it.employmentId })
     }
 
     @Test
-    fun `loginStaff should issue token only for selected employment`() {
+    fun `loginStaff should return identity only for selected employment`() {
         val user = staffUser()
         val employee = CompanyEmployee(11L, 31L, user.id!!, "EMPLOYEE")
         val owner = CompanyEmployee(12L, 32L, user.id!!, "OWNER")
@@ -396,13 +386,11 @@ class AuthServiceTest {
         every { userRepository.findByEmail(request.email) } returns user
         every { passwordEncoder.matches(request.password, user.passwordHash) } returns true
         every { companyEmployeeRepository.findAllByUserId(user.id!!) } returns listOf(employee, owner)
-        every { jwtService.generateStaffToken(user, employee) } returns "EMPLOYEE_TOKEN"
 
         val response = authService.loginStaff(request, testIp)
 
-        assertEquals("EMPLOYEE_TOKEN", response.token)
-        verify(exactly = 1) { jwtService.generateStaffToken(user, employee) }
-        verify(exactly = 0) { jwtService.generateStaffToken(user, owner) }
+        assertEquals(11L, response.principal?.employmentId)
+        assertEquals("ROLE_EMPLOYEE", response.principal?.role)
     }
 
     @Test
@@ -430,41 +418,10 @@ class AuthServiceTest {
         assertThrows<IllegalArgumentException> { authService.loginStaff(request, testIp) }
     }
 
-    @Test
-    fun `logout should revoke only the current session`() {
-        every { sessionStore.revoke("session-1", 7L) } just Runs
-
-        authService.logout(principal(sessionId = "session-1"))
-
-        verify(exactly = 1) { sessionStore.revoke("session-1", 7L) }
-    }
-
-    @Test
-    fun `logout should fail for principal without session`() {
-        assertThrows<IllegalStateException> { authService.logout(principal(sessionId = null)) }
-    }
-
-    @Test
-    fun `logoutAll should revoke every session of the user`() {
-        every { sessionStore.revokeAll(7L) } just Runs
-
-        authService.logoutAll(principal(sessionId = "session-1"))
-
-        verify(exactly = 1) { sessionStore.revokeAll(7L) }
-    }
-
     private fun stubDummyPasswordCheck() {
         every { passwordEncoder.encode(any()) } returns DUMMY_HASH
         every { passwordEncoder.matches(any(), DUMMY_HASH) } returns false
     }
-
-    private fun principal(sessionId: String?) =
-        CustomUserDetails(
-            staffUser(),
-            null,
-            listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")),
-            sessionId = sessionId,
-        )
 
     private fun staffUser() =
         User(

@@ -24,12 +24,14 @@ class OpenApiIntegrationTest {
     @MockkBean private lateinit var s3Client: S3Client
 
     @Test
-    fun `api docs should describe endpoints and the bearer security scheme`() {
+    fun `api docs should describe endpoints and the session cookie security scheme`() {
         mockMvc.get("/v3/api-docs").andExpect {
             status { isOk() }
             jsonPath("$.paths['/api/reservations'].post") { exists() }
             jsonPath("$.paths['/api/availability'].get") { exists() }
-            jsonPath("$.components.securitySchemes.bearerAuth.scheme") { value("bearer") }
+            jsonPath("$.components.securitySchemes.sessionAuth.type") { value("apiKey") }
+            jsonPath("$.components.securitySchemes.sessionAuth.in") { value("cookie") }
+            jsonPath("$.components.securitySchemes.sessionAuth.name") { value("SESSION") }
         }
     }
 }

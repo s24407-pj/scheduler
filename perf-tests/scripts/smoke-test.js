@@ -44,11 +44,11 @@ export default function (data) {
   sleep(0.5);
 
   // 3. Authenticated offerings
-  getAuthOfferings(data.token, 1);
+  getAuthOfferings(data.session, data.companyId);
   sleep(0.5);
 
   // 4. Employee list
-  getEmployees(data.token);
+  getEmployees(data.session);
   sleep(0.5);
 
   // 5. Health endpoint

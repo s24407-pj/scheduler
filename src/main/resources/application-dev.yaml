@@ -15,6 +15,10 @@ springdoc:
     enabled: true
   swagger-ui:
     enabled: true
+    csrf:
+      enabled: true
+      cookie-name: XSRF-TOKEN
+      header-name: X-XSRF-TOKEN
 
 management:
   endpoints:

@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.company
 
 import com.ninjasquad.springmockk.MockkBean
+import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -8,13 +9,14 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.put
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -29,7 +31,7 @@ class CompanySettingsIntegrationTest {
 
     @Autowired private lateinit var objectMapper: ObjectMapper
 
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
 
     @Autowired private lateinit var userRepository: UserRepository
 
@@ -44,8 +46,8 @@ class CompanySettingsIntegrationTest {
     @MockkBean private lateinit var s3Client: S3Client
 
     private var companyId: Long = 0
-    private lateinit var ownerToken: String
-    private lateinit var employeeToken: String
+    private lateinit var ownerSession: Cookie
+    private lateinit var employeeSession: Cookie
 
     @BeforeEach
     fun setup() {
@@ -63,7 +65,7 @@ class CompanySettingsIntegrationTest {
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
             )
-        ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
+        ownerSession = testSessions.staff(owner, ownerEmployment)
 
         val employee =
             userRepository.save(User(phoneNumber = "+48300200100", firstName = "Employee", lastName = "Test"))
@@ -71,14 +73,14 @@ class CompanySettingsIntegrationTest {
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
             )
-        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
+        employeeSession = testSessions.staff(employee, employeeEmployment)
     }
 
     @Test
     fun `GET api-company-settings should return 200 for employee`() {
         mockMvc
             .get("/api/company/settings") {
-                header("Authorization", "Bearer $employeeToken")
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isOk() }
@@ -100,7 +102,8 @@ class CompanySettingsIntegrationTest {
 
         mockMvc
             .put("/api/company/settings") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -123,7 +126,8 @@ class CompanySettingsIntegrationTest {
 
         mockMvc
             .put("/api/company/settings") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -143,7 +147,8 @@ class CompanySettingsIntegrationTest {
 
         mockMvc
             .put("/api/company/settings") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -156,7 +161,7 @@ class CompanySettingsIntegrationTest {
     fun `GET api-company-employees should return all employees for owner`() {
         mockMvc
             .get("/api/company/employees") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isOk() }
@@ -170,7 +175,7 @@ class CompanySettingsIntegrationTest {
     fun `GET api-company-employees should return 200 for employee too`() {
         mockMvc
             .get("/api/company/employees") {
-                header("Authorization", "Bearer $employeeToken")
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isOk() }
@@ -179,7 +184,7 @@ class CompanySettingsIntegrationTest {
     }
 
     @Test
-    fun `GET api-company-employees should return 401 without token`() {
+    fun `GET api-company-employees should return 401 without session`() {
         mockMvc.get("/api/company/employees").andExpect {
             status { isUnauthorized() }
         }
@@ -196,7 +201,8 @@ class CompanySettingsIntegrationTest {
 
         mockMvc
             .put("/api/company/settings") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -217,7 +223,8 @@ class CompanySettingsIntegrationTest {
 
         mockMvc
             .put("/api/company/settings") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -240,7 +247,8 @@ class CompanySettingsIntegrationTest {
 
         mockMvc
             .put("/api/company/settings") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -263,7 +271,8 @@ class CompanySettingsIntegrationTest {
 
         mockMvc
             .put("/api/company/settings") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -284,7 +293,8 @@ class CompanySettingsIntegrationTest {
 
         mockMvc
             .put("/api/company/settings") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -305,7 +315,8 @@ class CompanySettingsIntegrationTest {
 
         mockMvc
             .put("/api/company/settings") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -327,7 +338,8 @@ class CompanySettingsIntegrationTest {
 
         mockMvc
             .put("/api/company/settings") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -348,7 +360,8 @@ class CompanySettingsIntegrationTest {
 
         mockMvc
             .put("/api/company/settings") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -368,7 +381,8 @@ class CompanySettingsIntegrationTest {
 
         mockMvc
             .put("/api/company/settings") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }

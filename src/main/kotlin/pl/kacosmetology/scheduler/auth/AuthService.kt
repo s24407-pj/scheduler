@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import pl.kacosmetology.scheduler.auth.dto.AuthResponse
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffEmploymentOption
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
@@ -16,8 +15,6 @@ import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.security.CustomUserDetails
-import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.security.SessionStore
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 
@@ -27,14 +24,12 @@ class AuthService(
     private val userRepository: UserRepository,
     private val otpStore: OtpStore,
     private val smsSender: SmsSender,
-    private val jwtService: JwtService,
     private val passwordEncoder: PasswordEncoder,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
     private val companyRepository: CompanyRepository,
     private val loginRateLimiter: LoginRateLimiter,
     private val otpVerificationRateLimiter: OtpVerificationRateLimiter,
     private val otpRequestRateLimiter: OtpRequestRateLimiter,
-    private val sessionStore: SessionStore,
 ) {
 
     companion object {
@@ -70,11 +65,11 @@ class AuthService(
     }
 
     /**
-     * Verifies the OTP code and returns a JWT token. Creates a new user on first verification (requires firstName and
-     * lastName).
+     * Verifies the OTP code and returns a safe authenticated identity. Creates a new user on first verification
+     * (requires firstName and lastName).
      */
     @Transactional
-    fun verifyCode(request: VerifyCodeRequest, clientIp: String): AuthResponse {
+    fun verifyCode(request: VerifyCodeRequest, clientIp: String): CustomUserDetails {
         if (!otpVerificationRateLimiter.checkAndIncrement(clientIp)) {
             rateLimited("otp-verify", clientIp)
         }
@@ -100,7 +95,7 @@ class AuthService(
                     ),
                 )
 
-        return AuthResponse(jwtService.generateCustomerToken(user))
+        return CustomUserDetails(requireNotNull(user.id), user.phoneNumber, "ROLE_CUSTOMER")
     }
 
     private fun rateLimited(limiter: String, clientIp: String): Nothing {
@@ -123,12 +118,12 @@ class AuthService(
     }
 
     /**
-     * Authenticates a staff member using email and password. Returns a JWT scoped to one employment, or available
+     * Authenticates a staff member using email and password. Returns an identity scoped to one employment, or available
      * employments when a selection is required. Throws [RateLimitExceededException] if [clientIp] has exceeded the
      * allowed login attempt rate.
      */
     @Transactional(readOnly = true)
-    fun loginStaff(request: StaffLoginRequest, clientIp: String): StaffLoginResponse {
+    fun loginStaff(request: StaffLoginRequest, clientIp: String): StaffAuthenticationResult {
         if (!loginRateLimiter.checkAndIncrement(clientIp)) {
             rateLimited("login", clientIp)
         }
@@ -168,7 +163,10 @@ class AuthService(
                         )
                     }
                     .sortedWith(compareBy<StaffEmploymentOption> { it.companyName }.thenBy { it.companyId })
-            return StaffLoginResponse(StaffLoginStatus.EMPLOYMENT_SELECTION_REQUIRED, null, options)
+            return StaffAuthenticationResult(
+                StaffLoginResponse(StaffLoginStatus.EMPLOYMENT_SELECTION_REQUIRED, options),
+                null,
+            )
         }
 
         val selected =
@@ -179,21 +177,19 @@ class AuthService(
                     ?: throw IllegalArgumentException("Nieprawidłowy wybór zatrudnienia")
             }
         log.info("Staff login succeeded: userId={}, employmentId={}, ip={}", userId, selected.id, clientIp)
-        return StaffLoginResponse(
-            status = StaffLoginStatus.AUTHENTICATED,
-            token = jwtService.generateStaffToken(user, selected),
-            employments = emptyList(),
+        require(selected.role in setOf("OWNER", "EMPLOYEE")) { "Nieprawidłowa rola zatrudnienia" }
+        return StaffAuthenticationResult(
+            StaffLoginResponse(StaffLoginStatus.AUTHENTICATED, emptyList()),
+            CustomUserDetails(
+                userId,
+                user.phoneNumber,
+                "ROLE_${selected.role}",
+                selected.companyId,
+                requireNotNull(selected.id),
+            ),
         )
     }
-
-    /** Revokes the session of the token that authenticated [userDetails]. */
-    fun logout(userDetails: CustomUserDetails) {
-        val sessionId = checkNotNull(userDetails.sessionId) { "Authenticated principal has no session" }
-        sessionStore.revoke(sessionId, userDetails.id)
-    }
-
-    /** Revokes every session of the user behind [userDetails], on all devices and employments. */
-    fun logoutAll(userDetails: CustomUserDetails) {
-        sessionStore.revokeAll(userDetails.id)
-    }
 }
+
+/** Internal login outcome; the identity is never serialized as an authentication response. */
+data class StaffAuthenticationResult(val response: StaffLoginResponse, val principal: CustomUserDetails?)

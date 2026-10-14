@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.scheduleblock
 
 import com.ninjasquad.springmockk.MockkBean
+import jakarta.servlet.http.Cookie
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -19,6 +20,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
@@ -31,7 +33,7 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
@@ -46,7 +48,7 @@ class ScheduleBlockIntegrationTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
     @Autowired private lateinit var objectMapper: ObjectMapper
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
     @Autowired private lateinit var userRepository: UserRepository
     @Autowired private lateinit var companyRepository: CompanyRepository
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
@@ -60,8 +62,8 @@ class ScheduleBlockIntegrationTest {
     private lateinit var employee: User
     private lateinit var owner: User
     private var companyId: Long = 0
-    private lateinit var employeeToken: String
-    private lateinit var ownerToken: String
+    private lateinit var employeeSession: Cookie
+    private lateinit var ownerSession: Cookie
     private val testDate = LocalDate.now().plusDays(3)
 
     @BeforeEach
@@ -101,8 +103,8 @@ class ScheduleBlockIntegrationTest {
             )
         }
 
-        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
-        ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
+        employeeSession = testSessions.staff(employee, employeeEmployment)
+        ownerSession = testSessions.staff(owner, ownerEmployment)
     }
 
     @Test
@@ -116,7 +118,8 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .post("/api/schedule-blocks") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -139,7 +142,8 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .post("/api/schedule-blocks") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -168,7 +172,8 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .post("/api/schedule-blocks") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -183,7 +188,7 @@ class ScheduleBlockIntegrationTest {
             userRepository.save(
                 User(phoneNumber = "+48600600600", firstName = "Klient", lastName = "Testowy"),
             )
-        val customerToken = jwtService.generateCustomerToken(customer)
+        val customerSession = testSessions.customer(customer)
         val offering =
             serviceRepository.save(
                 Offering(companyId = companyId, name = "Kolizja", durationMinutes = 60, price = 100),
@@ -211,7 +216,8 @@ class ScheduleBlockIntegrationTest {
                     start.await()
                     mockMvc
                         .post("/api/reservations") {
-                            header("Authorization", "Bearer $customerToken")
+                            with(csrf())
+                            cookie(customerSession)
                             contentType = MediaType.APPLICATION_JSON
                             content = objectMapper.writeValueAsString(reservationBody)
                         }
@@ -224,7 +230,8 @@ class ScheduleBlockIntegrationTest {
                     start.await()
                     mockMvc
                         .post("/api/schedule-blocks") {
-                            header("Authorization", "Bearer $ownerToken")
+                            with(csrf())
+                            cookie(ownerSession)
                             contentType = MediaType.APPLICATION_JSON
                             content = objectMapper.writeValueAsString(blockBody)
                         }
@@ -262,7 +269,8 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .delete("/api/schedule-blocks/${block.id!!}") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isNoContent() }
@@ -292,7 +300,8 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .delete("/api/schedule-blocks/${block.id!!}") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isForbidden() }
@@ -317,7 +326,8 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .delete("/api/schedule-blocks/${block.id!!}") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isNotFound() }
@@ -352,7 +362,7 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .get("/api/schedule-blocks/employee") {
-                header("Authorization", "Bearer $employeeToken")
+                cookie(employeeSession)
                 param("start", start.toString())
                 param("end", end.toString())
             }
@@ -376,7 +386,7 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .get("/api/schedule-blocks/employee") {
-                header("Authorization", "Bearer $employeeToken")
+                cookie(employeeSession)
                 param("start", testDate.atStartOfDay().toString())
                 param("end", testDate.atTime(1, 0).toString())
             }
@@ -422,7 +432,7 @@ class ScheduleBlockIntegrationTest {
     }
 
     @Test
-    fun `POST schedule-blocks should return 401 without token`() {
+    fun `POST schedule-blocks should return 401 without session`() {
         val body =
             mapOf(
                 "startTime" to testDate.atTime(10, 0).toString(),
@@ -431,6 +441,7 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .post("/api/schedule-blocks") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -451,7 +462,8 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .post("/api/schedule-blocks") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -483,7 +495,8 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .post("/api/schedule-blocks") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -507,7 +520,7 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .get("/api/schedule-blocks/employee") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
                 param("employeeId", otherEmployee.id!!.toString())
                 param("start", testDate.atStartOfDay().toString())
                 param("end", testDate.plusDays(1).atStartOfDay().toString())
@@ -528,7 +541,7 @@ class ScheduleBlockIntegrationTest {
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = otherCompanyId, userId = owner.id!!, role = "OWNER"),
             )
-        val otherCompanyOwnerToken = jwtService.generateStaffToken(owner, otherOwnerEmployment)
+        val otherCompanyOwnerSession = testSessions.staff(owner, otherOwnerEmployment)
         scheduleBlockRepository.save(
             ScheduleBlock(
                 companyId = companyId,
@@ -553,7 +566,7 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .get("/api/schedule-blocks/employee") {
-                header("Authorization", "Bearer $otherCompanyOwnerToken")
+                cookie(otherCompanyOwnerSession)
                 param("employeeId", employee.id!!.toString())
                 param("start", testDate.atStartOfDay().toString())
                 param("end", testDate.plusDays(1).atStartOfDay().toString())
@@ -635,7 +648,8 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .delete("/api/schedule-blocks/${block.id!!}") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isNoContent() }
@@ -664,7 +678,8 @@ class ScheduleBlockIntegrationTest {
 
         mockMvc
             .delete("/api/schedule-blocks/${block.id!!}") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isNotFound() }

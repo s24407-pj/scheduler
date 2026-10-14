@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.reservation
 
 import com.ninjasquad.springmockk.MockkBean
+import jakarta.servlet.http.Cookie
 import java.time.LocalDateTime
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -13,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.patch
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
@@ -23,7 +25,7 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -35,7 +37,7 @@ import software.amazon.awssdk.services.s3.S3Client
 class ReservationNoShowIntegrationTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
     @Autowired private lateinit var userRepository: UserRepository
     @Autowired private lateinit var companyRepository: CompanyRepository
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
@@ -48,8 +50,8 @@ class ReservationNoShowIntegrationTest {
     private lateinit var employee: User
     private lateinit var customer: User
     private var companyId: Long = 0
-    private lateinit var employeeToken: String
-    private lateinit var customerToken: String
+    private lateinit var employeeSession: Cookie
+    private lateinit var customerSession: Cookie
 
     @BeforeEach
     fun setup() {
@@ -72,8 +74,8 @@ class ReservationNoShowIntegrationTest {
 
         customer = userRepository.save(User(phoneNumber = "+48600222001", firstName = "Klient", lastName = "Testowy"))
 
-        employeeToken = jwtService.generateStaffToken(employee, employment)
-        customerToken = jwtService.generateCustomerToken(customer)
+        employeeSession = testSessions.staff(employee, employment)
+        customerSession = testSessions.customer(customer)
     }
 
     private fun saveReservation(
@@ -104,7 +106,8 @@ class ReservationNoShowIntegrationTest {
 
         mockMvc
             .patch("/api/reservations/${reservation.id!!}/no-show") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isNoContent() }
@@ -123,7 +126,8 @@ class ReservationNoShowIntegrationTest {
 
         mockMvc
             .patch("/api/reservations/${reservation.id!!}/no-show") {
-                header("Authorization", "Bearer $customerToken")
+                with(csrf())
+                cookie(customerSession)
             }
             .andExpect {
                 status { isForbidden() }
@@ -136,7 +140,8 @@ class ReservationNoShowIntegrationTest {
 
         mockMvc
             .patch("/api/reservations/${reservation.id!!}/no-show") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isConflict() }
@@ -152,7 +157,8 @@ class ReservationNoShowIntegrationTest {
 
         mockMvc
             .patch("/api/reservations/${reservation.id!!}/no-show") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isNoContent() }
@@ -169,7 +175,8 @@ class ReservationNoShowIntegrationTest {
 
         mockMvc
             .patch("/api/reservations/${reservation.id!!}/no-show") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isConflict() }
@@ -186,7 +193,8 @@ class ReservationNoShowIntegrationTest {
 
         mockMvc
             .patch("/api/reservations/${reservation.id!!}/no-show") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isConflict() }
@@ -208,11 +216,12 @@ class ReservationNoShowIntegrationTest {
                     role = "OWNER",
                 ),
             )
-        val otherToken = jwtService.generateStaffToken(otherOwner, otherEmployment)
+        val otherSession = testSessions.staff(otherOwner, otherEmployment)
 
         mockMvc
             .patch("/api/reservations/${reservation.id!!}/no-show") {
-                header("Authorization", "Bearer $otherToken")
+                with(csrf())
+                cookie(otherSession)
             }
             .andExpect {
                 status { isNotFound() }
@@ -238,11 +247,12 @@ class ReservationNoShowIntegrationTest {
                     role = "OWNER",
                 ),
             )
-        val otherToken = jwtService.generateStaffToken(otherOwner, otherEmployment)
+        val otherSession = testSessions.staff(otherOwner, otherEmployment)
 
         mockMvc
             .patch("/api/reservations/${reservation.id!!}/complete") {
-                header("Authorization", "Bearer $otherToken")
+                with(csrf())
+                cookie(otherSession)
             }
             .andExpect {
                 status { isNotFound() }
@@ -258,7 +268,8 @@ class ReservationNoShowIntegrationTest {
             val r = saveReservation()
             mockMvc
                 .patch("/api/reservations/${r.id!!}/no-show") {
-                    header("Authorization", "Bearer $employeeToken")
+                    with(csrf())
+                    cookie(employeeSession)
                 }
                 .andExpect { status { isNoContent() } }
         }
@@ -287,7 +298,8 @@ class ReservationNoShowIntegrationTest {
                     start.await()
                     mockMvc
                         .patch("/api/reservations/${reservation.id!!}/no-show") {
-                            header("Authorization", "Bearer $employeeToken")
+                            with(csrf())
+                            cookie(employeeSession)
                         }
                         .andExpect { status { isNoContent() } }
                 }

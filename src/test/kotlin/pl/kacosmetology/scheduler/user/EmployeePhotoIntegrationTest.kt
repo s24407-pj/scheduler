@@ -10,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.mock.web.MockMultipartFile
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
@@ -21,7 +22,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
@@ -44,7 +45,7 @@ class EmployeePhotoIntegrationTest {
 
     @Autowired private lateinit var reservationRepository: ReservationRepository
 
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
 
     @MockkBean private lateinit var s3Client: S3Client
 
@@ -81,9 +82,9 @@ class EmployeePhotoIntegrationTest {
         every { s3Client.deleteObject(any<DeleteObjectRequest>()) } returns DeleteObjectResponse.builder().build()
     }
 
-    private fun ownerToken() = jwtService.generateStaffToken(owner, ownerEmployment)
+    private fun ownerSession() = testSessions.staff(owner, ownerEmployment)
 
-    private fun employeeToken() = jwtService.generateStaffToken(employee, employeeEmployment)
+    private fun employeeSession() = testSessions.staff(employee, employeeEmployment)
 
     @Test
     fun `POST photo - owner uploads photo and gets 200 with photoUrl`() {
@@ -91,9 +92,7 @@ class EmployeePhotoIntegrationTest {
 
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo")
-                    .file(file)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/employees/${employee.id!!}/photo").file(file).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.photoUrl").isString)
@@ -106,9 +105,7 @@ class EmployeePhotoIntegrationTest {
         val file1 = MockMultipartFile("photo", "first.jpg", "image/jpeg", ByteArray(512))
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo")
-                    .file(file1)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/employees/${employee.id!!}/photo").file(file1).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isOk)
 
@@ -116,9 +113,7 @@ class EmployeePhotoIntegrationTest {
         val file2 = MockMultipartFile("photo", "second.png", "image/png", ByteArray(256))
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo")
-                    .file(file2)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/employees/${employee.id!!}/photo").file(file2).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.photoUrl").isString)
@@ -133,9 +128,7 @@ class EmployeePhotoIntegrationTest {
 
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo")
-                    .file(file)
-                    .header("Authorization", "Bearer ${employeeToken()}"),
+                multipart("/api/employees/${employee.id!!}/photo").file(file).with(csrf()).cookie(employeeSession()),
             )
             .andExpect(status().isForbidden)
     }
@@ -146,7 +139,7 @@ class EmployeePhotoIntegrationTest {
 
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo").file(file),
+                multipart("/api/employees/${employee.id!!}/photo").file(file).with(csrf()),
             )
             .andExpect(status().isUnauthorized)
     }
@@ -159,9 +152,7 @@ class EmployeePhotoIntegrationTest {
 
         mockMvc
             .perform(
-                multipart("/api/employees/${outsider.id!!}/photo")
-                    .file(file)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/employees/${outsider.id!!}/photo").file(file).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isNotFound)
     }
@@ -172,9 +163,7 @@ class EmployeePhotoIntegrationTest {
 
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo")
-                    .file(file)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/employees/${employee.id!!}/photo").file(file).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isBadRequest)
     }
@@ -185,9 +174,7 @@ class EmployeePhotoIntegrationTest {
 
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo")
-                    .file(file)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/employees/${employee.id!!}/photo").file(file).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isBadRequest)
     }
@@ -200,7 +187,8 @@ class EmployeePhotoIntegrationTest {
 
         mockMvc
             .delete("/api/employees/${employee.id!!}/photo") {
-                header("Authorization", "Bearer ${ownerToken()}")
+                with(csrf())
+                cookie(ownerSession())
             }
             .andExpect {
                 status { isOk() }
@@ -214,7 +202,8 @@ class EmployeePhotoIntegrationTest {
     fun `DELETE photo - no-op when employee has no photo, returns 200 with null photoUrl`() {
         mockMvc
             .delete("/api/employees/${employee.id!!}/photo") {
-                header("Authorization", "Bearer ${ownerToken()}")
+                with(csrf())
+                cookie(ownerSession())
             }
             .andExpect {
                 status { isOk() }

@@ -71,3 +71,5 @@ Każdy scenariusz ma zdefiniowane progi akceptacji:
 - **Stress**: p95 < 2s, error rate < 5%
 - **Spike**: p95 < 2s, error rate < 10%
 
+
+Authentication uses normal session cookies and CSRF. Setup logs in with `STAFF_EMAIL` / `STAFF_PASSWORD` (and `STAFF_EMPLOYMENT_ID` when multiple employments exist), refreshes CSRF after login, and obtains company scope from `/api/auth/me`. k6 setup and VUs have separate cookie jars, so setup passes the test client's cookie values to request parameters. Never log setup data or cookies. These scripts do not model browser SameSite/CORS enforcement; session/security integration tests cover those boundaries.

@@ -19,8 +19,8 @@ class UserController(
     /** Returns the authenticated user's profile. */
     @GetMapping("/me")
     fun getMyProfile(@AuthenticationPrincipal principal: CustomUserDetails?): UserProfileResponse {
-        val user = principal?.user ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
-        return user.toProfileResponse()
+        val userId = principal?.id ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
+        return userService.getProfile(userId).toProfileResponse()
     }
 
     /** Updates the authenticated user's profile data. */

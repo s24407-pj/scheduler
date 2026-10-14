@@ -52,13 +52,13 @@ export default function (data) {
   } else if (rand < 0.75) {
     getAvailability(randomFrom(data.employeeIds), randomFrom(data.offeringIds), date);
   } else if (rand < 0.90) {
-    getAuthOfferings(data.token, 1);
+    getAuthOfferings(data.session, data.companyId);
   } else {
     const hour = 10 + Math.floor(Math.random() * 8);
     const minute = Math.random() < 0.5 ? '00' : '30';
     const startTime = `${date}T${hour}:${minute}:00`;
     const phone = `+48600${String(Math.floor(Math.random() * 1000000)).padStart(6, '0')}`;
-    createStaffBooking(data.token, randomFrom(data.employeeIds), randomFrom(data.offeringIds), startTime, phone);
+    createStaffBooking(data.session, randomFrom(data.employeeIds), randomFrom(data.offeringIds), startTime, phone);
   }
 
   sleep(thinkTime);

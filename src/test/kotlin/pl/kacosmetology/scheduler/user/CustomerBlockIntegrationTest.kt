@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.user
 
 import com.ninjasquad.springmockk.MockkBean
+import jakarta.servlet.http.Cookie
 import java.time.LocalDateTime
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
@@ -10,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
@@ -24,7 +26,7 @@ import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 import pl.kacosmetology.scheduler.reservation.dto.CreateReservationRequest
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
@@ -37,7 +39,7 @@ class CustomerBlockIntegrationTest {
 
     @Autowired private lateinit var objectMapper: ObjectMapper
 
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
 
     @Autowired private lateinit var userRepository: UserRepository
 
@@ -58,9 +60,9 @@ class CustomerBlockIntegrationTest {
     private lateinit var customer: User
     private var companyId: Long = 0
     private var serviceId: Long = 0
-    private lateinit var ownerToken: String
-    private lateinit var employeeToken: String
-    private lateinit var customerToken: String
+    private lateinit var ownerSession: Cookie
+    private lateinit var employeeSession: Cookie
+    private lateinit var customerSession: Cookie
 
     @BeforeEach
     fun setup() {
@@ -79,17 +81,17 @@ class CustomerBlockIntegrationTest {
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
             )
-        ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
+        ownerSession = testSessions.staff(owner, ownerEmployment)
 
         employee = userRepository.save(User(phoneNumber = "+48800222001", firstName = "Employee", lastName = "Test"))
         val employeeEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
             )
-        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
+        employeeSession = testSessions.staff(employee, employeeEmployment)
 
         customer = userRepository.save(User(phoneNumber = "+48800333001", firstName = "Klient", lastName = "Test"))
-        customerToken = jwtService.generateCustomerToken(customer)
+        customerSession = testSessions.customer(customer)
 
         val service =
             serviceRepository.save(
@@ -116,7 +118,8 @@ class CustomerBlockIntegrationTest {
     fun `PATCH block as owner should return 204 and block the customer`() {
         mockMvc
             .patch("/api/customers/${customer.id!!}/block") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isNoContent() }
@@ -135,7 +138,8 @@ class CustomerBlockIntegrationTest {
 
         mockMvc
             .patch("/api/customers/${customer.id!!}/unblock") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isNoContent() }
@@ -150,7 +154,8 @@ class CustomerBlockIntegrationTest {
     fun `PATCH block as employee should return 403`() {
         mockMvc
             .patch("/api/customers/${customer.id!!}/block") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
             }
             .andExpect {
                 status { isForbidden() }
@@ -174,7 +179,8 @@ class CustomerBlockIntegrationTest {
 
         mockMvc
             .post("/api/reservations") {
-                header("Authorization", "Bearer $customerToken")
+                with(csrf())
+                cookie(customerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(request)
             }
@@ -192,7 +198,8 @@ class CustomerBlockIntegrationTest {
 
         mockMvc
             .patch("/api/customers/${otherCustomer.id!!}/block") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isBadRequest() }
@@ -206,7 +213,8 @@ class CustomerBlockIntegrationTest {
 
         mockMvc
             .patch("/api/customers/${customer.id!!}/unblock") {
-                header("Authorization", "Bearer $ownerToken")
+                with(csrf())
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isNoContent() }

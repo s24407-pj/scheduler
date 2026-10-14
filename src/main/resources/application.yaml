@@ -1,5 +1,12 @@
 server:
   port: 8080
+  servlet:
+    session:
+      cookie:
+        name: SESSION
+        http-only: true
+        path: /
+        same-site: lax
   forward-headers-strategy: native
   tomcat:
     remoteip:
@@ -9,6 +16,12 @@ server:
 spring:
   application:
     name: scheduler
+  session:
+    timeout: 24h
+    data:
+      redis:
+        namespace: scheduler:sessions
+        repository-type: indexed
   datasource:
     url: jdbc:postgresql://localhost:5432/scheduler_db
     username: ${DB_USERNAME:postgres}
@@ -39,10 +52,6 @@ spring:
       port: ${REDIS_PORT:6379}
       repositories:
         enabled: false
-
-jwt:
-  secret: ${JWT_SECRET:ToJestTymczasowySekretDoRozwojuAplikacjiLokalnieWymienGoNaProdukcji}
-  expiration-ms: ${JWT_EXPIRATION_MS:86400000}
 
 cors:
   allowed-origins: ${CORS_ORIGINS:http://localhost:5173}

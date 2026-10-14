@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.reservation
 
 import com.ninjasquad.springmockk.MockkBean
+import jakarta.servlet.http.Cookie
 import java.time.LocalDateTime
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -17,7 +18,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -32,7 +33,7 @@ import software.amazon.awssdk.services.s3.S3Client
 class ReservationDashboardIntegrationTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
     @Autowired private lateinit var userRepository: UserRepository
     @Autowired private lateinit var companyRepository: CompanyRepository
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
@@ -46,8 +47,8 @@ class ReservationDashboardIntegrationTest {
     private lateinit var customer: User
     private var companyId: Long = 0
     private var offeringId: Long = 0
-    private lateinit var ownerToken: String
-    private lateinit var employeeToken: String
+    private lateinit var ownerSession: Cookie
+    private lateinit var employeeSession: Cookie
 
     private val rangeStart = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0)
     private val rangeEnd = LocalDateTime.now().withHour(23).withMinute(59).withSecond(59).withNano(0)
@@ -96,15 +97,15 @@ class ReservationDashboardIntegrationTest {
             ),
         )
 
-        ownerToken = jwtService.generateStaffToken(owner, ownerEmployment)
-        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
+        ownerSession = testSessions.staff(owner, ownerEmployment)
+        employeeSession = testSessions.staff(employee, employeeEmployment)
     }
 
     @Test
     fun `owner should be able to query any employee's reservations`() {
         mockMvc
             .get("/api/reservations") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
                 param("employeeId", employee.id!!.toString())
                 param("start", rangeStart.toString())
                 param("end", rangeEnd.toString())
@@ -122,7 +123,7 @@ class ReservationDashboardIntegrationTest {
     fun `malformed start date should return bad request`() {
         mockMvc
             .get("/api/reservations") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
                 param("employeeId", employee.id.toString())
                 param("start", "not-a-date")
                 param("end", rangeEnd.toString())
@@ -138,7 +139,7 @@ class ReservationDashboardIntegrationTest {
     fun `employee should be able to query own reservations`() {
         mockMvc
             .get("/api/reservations") {
-                header("Authorization", "Bearer $employeeToken")
+                cookie(employeeSession)
                 param("employeeId", employee.id!!.toString())
                 param("start", rangeStart.toString())
                 param("end", rangeEnd.toString())
@@ -165,7 +166,7 @@ class ReservationDashboardIntegrationTest {
 
         mockMvc
             .get("/api/reservations") {
-                header("Authorization", "Bearer $employeeToken")
+                cookie(employeeSession)
                 param("employeeId", otherEmployee.id!!.toString())
                 param("start", rangeStart.toString())
                 param("end", rangeEnd.toString())
@@ -194,7 +195,7 @@ class ReservationDashboardIntegrationTest {
         // Query only today — should return 1 (the one from @BeforeEach)
         mockMvc
             .get("/api/reservations") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
                 param("employeeId", employee.id!!.toString())
                 param("start", rangeStart.toString())
                 param("end", rangeEnd.toString())
@@ -222,7 +223,7 @@ class ReservationDashboardIntegrationTest {
 
         mockMvc
             .get("/api/reservations") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
                 param("employeeId", employee.id!!.toString())
                 param("start", rangeStart.toString())
                 param("end", rangeStart.plusHours(1).toString())

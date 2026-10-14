@@ -39,7 +39,9 @@ Rejected alternative: making Traefik trust Cloudflare ranges and having Tomcat w
 A production compose file (for example `docker-compose.prod.yml`) should:
 
 - **Not publish `5432`, `6379`, or `8080`.** On a VPS, Docker-published ports bypass `ufw`. Exposed Redis lets anyone read `otp:<phone>` codes (log in as any customer) or delete every session; Postgres would be reachable with its password. Traefik reaches the app over `dokploy-network`.
-- **Set `SPRING_PROFILE=prod`.** The compose default is `dev`, which seeds the `admin123` / `employee123` accounts and accepts the dev `JWT_SECRET`.
-- **Set a unique `JWT_SECRET`** (`openssl rand -base64 48`). With `prod` and the default secret, startup fails by design.
+- **Set `SPRING_PROFILE=prod`.** The compose default is `dev`, which seeds the `admin123` / `employee123` accounts.
+- **Serve both frontend and API over HTTPS on the same site.** The prod profile enables Secure, HttpOnly, host-only `SESSION` cookies with SameSite=Lax. Keep explicit `CORS_ORIGINS` and credentials; no broad cookie Domain. Confirm forwarded HTTPS detection for the CSRF cookie. Unrelated frontend/API sites need a separate cookie/deployment decision; do not set SameSite=None without Secure.
 - Set `TRUSTED_PROXIES` and `SERVER_TOMCAT_REMOTEIP_REMOTE_IP_HEADER` as above, and `CORS_ORIGINS` to the real frontend origins.
 - Use strong `DB_PASSWORD`, and add a real `SmsSender`. `ConsoleSmsSender` only logs and is disabled in `prod`, so startup fails without one (see the known gap in [architecture.md](./architecture.md#notifications-and-scheduled-jobs)).
+
+All instances must share `SPRING_SESSION_DATA_REDIS_NAMESPACE` and Redis, with indexed sessions enabled. Set `SPRING_SESSION_TIMEOUT` (default 24h inactivity). Keep Redis private and trusted: it holds serialized security contexts. Deploy frontend changes together with the API; existing sessions require re-login. Scheduled jobs still assume a single instance.

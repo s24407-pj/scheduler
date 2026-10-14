@@ -18,5 +18,6 @@ To add one, copy the structure of an existing ADR, use the next number, and add 
 | [0006](./0006-booking-idempotency.md) | Booking idempotency | Accepted |
 | [0007](./0007-single-instance-deployment.md) | Single-instance deployment | Accepted |
 | [0008](./0008-whole-zloty-pricing.md) | Whole-złoty pricing | Accepted |
-| [0009](./0009-revocable-sessions.md) | Revocable sessions behind JWTs | Accepted — implemented |
+| [0009](./0009-revocable-sessions.md) | Revocable sessions behind JWTs | Superseded by 0011 |
 | [0010](./0010-cancellation-window-and-no-show-correction.md) | Cancellation window and no-show correction | Accepted — implemented |
+| [0011](./0011-spring-session-redis.md) | Spring Security sessions backed by Redis | Accepted — implemented |

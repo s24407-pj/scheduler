@@ -1,6 +1,6 @@
 # User flows
 
-End-to-end journeys through the API, per actor. Each journey shows the order of calls; the rules behind each step live in the linked docs and are not repeated here. Paths are relative to `/api`. Public calls need no token; every other call sends `Authorization: Bearer <JWT>`.
+End-to-end journeys through the API, per actor. Each journey shows the order of calls; the rules behind each step live in the linked docs and are not repeated here. Paths are relative to `/api`. Public reads need no authentication; all API calls use credentials/cookies, and unsafe calls also send `X-XSRF-TOKEN` obtained from `/auth/csrf`. Refresh CSRF after login/logout; see [the frontend contract](./architecture.md#csrf-cookies-and-frontend-contract).
 
 | Actor | Signs in with | Journeys |
 | ----- | ------------- | -------- |
@@ -19,7 +19,7 @@ sequenceDiagram
     participant API
     participant R2 as Cloudflare R2
     O->>API: POST /auth/login-staff (see journey 4)
-    API-->>O: staff JWT (role owner, companyId)
+    API-->>O: HttpOnly session (owner employment)
     O->>API: PUT /company/settings (slot interval, advance, discount, maxNoShows)
     O->>API: POST /offering-categories
     O->>API: POST /offerings
@@ -65,7 +65,7 @@ sequenceDiagram
         C->>API: POST /auth/request-code (phoneNumber)
         API->>SMS: OTP code
         C->>API: POST /auth/verify-code (phoneNumber, code, firstName and lastName for new users)
-        API-->>C: customer JWT (registers the user on first sign-in)
+        API-->>C: HttpOnly customer session (registers the user on first sign-in)
     end
     C->>API: POST /reservations (employeeId, serviceId, startTime)
     alt New booking
@@ -105,7 +105,7 @@ Rules: [lifecycle](./reservations.md#lifecycle), [sessions](./architecture.md#se
 
 ## 4. Staff sign-in
 
-A staff member can work at several salons. Each token is scoped to one employment, so switching salons means signing in again with another `employmentId`.
+A staff member can work at several salons. Each session is scoped to one employment. Switching salons requires CSRF-protected logout, CSRF refresh, then signing in again with another `employmentId`.
 
 ```mermaid
 sequenceDiagram
@@ -113,11 +113,11 @@ sequenceDiagram
     participant API
     S->>API: POST /auth/login-staff (email, password)
     alt One employment
-        API-->>S: AUTHENTICATED + token
+        API-->>S: AUTHENTICATED + session cookie
     else Several employments
         API-->>S: EMPLOYMENT_SELECTION_REQUIRED + employments (employmentId, companyId, companyName, role)
         S->>API: POST /auth/login-staff (email, password, employmentId)
-        API-->>S: AUTHENTICATED + token for that salon and role
+        API-->>S: AUTHENTICATED + session cookie for that salon and role
     else Wrong credentials
         API-->>S: 400 (same message for every cause)
     else Too many attempts from this IP
@@ -131,7 +131,7 @@ Rules: [authentication](./architecture.md#authentication), [login hardening](./a
 
 ## 5. Staff day-to-day
 
-Everything is scoped to the salon in the token. An employee sees and blocks only their own time; an owner can act for any employee of the salon.
+Everything is scoped to the salon in the session principal. An employee sees and blocks only their own time; an owner can act for any employee of the salon.
 
 ```mermaid
 sequenceDiagram

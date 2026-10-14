@@ -1,38 +1,26 @@
 package pl.kacosmetology.scheduler.security
 
 import org.springframework.http.HttpStatus
-import org.springframework.security.core.GrantedAuthority
+import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.web.server.ResponseStatusException
-import pl.kacosmetology.scheduler.user.User
 
-/**
- * Extended UserDetails holding the domain [User], an optional, exact staff employment scope, and the [sessionId] of the
- * token that authenticated the request.
- */
-class CustomUserDetails(
-    val user: User,
-    val companyId: Long?,
-    private val authorities: Collection<GrantedAuthority>,
+/** Immutable, session-safe identity. No domain entity, password, or session identifier is retained. */
+data class CustomUserDetails(
+    val id: Long,
+    private val phoneNumber: String,
+    val role: String,
+    val companyId: Long? = null,
     val employmentId: Long? = null,
-    val sessionId: String? = null,
 ) : UserDetails {
-
-    /** Returns a copy bound to the session of the authenticating token. */
-    fun withSession(sessionId: String) = CustomUserDetails(user, companyId, authorities, employmentId, sessionId)
-
-    /** Persisted domain user identifier required by authenticated principals. */
-    val id: Long
-        get() = requireNotNull(user.id) { "Authenticated user must have a persisted ID" }
-
-    /** Returns the staff company scope or rejects an unscoped principal with HTTP 403. */
+    /** Returns the exact staff company scope or rejects an unscoped principal. */
     fun requireCompanyId(): Long = companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
 
-    override fun getAuthorities(): Collection<GrantedAuthority> = authorities
+    override fun getAuthorities() = listOf(SimpleGrantedAuthority(role))
 
-    override fun getPassword(): String = user.passwordHash ?: ""
+    override fun getPassword(): String = ""
 
-    override fun getUsername(): String = user.phoneNumber
+    override fun getUsername(): String = phoneNumber
 
     override fun isAccountNonExpired(): Boolean = true
 
@@ -41,4 +29,8 @@ class CustomUserDetails(
     override fun isCredentialsNonExpired(): Boolean = true
 
     override fun isEnabled(): Boolean = true
+
+    private companion object {
+        private const val serialVersionUID: Long = 1L
+    }
 }

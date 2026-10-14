@@ -10,10 +10,20 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 class CorsConfig(
     @Value($$"${cors.allowed-origins}") private val allowedOrigins: String,
 ) : WebMvcConfigurer {
+    private val origins =
+        allowedOrigins
+            .split(",")
+            .map { it.trim() }
+            .also {
+                require(it.isNotEmpty() && it.all { origin -> origin.isNotBlank() && '*' !in origin }) {
+                    "Credentialed CORS requires explicit allowed origins"
+                }
+            }
+
     override fun addCorsMappings(registry: CorsRegistry) {
         registry
             .addMapping("/**")
-            .allowedOrigins(*allowedOrigins.split(",").map { it.trim() }.toTypedArray())
+            .allowedOrigins(*origins.toTypedArray())
             .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             .allowedHeaders("*")
             .allowCredentials(true)

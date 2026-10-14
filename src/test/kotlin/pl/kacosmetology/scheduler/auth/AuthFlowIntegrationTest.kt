@@ -1,12 +1,10 @@
 package pl.kacosmetology.scheduler.auth
 
 import com.ninjasquad.springmockk.MockkBean
-import io.jsonwebtoken.Jwts
-import io.jsonwebtoken.security.Keys
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
-import java.util.Date
+import jakarta.servlet.http.Cookie
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -15,13 +13,13 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -36,7 +34,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -59,13 +57,11 @@ class AuthFlowIntegrationTest {
 
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
 
     @Autowired private lateinit var reservationRepository: ReservationRepository
 
     @Autowired private lateinit var passwordEncoder: PasswordEncoder
-
-    @Value($$"${jwt.secret}") private lateinit var jwtSecret: String
 
     // Zastępujemy prawdziwy serwis sztucznym (żeby nie sypało logami ani nie wysyłało prawdziwych SMS)
     @MockkBean private lateinit var smsSender: SmsSender
@@ -85,7 +81,7 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
-    fun `full customer registration and login via SMS should return token`() {
+    fun `full customer registration and login via SMS should create session`() {
         val phoneNumber = "+48111222333"
 
         // 1. KROK 1: Klient prosi o kod SMS
@@ -93,6 +89,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/request-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(requestDto)
             }
@@ -116,12 +113,14 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/verify-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(verifyDto)
             }
             .andExpect {
                 status { isOk() }
-                jsonPath("$.token") { exists() } // Sprawdzamy, czy system wydał JWT!
+                jsonPath("$.token") { doesNotExist() }
+                cookie { exists("SESSION") }
             }
 
         // 4. Upewniamy się, że użytkownik został stworzony w bazie i zużyty kod zniknął
@@ -139,6 +138,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/request-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(RequestCodeRequest(phoneNumber))
             }
@@ -150,6 +150,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/verify-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content =
                     objectMapper.writeValueAsString(
@@ -164,6 +165,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/verify-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content =
                     objectMapper.writeValueAsString(
@@ -172,7 +174,8 @@ class AuthFlowIntegrationTest {
             }
             .andExpect {
                 status { isOk() }
-                jsonPath("$.token") { exists() }
+                jsonPath("$.token") { doesNotExist() }
+                cookie { exists("SESSION") }
             }
 
         Assertions.assertNotNull(userRepository.findByPhoneNumber(phoneNumber))
@@ -180,7 +183,7 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
-    fun `staff login with email and password should return token`() {
+    fun `staff login with email and password should create session`() {
         // 1. GIVEN - Mamy pracownika w bazie z ustawionym hasłem
         val rawPassword = "superSecretPassword"
         val staff =
@@ -205,22 +208,24 @@ class AuthFlowIntegrationTest {
                 password = rawPassword,
             )
 
-        // 3. THEN - Oczekujemy 200 OK i tokena JWT
+        // 3. THEN - Oczekujemy 200 OK i sesji
         mockMvc
             .post("/api/auth/login-staff") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(loginDto)
             }
             .andExpect {
                 status { isOk() }
                 jsonPath("$.status") { value("AUTHENTICATED") }
-                jsonPath("$.token") { exists() }
+                jsonPath("$.token") { doesNotExist() }
+                cookie { exists("SESSION") }
                 jsonPath("$.employments") { isEmpty() }
             }
     }
 
     @Test
-    fun `staff login as owner should return token with role owner`() {
+    fun `staff login as owner should create session with role owner`() {
         // GIVEN
         val rawPassword = "securePassword1"
         val company = companyRepository.save(Company(name = "Test Salon"))
@@ -240,6 +245,7 @@ class AuthFlowIntegrationTest {
         val result =
             mockMvc
                 .post("/api/auth/login-staff") {
+                    with(csrf())
                     contentType = MediaType.APPLICATION_JSON
                     content =
                         objectMapper.writeValueAsString(
@@ -251,12 +257,12 @@ class AuthFlowIntegrationTest {
                 }
                 .andReturn()
 
-        val token = objectMapper.readTree(result.response.contentAsString)["token"].asString()
+        val session = requireNotNull(result.response.getCookie("SESSION"))
 
         // THEN
-        assertEquals("owner", jwtService.extractRole(token), "Token powinien zawierać rolę owner")
-        assertEquals(company.id!!, jwtService.extractCompanyId(token))
-        Assertions.assertNotNull(jwtService.extractEmploymentId(token))
+        assertEquals("ROLE_OWNER", identity(session)["authorities"][0].asString())
+        assertEquals(company.id!!, identity(session)["companyId"].asLong())
+        Assertions.assertNotNull(identity(session)["employmentId"].asLong())
     }
 
     @Test
@@ -286,6 +292,7 @@ class AuthFlowIntegrationTest {
         val selectionResult =
             mockMvc
                 .post("/api/auth/login-staff") {
+                    with(csrf())
                     contentType = MediaType.APPLICATION_JSON
                     content =
                         objectMapper.writeValueAsString(
@@ -304,24 +311,25 @@ class AuthFlowIntegrationTest {
                 .andReturn()
         Assertions.assertTrue(selectionResult.response.contentAsString.contains("EMPLOYMENT_SELECTION_REQUIRED"))
 
-        val employeeToken = loginForEmployment(rawPassword, employeeInA.id!!)
-        assertEquals("employee", jwtService.extractRole(employeeToken))
-        assertEquals(companyA.id!!, jwtService.extractCompanyId(employeeToken))
-        assertEquals(employeeInA.id!!, jwtService.extractEmploymentId(employeeToken))
+        val employeeSession = loginForEmployment(rawPassword, employeeInA.id!!)
+        assertEquals("ROLE_EMPLOYEE", identity(employeeSession)["authorities"][0].asString())
+        assertEquals(companyA.id!!, identity(employeeSession)["companyId"].asLong())
+        assertEquals(employeeInA.id!!, identity(employeeSession)["employmentId"].asLong())
         mockMvc
             .put("/api/company/settings") {
-                header("Authorization", "Bearer $employeeToken")
+                with(csrf())
+                cookie(employeeSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = settingsBody()
             }
             .andExpect { status { isForbidden() } }
 
-        val ownerToken = loginForEmployment(rawPassword, ownerInB.id!!)
-        assertEquals("owner", jwtService.extractRole(ownerToken))
-        assertEquals(companyB.id!!, jwtService.extractCompanyId(ownerToken))
+        val ownerSession = loginForEmployment(rawPassword, ownerInB.id!!)
+        assertEquals("ROLE_OWNER", identity(ownerSession)["authorities"][0].asString())
+        assertEquals(companyB.id!!, identity(ownerSession)["companyId"].asLong())
         mockMvc
             .get("/api/company/settings") {
-                header("Authorization", "Bearer $ownerToken")
+                cookie(ownerSession)
             }
             .andExpect {
                 status { isOk() }
@@ -331,7 +339,7 @@ class AuthFlowIntegrationTest {
         companyEmployeeRepository.delete(employeeInA)
         mockMvc
             .get("/api/company/settings") {
-                header("Authorization", "Bearer $employeeToken")
+                cookie(employeeSession)
             }
             .andExpect { status { isUnauthorized() } }
     }
@@ -351,6 +359,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/login-staff") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(StaffLoginRequest("none@salon.pl", password))
             }
@@ -375,6 +384,7 @@ class AuthFlowIntegrationTest {
         // WHEN & THEN
         mockMvc
             .post("/api/auth/login-staff") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(loginDto)
             }
@@ -389,6 +399,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/login-staff") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(loginDto)
             }
@@ -403,6 +414,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/request-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = badRequest
             }
@@ -417,6 +429,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/request-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = badRequest
             }
@@ -431,6 +444,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/login-staff") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = badRequest
             }
@@ -445,6 +459,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/login-staff") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = badRequest
             }
@@ -460,6 +475,7 @@ class AuthFlowIntegrationTest {
 
         repeat(10) {
             mockMvc.post("/api/auth/login-staff") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(loginDto)
             }
@@ -468,6 +484,7 @@ class AuthFlowIntegrationTest {
         // 11th attempt from the same IP — should be rate limited
         mockMvc
             .post("/api/auth/login-staff") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(loginDto)
             }
@@ -485,6 +502,7 @@ class AuthFlowIntegrationTest {
         repeat(3) {
             mockMvc
                 .post("/api/auth/request-code") {
+                    with(csrf())
                     contentType = MediaType.APPLICATION_JSON
                     content = objectMapper.writeValueAsString(requestDto)
                 }
@@ -496,6 +514,7 @@ class AuthFlowIntegrationTest {
         // 4. próba — powinien zwrócić 429 Too Many Requests
         mockMvc
             .post("/api/auth/request-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(requestDto)
             }
@@ -510,6 +529,7 @@ class AuthFlowIntegrationTest {
         val requestCode = RequestCodeRequest(phoneNumber)
         mockMvc
             .post("/api/auth/request-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(requestCode)
             }
@@ -523,6 +543,7 @@ class AuthFlowIntegrationTest {
         repeat(2) {
             mockMvc
                 .post("/api/auth/verify-code") {
+                    with(csrf())
                     contentType = MediaType.APPLICATION_JSON
                     content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, wrongCode))
                 }
@@ -536,6 +557,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/verify-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, wrongCode))
             }
@@ -543,6 +565,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/verify-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, firstCode, "Jan", "Nowak"))
             }
@@ -550,6 +573,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/request-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(requestCode)
             }
@@ -559,6 +583,7 @@ class AuthFlowIntegrationTest {
         Assertions.assertFalse(replacementCode.contains('|'))
         mockMvc
             .post("/api/auth/verify-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content =
                     objectMapper.writeValueAsString(
@@ -567,15 +592,17 @@ class AuthFlowIntegrationTest {
             }
             .andExpect {
                 status { isOk() }
-                jsonPath("$.token") { exists() }
+                jsonPath("$.token") { doesNotExist() }
+                cookie { exists("SESSION") }
             }
     }
 
     @Test
-    fun `two concurrent correct verify-code requests should issue exactly one token`() {
+    fun `two concurrent correct verify-code requests should issue exactly one session`() {
         val phoneNumber = "+48555222333"
         mockMvc
             .post("/api/auth/request-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(RequestCodeRequest(phoneNumber))
             }
@@ -592,6 +619,7 @@ class AuthFlowIntegrationTest {
                         start.await()
                         mockMvc
                             .post("/api/auth/verify-code") {
+                                with(csrf())
                                 contentType = MediaType.APPLICATION_JSON
                                 content = requestBody
                             }
@@ -616,6 +644,7 @@ class AuthFlowIntegrationTest {
             val phoneNumber = "+4860000${attempt.toString().padStart(4, '0')}"
             mockMvc
                 .post("/api/auth/verify-code") {
+                    with(csrf())
                     header("X-Forwarded-For", "203.0.113.$attempt")
                     contentType = MediaType.APPLICATION_JSON
                     content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, "123456"))
@@ -625,6 +654,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/verify-code") {
+                with(csrf())
                 header("X-Forwarded-For", "203.0.113.99")
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(VerifyCodeRequest("+48699999999", "123456"))
@@ -639,6 +669,7 @@ class AuthFlowIntegrationTest {
         repeat(10) { attempt ->
             mockMvc
                 .post("/api/auth/request-code") {
+                    with(csrf())
                     contentType = MediaType.APPLICATION_JSON
                     content =
                         objectMapper.writeValueAsString(
@@ -650,6 +681,7 @@ class AuthFlowIntegrationTest {
 
         mockMvc
             .post("/api/auth/request-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(RequestCodeRequest("+48619999999"))
             }
@@ -659,26 +691,28 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
-    fun `logout should revoke only the token used for the request`() {
+    fun `logout should revoke only the session used for the request`() {
         val customer = userRepository.save(User(phoneNumber = "+48500100200", firstName = "Jan", lastName = "Nowak"))
-        val token = jwtService.generateCustomerToken(customer)
-        val otherDeviceToken = jwtService.generateCustomerToken(customer)
+        val session = testSessions.customer(customer)
+        val otherDeviceSession = testSessions.customer(customer)
 
-        mockMvc.get("/api/users/me") { header("Authorization", "Bearer $token") }.andExpect { status { isOk() } }
+        mockMvc.get("/api/users/me") { cookie(session) }.andExpect { status { isOk() } }
 
         mockMvc
-            .post("/api/auth/logout") { header("Authorization", "Bearer $token") }
+            .post("/api/auth/logout") {
+                with(csrf())
+                cookie(session)
+            }
             .andExpect { status { isNoContent() } }
 
+        mockMvc.get("/api/users/me") { cookie(session) }.andExpect { status { isUnauthorized() } }
         mockMvc
-            .get("/api/users/me") { header("Authorization", "Bearer $token") }
-            .andExpect { status { isUnauthorized() } }
-        mockMvc
-            .post("/api/auth/logout") { header("Authorization", "Bearer $token") }
-            .andExpect { status { isUnauthorized() } }
-        mockMvc
-            .get("/api/users/me") { header("Authorization", "Bearer $otherDeviceToken") }
-            .andExpect { status { isOk() } }
+            .post("/api/auth/logout") {
+                with(csrf())
+                cookie(session)
+            }
+            .andExpect { status { isNoContent() } }
+        mockMvc.get("/api/users/me") { cookie(otherDeviceSession) }.andExpect { status { isOk() } }
     }
 
     @Test
@@ -696,56 +730,46 @@ class AuthFlowIntegrationTest {
                 ),
             )
         companyEmployeeRepository.save(CompanyEmployee(companyId = company.id!!, userId = owner.id!!, role = "OWNER"))
-        val tokens =
+        val sessions =
             List(2) {
                 val result =
                     mockMvc
                         .post("/api/auth/login-staff") {
+                            with(csrf())
                             contentType = MediaType.APPLICATION_JSON
                             content = objectMapper.writeValueAsString(StaffLoginRequest("logout@salon.pl", rawPassword))
                         }
                         .andExpect { status { isOk() } }
                         .andReturn()
-                objectMapper.readTree(result.response.contentAsString)["token"].asString()
+                requireNotNull(result.response.getCookie("SESSION"))
             }
 
         mockMvc
-            .post("/api/auth/logout-all") { header("Authorization", "Bearer ${tokens[0]}") }
+            .post("/api/auth/logout-all") {
+                with(csrf())
+                cookie(sessions[0])
+            }
             .andExpect { status { isNoContent() } }
 
-        tokens.forEach { token ->
-            mockMvc
-                .get("/api/company/settings") { header("Authorization", "Bearer $token") }
-                .andExpect { status { isUnauthorized() } }
+        sessions.forEach { session ->
+            mockMvc.get("/api/company/settings") { cookie(session) }.andExpect { status { isUnauthorized() } }
         }
     }
 
     @Test
-    fun `logout without token should return 401`() {
-        mockMvc.post("/api/auth/logout").andExpect { status { isUnauthorized() } }
-    }
-
-    @Test
-    fun `validly signed token without session id should be rejected`() {
-        val customer = userRepository.save(User(phoneNumber = "+48500500600", firstName = "Jan", lastName = "Nowak"))
-        val tokenWithoutSession =
-            Jwts.builder()
-                .claims(mapOf("role" to "customer"))
-                .subject(customer.phoneNumber)
-                .issuedAt(Date())
-                .expiration(Date(System.currentTimeMillis() + 60_000))
-                .signWith(Keys.hmacShaKeyFor(jwtSecret.toByteArray()))
-                .compact()
-
+    fun `logout is idempotent with CSRF even without a session`() {
         mockMvc
-            .get("/api/users/me") { header("Authorization", "Bearer $tokenWithoutSession") }
-            .andExpect { status { isUnauthorized() } }
+            .post("/api/auth/logout") {
+                with(csrf())
+            }
+            .andExpect { status { isNoContent() } }
     }
 
-    private fun loginForEmployment(password: String, employmentId: Long): String {
+    private fun loginForEmployment(password: String, employmentId: Long): Cookie {
         val result =
             mockMvc
                 .post("/api/auth/login-staff") {
+                    with(csrf())
                     contentType = MediaType.APPLICATION_JSON
                     content =
                         objectMapper.writeValueAsString(
@@ -758,8 +782,18 @@ class AuthFlowIntegrationTest {
                     jsonPath("$.employments") { isEmpty() }
                 }
                 .andReturn()
-        return objectMapper.readTree(result.response.contentAsString)["token"].asString()
+        return requireNotNull(result.response.getCookie("SESSION"))
     }
+
+    private fun identity(cookie: Cookie) =
+        objectMapper.readTree(
+            mockMvc
+                .get("/api/auth/me") { cookie(cookie) }
+                .andExpect { status { isOk() } }
+                .andReturn()
+                .response
+                .contentAsString,
+        )
 
     private fun settingsBody(): String =
         objectMapper.writeValueAsString(

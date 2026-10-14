@@ -63,7 +63,7 @@ class RestExceptionHandler : ResponseEntityExceptionHandler() {
     fun handleBadCredentials(ex: BadCredentialsException): ResponseEntity<ProblemDetail> =
         problem(ErrorCode.INVALID_CREDENTIALS, "Nieprawidłowe dane logowania")
 
-    /** Missing or invalid JWT; reached through the security entry point configured in `SecurityConfig`. */
+    /** Missing or invalid session; reached through the security entry point configured in `SecurityConfig`. */
     @ExceptionHandler(AuthenticationException::class)
     fun handleAuthentication(ex: AuthenticationException): ResponseEntity<ProblemDetail> =
         problem(ErrorCode.UNAUTHORIZED, "Wymagane uwierzytelnienie")

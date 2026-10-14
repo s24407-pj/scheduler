@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.reservation
 
 import com.ninjasquad.springmockk.MockkBean
+import jakarta.servlet.http.Cookie
 import java.time.LocalDateTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -11,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
@@ -24,7 +26,7 @@ import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -37,7 +39,7 @@ class ReservationStaffIntegrationTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
     @Autowired private lateinit var objectMapper: ObjectMapper
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
     @Autowired private lateinit var userRepository: UserRepository
     @Autowired private lateinit var companyRepository: CompanyRepository
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
@@ -50,7 +52,7 @@ class ReservationStaffIntegrationTest {
     private lateinit var employee: User
     private var companyId: Long = 0
     private var serviceId: Long = 0
-    private lateinit var staffToken: String
+    private lateinit var staffSession: Cookie
     private val reservationTime: LocalDateTime =
         LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
 
@@ -78,7 +80,7 @@ class ReservationStaffIntegrationTest {
             )
         serviceId = service.id!!
 
-        staffToken = jwtService.generateStaffToken(employee, employment)
+        staffSession = testSessions.staff(employee, employment)
     }
 
     @Test
@@ -100,7 +102,8 @@ class ReservationStaffIntegrationTest {
         // WHEN & THEN
         mockMvc
             .post("/api/reservations/staff") {
-                header("Authorization", "Bearer $staffToken")
+                with(csrf())
+                cookie(staffSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -130,7 +133,8 @@ class ReservationStaffIntegrationTest {
         val firstId =
             mockMvc
                 .post("/api/reservations/staff") {
-                    header("Authorization", "Bearer $staffToken")
+                    with(csrf())
+                    cookie(staffSession)
                     contentType = MediaType.APPLICATION_JSON
                     content = objectMapper.writeValueAsString(body)
                 }
@@ -142,7 +146,8 @@ class ReservationStaffIntegrationTest {
 
         mockMvc
             .post("/api/reservations/staff") {
-                header("Authorization", "Bearer $staffToken")
+                with(csrf())
+                cookie(staffSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -170,7 +175,8 @@ class ReservationStaffIntegrationTest {
 
         mockMvc
             .post("/api/reservations/staff") {
-                header("Authorization", "Bearer $staffToken")
+                with(csrf())
+                cookie(staffSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -203,7 +209,8 @@ class ReservationStaffIntegrationTest {
 
         mockMvc
             .post("/api/reservations/staff") {
-                header("Authorization", "Bearer $staffToken")
+                with(csrf())
+                cookie(staffSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -245,7 +252,8 @@ class ReservationStaffIntegrationTest {
 
         mockMvc
             .post("/api/reservations/staff") {
-                header("Authorization", "Bearer $staffToken")
+                with(csrf())
+                cookie(staffSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -258,7 +266,7 @@ class ReservationStaffIntegrationTest {
     }
 
     @Test
-    fun `POST reservations-staff should return 401 without token`() {
+    fun `POST reservations-staff should return 401 without session`() {
         val body =
             mapOf(
                 "employeeId" to employee.id!!,
@@ -269,6 +277,7 @@ class ReservationStaffIntegrationTest {
 
         mockMvc
             .post("/api/reservations/staff") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -302,7 +311,8 @@ class ReservationStaffIntegrationTest {
 
         mockMvc
             .post("/api/reservations/staff") {
-                header("Authorization", "Bearer $staffToken")
+                with(csrf())
+                cookie(staffSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
             }
@@ -334,7 +344,8 @@ class ReservationStaffIntegrationTest {
 
         mockMvc
             .patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
-                header("Authorization", "Bearer $staffToken")
+                with(csrf())
+                cookie(staffSession)
             }
             .andExpect {
                 status { isNoContent() }
@@ -355,7 +366,8 @@ class ReservationStaffIntegrationTest {
 
         mockMvc
             .patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
-                header("Authorization", "Bearer ${jwtService.generateStaffToken(otherOwner, otherEmployment)}")
+                with(csrf())
+                cookie(testSessions.staff(otherOwner, otherEmployment))
             }
             .andExpect {
                 status { isNotFound() }
@@ -372,7 +384,8 @@ class ReservationStaffIntegrationTest {
 
         mockMvc
             .patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
-                header("Authorization", "Bearer ${jwtService.generateCustomerToken(customer)}")
+                with(csrf())
+                cookie(testSessions.customer(customer))
             }
             .andExpect {
                 status { isForbidden() }
@@ -387,7 +400,8 @@ class ReservationStaffIntegrationTest {
 
         mockMvc
             .patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
-                header("Authorization", "Bearer $staffToken")
+                with(csrf())
+                cookie(staffSession)
             }
             .andExpect {
                 status { isConflict() }

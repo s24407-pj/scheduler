@@ -5,46 +5,44 @@ const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const STAFF_EMAIL = __ENV.STAFF_EMAIL || 'tomek@barbershop.pl';
 const STAFF_PASSWORD = __ENV.STAFF_PASSWORD || 'admin123';
 
-/**
- * Authenticates a staff member and returns the JWT token.
- */
+/** Standard cookie/CSRF login. k6's cookie jar retains HttpOnly cookies as an HTTP client. */
 export function loginStaff() {
+  const before = http.get(`${BASE_URL}/api/auth/csrf`, { timeout: '10s' });
+  if (before.status !== 200) return null;
+  const employmentId = __ENV.STAFF_EMPLOYMENT_ID ? Number(__ENV.STAFF_EMPLOYMENT_ID) : undefined;
   const res = http.post(
     `${BASE_URL}/api/auth/login-staff`,
-    JSON.stringify({ email: STAFF_EMAIL, password: STAFF_PASSWORD }),
+    JSON.stringify({ email: STAFF_EMAIL, password: STAFF_PASSWORD, employmentId }),
     {
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': before.json('token') },
       timeout: '10s',
     }
   );
-
+  const authenticated = res.status === 200 && res.json('status') === 'AUTHENTICATED';
   check(res, {
-    'staff login status 200': (r) => r.status === 200,
-    'staff login has token': (r) => !!r.json('token'),
+    'staff login authenticated': () => authenticated,
     'staff login response time < 2s': (r) => r.timings.duration < 2000,
   });
-
-  return res.json('token');
-}
-
-/**
- * Returns HTTP headers with Authorization Bearer token.
- */
-export function authHeaders(token) {
+  if (!authenticated) return null;
+  const after = http.get(`${BASE_URL}/api/auth/csrf`, { timeout: '10s' });
+  if (after.status !== 200) return null;
+  // Setup and VUs have separate cookie jars; explicitly pass standard HTTP cookie values.
+  // Never print setup data: it contains the test client's cookies.
+  const jar = http.cookieJar().cookiesForURL(BASE_URL);
   return {
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    cookies: { SESSION: jar.SESSION[0], 'XSRF-TOKEN': jar['XSRF-TOKEN'][0] },
+    csrfToken: after.json('token'),
   };
 }
 
-/**
- * Returns common JSON headers (no auth).
- */
+/** HTTP-client cookie credentials plus the non-credential CSRF header. */
+export function authHeaders(session) {
+  return {
+    cookies: session.cookies,
+    headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': session.csrfToken },
+  };
+}
+
 export function jsonHeaders() {
-  return {
-    headers: { 'Content-Type': 'application/json' },
-  };
+  return { headers: { 'Content-Type': 'application/json' } };
 }
-

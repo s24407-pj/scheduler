@@ -1,6 +1,6 @@
 # ADR-0009: Revocable sessions behind JWTs
 
-**Status:** Accepted — implemented
+**Status:** Superseded by [ADR-0011: Spring Session Redis](./0011-spring-session-redis.md). The decision below is retained as architectural history.
 
 ## Context
 

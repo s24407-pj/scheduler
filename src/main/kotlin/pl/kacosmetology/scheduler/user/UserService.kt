@@ -10,6 +10,11 @@ class UserService(
     private val userRepository: UserRepository,
 ) {
 
+    /** Loads current profile state rather than retaining domain data in the session. */
+    @Transactional(readOnly = true)
+    fun getProfile(userId: Long): User =
+        userRepository.findById(userId).orElseThrow { IllegalArgumentException("Użytkownik nie istnieje") }
+
     /** Updates the user's first name, last name and email. Validates email uniqueness. */
     @Transactional
     fun updateProfile(userId: Long, request: UpdateUserProfileRequest): User {

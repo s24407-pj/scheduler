@@ -22,7 +22,7 @@ class ScheduleBlockController(
 
     /**
      * Creates a non-overlapping schedule block for an employee of the authenticated company. OWNER may specify a target
-     * employee via [CreateScheduleBlockRequest.employeeId]; EMPLOYEE always creates for themselves (JWT identity).
+     * employee via [CreateScheduleBlockRequest.employeeId]; EMPLOYEE always creates for themselves (session identity).
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

@@ -42,7 +42,7 @@ Both endpoints end in `ReservationService.createReservation()`. Checks run in th
 | Offering exists (staff: and belongs to the staff member's company) | — | Yes, checked first | 400 `OFFERING_UNAVAILABLE` |
 | Customer resolved by phone; created if unknown, then `customerFirstName` and `customerLastName` are required | — | Yes | 400 `CUSTOMER_NAME_REQUIRED` |
 | `startTime` exists in Europe/Warsaw (not in the DST gap) | Yes | Yes | 400 `INVALID_LOCAL_TIME` |
-| Customer exists | Yes (from JWT) | Yes | 404 `CUSTOMER_NOT_FOUND` |
+| Customer exists | Yes (from session identity) | Yes | 404 `CUSTOMER_NOT_FOUND` |
 | Offering exists and is active | Yes | Yes | 400 `OFFERING_UNAVAILABLE` |
 | Employee is employed by the offering's company (and row lock is taken) | Yes | Yes | 400 `EMPLOYEE_NOT_IN_COMPANY` |
 | Identical active booking already exists → return it with 200 ([retries](#retries-and-idempotency)) | Yes | Yes | — |
@@ -87,7 +87,7 @@ Whole złoty, integer ([ADR-0008](./adr/0008-whole-zloty-pricing.md)). `reservat
 | Endpoint | Who | Returns |
 | -------- | --- | ------- |
 | `GET /api/reservations/me` | Customer | Own reservations, newest first (`ReservationResponse`) |
-| `GET /api/reservations/employee?start=&end=` | OWNER, EMPLOYEE | Caller's own schedule at the JWT's company in the range, all statuses |
+| `GET /api/reservations/employee?start=&end=` | OWNER, EMPLOYEE | Caller's own schedule at the session's company in the range, all statuses |
 | `GET /api/reservations?employeeId=&start=&end=` | OWNER (any employee in company), EMPLOYEE (self only, else 403) | `DashboardReservationResponse` with customer names; used by dashboard calendar |
 
 Ranges match reservations that overlap `[start, end)`. `start` and `end` are ISO date-times without offset ([time handling](./time-handling.md)).

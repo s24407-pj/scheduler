@@ -22,7 +22,7 @@ Run a single test class:
 Run a single test method:
 
 ```bash
-./gradlew test --tests "pl.kacosmetology.scheduler.auth.AuthFlowIntegrationTest.full customer registration and login via SMS should return token"
+./gradlew test --tests "pl.kacosmetology.scheduler.auth.AuthFlowIntegrationTest.full customer registration and login via SMS should create session"
 ```
 
 Before finishing a task, run `./gradlew test` (or a relevant subset).
@@ -40,13 +40,13 @@ JDK 25 and lefthook are pinned in `mise.toml` (`mise install && lefthook install
 
 ## Project Overview
 
-Beauty/barber salon scheduling backend: **Kotlin**, **Spring Boot 4** (Web MVC, Security, Data JPA, Validation, Actuator), **PostgreSQL** + **Flyway**, **Redis** (OTP, rate limiting, cache), **JWT**, **Cloudflare R2** for images, **Testcontainers** + **MockK**/**SpringMockK** for tests.
+Beauty/barber salon scheduling backend: **Kotlin**, **Spring Boot 4** (Web MVC, Security, Data JPA, Validation, Actuator), **PostgreSQL** + **Flyway**, **Redis** (OTP, rate limiting, cache), **Spring Session Redis**, **Cloudflare R2** for images, **Testcontainers** + **MockK**/**SpringMockK** for tests.
 
 Customers authenticate via SMS OTP; staff via email/password. Frontends: `../scheduler-dashboard-start` (TanStack Start, public booking + studio, recommended) and `../scheduler-dashboard` (legacy React admin).
 
 ```
 src/main/kotlin/pl/kacosmetology/scheduler/
-├── auth/ # SMS OTP + staff login → JWT issuance
+├── auth/ # SMS OTP + staff login → Spring Security sessions
 ├── availability/ # Available slot calculation (public), shared EmployeeAvailabilityPolicy and BookableSlotPolicy
 ├── company/ # Company entity, settings, public booking profile
 ├── config/ # Security, CORS, Redis, R2, RestExceptionHandler, DataInitializer (dev seed)
@@ -55,7 +55,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 ├── offering/ # Offering catalog, categories, images
 ├── reservation/ # Booking lifecycle
 ├── scheduleblock/ # Employee time blocks (breaks, unavailability)
-├── security/ # JWT filter, SessionStore, CustomUserDetails, CustomUserDetailsService
+├── security/ # session authorization filter, CustomUserDetails, CustomUserDetailsService
 ├── user/ # Profiles, customers (block/unblock, notes), employee photos
 └── workschedule/ # Employee weekly work schedules
 ```
@@ -75,8 +75,11 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 ## Invariants
 
 - **Layering:** Controller → Service → Repository. No cross-module service calls; modules communicate through IDs. `EmployeeAvailabilityPolicy` and `BookableSlotPolicy` (slot grid shared by availability and customer booking) are the shared exceptions. `ArchitectureTest` (Konsist) enforces this: no `*Service` imports from another module (except `security`/`config`) and no repositories in controllers.
-- **Company scoping:** staff JWTs carry exactly one `employmentId`, `companyId`, and role (`ROLE_OWNER`/`ROLE_EMPLOYEE`). Every staff operation must verify the target belongs to `userDetails.companyId`. Customer JWTs carry only `ROLE_CUSTOMER`.
-- **Sessions:** issue tokens only through `JwtService`, which registers the `jti` in `SessionStore` (Redis). A token whose session is gone is rejected, so logout and `logout-all` take effect immediately ([ADR-0009](./docs/adr/0009-revocable-sessions.md)).
+- **Company scoping:** staff session principals carry exactly one `employmentId`, `companyId`, and role (`ROLE_OWNER`/`ROLE_EMPLOYEE`). Every staff operation must verify the target belongs to `userDetails.companyId`. Customer sessions carry only `ROLE_CUSTOMER`.
+- **Sessions:** REST login calls `SessionAuthenticationService` after credentials/OTP succeed and the database transaction commits. Run fixation/CSRF strategies and explicitly save the `SecurityContext`. Keep `CustomUserDetails` immutable and scalar-only: no entities, passwords, or session IDs. Use Spring Session's indexed Redis repository, never a second custom store ([ADR-0011](./docs/adr/0011-spring-session-redis.md)).
+- **Immediate revocation:** `SessionAuthorizationFilter` reloads the user and exact employment before authorization; changed user ID, phone, employment ownership, company or role invalidates the session. Never silently update its scope. Authenticate only anonymous browsers; log out before switching employment.
+- **CSRF/cookies:** require CSRF on all unsafe requests, including public login/OTP and logout. SPA clients fetch `/api/auth/csrf`, send `X-XSRF-TOKEN` with cookies, and refresh after login/logout. `SESSION` is HttpOnly, host-only, Path=/, SameSite=Lax, Secure in prod. CORS must use explicit origins with credentials.
+- **Tests:** feature fixtures use real Redis sessions (`TestSessions`) and explicit `csrf()` request processors; session boundary tests use actual cookies/CSRF/login. Never globally bypass CSRF.
 - **Client IP:** use `request.remoteAddr` for rate limiting; never parse `X-Forwarded-For` by hand (Tomcat applies it only for `TRUSTED_PROXIES`).
 - **Double booking:** any code that creates reservations or schedule blocks must take the `company_employees` row lock (`findByCompanyIdAndUserIdForUpdate`) before checking overlap. `@Version` does not prevent double booking.
 - **Per-company employee time:** reservations, schedule blocks, work schedules, and offering assignments are scoped to (company, employee). Never query them by `employeeId` alone; a person employed by two salons has an independent calendar at each.

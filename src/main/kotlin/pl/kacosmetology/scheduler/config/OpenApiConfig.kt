@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration
 @Configuration
 class OpenApiConfig {
 
-    /** API info and the JWT bearer scheme, so Swagger UI can send authenticated requests. */
+    /** API info and the session cookie scheme, so Swagger UI can send authenticated requests. */
     @Bean
     fun openApi(): OpenAPI =
         OpenAPI()
@@ -20,13 +20,16 @@ class OpenApiConfig {
             .components(
                 Components()
                     .addSecuritySchemes(
-                        BEARER_AUTH,
-                        SecurityScheme().type(SecurityScheme.Type.HTTP).scheme("bearer").bearerFormat("JWT"),
+                        SESSION_AUTH,
+                        SecurityScheme()
+                            .type(SecurityScheme.Type.APIKEY)
+                            .`in`(SecurityScheme.In.COOKIE)
+                            .name("SESSION"),
                     ),
             )
-            .addSecurityItem(SecurityRequirement().addList(BEARER_AUTH))
+            .addSecurityItem(SecurityRequirement().addList(SESSION_AUTH))
 
     private companion object {
-        const val BEARER_AUTH = "bearerAuth"
+        const val SESSION_AUTH = "sessionAuth"
     }
 }

@@ -36,7 +36,7 @@ Without `--spring.profiles.active=dev` no profile is active: nothing is seeded, 
 
 ### API docs
 
-In the `dev` profile, Swagger UI is at <http://localhost:8080/swagger-ui.html> and the OpenAPI JSON at <http://localhost:8080/v3/api-docs>. Use **Authorize** with a token from [Getting tokens](#getting-tokens).
+In the `dev` profile, Swagger UI is at <http://localhost:8080/swagger-ui.html> and the OpenAPI JSON at <http://localhost:8080/v3/api-docs>. Sign in through the API in the browser; it retains the HttpOnly session cookie automatically. Fetch `/api/auth/csrf` before login and again afterward; Swagger UI sends the CSRF cookie value as `X-XSRF-TOKEN`. See [Signing in with cookies and CSRF](#signing-in-with-cookies-and-csrf).
 
 ## Dev data
 
@@ -51,24 +51,26 @@ The `dev` profile runs `DataInitializer` on startup. It is idempotent.
 | Work schedules | **None.** Availability returns no slots, and customer bookings are rejected with 409, until an owner sets a schedule with `PUT /api/employees/{id}/work-schedule`. |
 | Customers, reservations | None |
 
-### Getting tokens
+### Signing in with cookies and CSRF
 
 ```bash
-# Staff
-curl -s localhost:8080/api/auth/login-staff -H 'Content-Type: application/json' \
+# jq is used only to extract the CSRF token; the session identifier is never read.
+csrf=$(curl -fsS -c /tmp/scheduler-cookies http://localhost:8080/api/auth/csrf | jq -r .token)
+curl -fsS -b /tmp/scheduler-cookies -c /tmp/scheduler-cookies \
+  http://localhost:8080/api/auth/login-staff \
+  -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $csrf" \
   -d '{"email":"gabinet@kacosmetology.pl","password":"admin123"}'
-
-# Customer: request a code, read it from the app log ("MOCK SMS to: ... | OTP code: ..."), verify
-curl -s localhost:8080/api/auth/request-code -H 'Content-Type: application/json' -d '{"phoneNumber":"+48500600700"}'
-docker compose logs app | grep 'OTP code'
+# Authentication clears CSRF: refresh before any further mutation.
+csrf=$(curl -fsS -b /tmp/scheduler-cookies -c /tmp/scheduler-cookies \
+  http://localhost:8080/api/auth/csrf | jq -r .token)
+curl -fsS -b /tmp/scheduler-cookies http://localhost:8080/api/auth/me
+curl -fsS -b /tmp/scheduler-cookies -c /tmp/scheduler-cookies -X POST \
+  -H "X-XSRF-TOKEN: $csrf" http://localhost:8080/api/auth/logout
+rm -f /tmp/scheduler-cookies
 ```
 
-```bash
-curl -s localhost:8080/api/auth/verify-code -H 'Content-Type: application/json' \
-  -d '{"phoneNumber":"+48500600700","code":"<code>","firstName":"Anna","lastName":"Nowak"}'
-```
+For customers, obtain CSRF first, call `request-code`, then `verify-code` with the same cookie jar/header. In development read the received OTP locally; never publish OTP logs. First login needs `firstName` and `lastName`. Refresh CSRF after verification. Authentication JSON contains status/options and no credential. Browser clients use `credentials: 'include'`; follow the [frontend contract](./architecture.md#csrf-cookies-and-frontend-contract).
 
-`firstName` and `lastName` are needed only when the phone number has no account yet.
 
 ## Configuration
 
@@ -80,7 +82,9 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/scheduler_db` | Set by Compose to the `db` container |
 | `DB_USERNAME`, `DB_PASSWORD` | `postgres` / `password` | Database credentials (Compose also passes them as `SPRING_DATASOURCE_USERNAME/PASSWORD`) |
 | `REDIS_HOST`, `REDIS_PORT` | `localhost` / `6379` | Redis (Compose sets `SPRING_DATA_REDIS_HOST/PORT` instead) |
-| `JWT_SECRET`, `JWT_EXPIRATION_MS` | dev secret / 24 h | Token signing and session lifetime. Startup fails if the secret is under 32 bytes, or is the dev default outside the `dev`/`test` profiles |
+| `SPRING_SESSION_TIMEOUT` | `24h` | Spring Session inactivity timeout |
+| `SPRING_SESSION_DATA_REDIS_NAMESPACE` | `scheduler:sessions` | Application-specific session namespace; share between API instances |
+| `SERVER_SERVLET_SESSION_COOKIE_SECURE` | request HTTPS detection; true in prod | Keep true in production; no cookie Domain; SameSite=Lax |
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed origins |
 | `OTP_TTL_MINUTES` | 5 | OTP lifetime |
 | `OTP_MAX_ATTEMPTS`, `OTP_RATE_WINDOW_MINUTES` | 3 / 5 | OTP requests per phone per window |
@@ -98,14 +102,14 @@ Profiles:
 - `prod` (`application-prod.yaml`): INFO/WARN logging as ECS JSON on the console, no SQL logging. `ConsoleSmsSender` is disabled, so a real `SmsSender` is required.
 
 Every request gets an ID (`RequestIdFilter`): a valid incoming `X-Request-Id` (up to 64 characters of `[A-Za-z0-9-]`) is reused, otherwise a UUID is generated. It is returned in the `X-Request-Id` response header and stored in the log MDC as `requestId`, so plain-text log lines show it in brackets and ECS logs carry it as a field.
-- `test`: set by Gradle for every test run; allows the dev `JWT_SECRET` default.
+- `test`: set by Gradle for every test run; uses local test infrastructure.
 
 ## Testing
 
 ```bash
 ./gradlew test                                   # everything (needs Docker/Podman)
 ./gradlew test --tests "pl.kacosmetology.scheduler.auth.AuthFlowIntegrationTest"
-./gradlew test --tests "pl.kacosmetology.scheduler.auth.AuthFlowIntegrationTest.full customer registration and login via SMS should return token"
+./gradlew test --tests "pl.kacosmetology.scheduler.auth.AuthFlowIntegrationTest.full customer registration and login via SMS should create session"
 ```
 
 Every feature needs a service unit test and an HTTP integration test. Test names are backtick strings in English or Polish.

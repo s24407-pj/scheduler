@@ -42,7 +42,7 @@ class ArchitectureTest {
     private companion object {
         const val ROOT_PACKAGE = "pl.kacosmetology.scheduler"
 
-        /** Infrastructure modules whose services (e.g. `JwtService`) any module may use. */
+        /** Infrastructure modules whose services (e.g. `SessionAuthenticationService`) any module may use. */
         val SHARED_MODULES = setOf("security", "config")
     }
 }

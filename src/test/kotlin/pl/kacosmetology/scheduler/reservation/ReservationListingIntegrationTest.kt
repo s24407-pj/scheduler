@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.reservation
 
 import com.ninjasquad.springmockk.MockkBean
+import jakarta.servlet.http.Cookie
 import java.time.LocalDateTime
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -17,7 +18,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -39,12 +40,12 @@ class ReservationListingIntegrationTest {
 
     @Autowired private lateinit var reservationRepository: ReservationRepository
 
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private lateinit var customerToken: String
-    private lateinit var employeeToken: String
+    private lateinit var customerSession: Cookie
+    private lateinit var employeeSession: Cookie
     private lateinit var todayStart: LocalDateTime
     private lateinit var todayEnd: LocalDateTime
 
@@ -77,8 +78,8 @@ class ReservationListingIntegrationTest {
                 ),
             )
 
-        employeeToken = jwtService.generateStaffToken(employee, employeeEmployment)
-        customerToken = jwtService.generateCustomerToken(customerA)
+        employeeSession = testSessions.staff(employee, employeeEmployment)
+        customerSession = testSessions.customer(customerA)
 
         // 4. Tworzymy usługę
         val service =
@@ -142,7 +143,7 @@ class ReservationListingIntegrationTest {
     fun `customer should see only own reservations sorted descending by newest (200)`() {
         mockMvc
             .get("/api/reservations/me") {
-                header("Authorization", "Bearer $customerToken")
+                cookie(customerSession)
             }
             .andExpect {
                 status { isOk() }
@@ -172,7 +173,7 @@ class ReservationListingIntegrationTest {
     fun `employee should see full schedule for a given day sorted ascending (200)`() {
         mockMvc
             .get("/api/reservations/employee") {
-                header("Authorization", "Bearer $employeeToken")
+                cookie(employeeSession)
                 param("start", todayStart.toString())
                 param("end", todayEnd.toString())
             }
@@ -225,7 +226,7 @@ class ReservationListingIntegrationTest {
 
         mockMvc
             .get("/api/reservations/employee") {
-                header("Authorization", "Bearer $employeeToken")
+                cookie(employeeSession)
                 param("start", todayStart.toString())
                 param("end", todayStart.plusHours(1).toString())
             }
@@ -246,7 +247,7 @@ class ReservationListingIntegrationTest {
     fun `customer cannot access employee schedule (403)`() {
         mockMvc
             .get("/api/reservations/employee") {
-                header("Authorization", "Bearer $customerToken")
+                cookie(customerSession)
                 param("start", todayStart.toString())
                 param("end", todayEnd.toString())
             }
