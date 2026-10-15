@@ -32,16 +32,17 @@ class BookingSubmissionService(
         val payload = mapper.writeValueAsString(request)
         val hash =
             MessageDigest.getInstance("SHA-256").digest(payload.toByteArray()).joinToString("") { "%02x".format(it) }
-        independent.executeWithoutResult {
-            jdbc.update(
-                "INSERT INTO booking_submissions(account_key, submission_key, request_hash, request_payload) VALUES (?,?,?,?) ON CONFLICT DO NOTHING",
-                accountKey,
-                key,
-                hash,
-                payload,
-            )
-        }
         try {
+            independent.executeWithoutResult {
+                jdbc.execute("SET LOCAL lock_timeout = '5s'")
+                jdbc.update(
+                    "INSERT INTO booking_submissions(account_key, submission_key, request_hash, request_payload) VALUES (?,?,?,?) ON CONFLICT DO NOTHING",
+                    accountKey,
+                    key,
+                    hash,
+                    payload,
+                )
+            }
             return checkNotNull(
                 independent.execute {
                     jdbc.execute("SET LOCAL lock_timeout = '5s'")

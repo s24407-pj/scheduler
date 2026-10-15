@@ -104,7 +104,8 @@ allOpen {
 
 tasks.withType<Test> {
     useJUnitPlatform()
-    systemProperty("user.timezone", "Europe/Warsaw")
+    systemProperty("user.timezone", "UTC")
+    systemProperty("scheduler.jobs.enabled", "false")
     systemProperty("spring.profiles.active", "test")
 }
 

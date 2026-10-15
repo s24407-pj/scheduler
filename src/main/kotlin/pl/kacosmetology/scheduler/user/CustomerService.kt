@@ -12,6 +12,7 @@ class CustomerService(
     private val reservationRepository: ReservationRepository,
     private val companyCustomerBlockRepository: CompanyCustomerBlockRepository,
     private val companyCustomerRepository: CompanyCustomerRepository,
+    private val blocking: CustomerBlockingPolicy,
 ) {
 
     /**
@@ -32,7 +33,7 @@ class CustomerService(
                     profile.firstName,
                     profile.lastName,
                     account.phoneNumber,
-                    block?.noShowCount ?: 0,
+                    blocking.currentCount(companyId, profile.userId),
                     block?.blocked ?: false,
                     profile.notes,
                     profile.contactEmail,
@@ -57,7 +58,7 @@ class CustomerService(
             firstName = companyCustomer.firstName,
             lastName = companyCustomer.lastName,
             phoneNumber = customer.phoneNumber,
-            noShowCount = block?.noShowCount ?: 0,
+            noShowCount = blocking.currentCount(companyId, customerId),
             blocked = block?.blocked ?: false,
             notes = companyCustomer.notes,
             contactEmail = companyCustomer.contactEmail,
@@ -115,42 +116,9 @@ class CustomerService(
         profile.contactEmail = request.contactEmail?.trim()?.ifBlank { null }
     }
 
-    /**
-     * Blocks a customer from online booking at the given company. Throws [NoSuchElementException] if the user is not
-     * found. Throws [IllegalArgumentException] if the customer has no reservations in the given company (prevents
-     * blocking arbitrary users from another company).
-     */
-    @Transactional
-    fun blockCustomer(customerId: Long, companyId: Long) {
-        if (!userRepository.existsById(customerId)) {
-            throw NoSuchElementException("Klient nie istnieje")
-        }
-        if (!reservationRepository.existsByCustomerIdAndCompanyId(customerId, companyId)) {
-            throw IllegalArgumentException("Klient nie ma żadnych rezerwacji w tej firmie")
-        }
-        val block =
-            companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId)
-                ?: CompanyCustomerBlock(companyId = companyId, customerId = customerId)
-        block.blocked = true
-        companyCustomerBlockRepository.save(block)
-    }
+    /** Manually blocks only a legitimate local customer and cancels future visits atomically. */
+    @Transactional fun blockCustomer(customerId: Long, companyId: Long) = blocking.block(companyId, customerId)
 
-    /**
-     * Unblocks a customer and resets their no-show counter to zero for the given company. Throws
-     * [NoSuchElementException] if the user is not found. Throws [IllegalArgumentException] if the customer has no
-     * reservations in the given company.
-     */
-    @Transactional
-    fun unblockCustomer(customerId: Long, companyId: Long) {
-        if (!userRepository.existsById(customerId)) {
-            throw NoSuchElementException("Klient nie istnieje")
-        }
-        if (!reservationRepository.existsByCustomerIdAndCompanyId(customerId, companyId)) {
-            throw IllegalArgumentException("Klient nie ma żadnych rezerwacji w tej firmie")
-        }
-        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId) ?: return
-        block.blocked = false
-        block.noShowCount = 0
-        companyCustomerBlockRepository.save(block)
-    }
+    /** Gives a company-local reprieve without resetting penalties or restoring cancelled appointments. */
+    @Transactional fun unblockCustomer(customerId: Long, companyId: Long) = blocking.unblock(companyId, customerId)
 }

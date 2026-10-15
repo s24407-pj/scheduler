@@ -1,93 +1,56 @@
 # Reservations
 
-A reservation books one employee for one offering at one company, from `startTime` to `endTime` (`startTime + offering.durationMinutes`). Code: `reservation/`.
+A booking is automatic. Its initial status is `BOOKED`; there is no approval, hold, `PENDING` or `CONFIRMED` stage. Customers authenticate globally by phone, but their names, email, notes and visit relationship belong to each salon. The first successful booking requires first/last name and creates that salon profile in the booking transaction. Failed bookings and OTP verification do not create it. Existing profile values can only be changed by staff.
+
+## Submission and response
+
+Both `POST /api/reservations` (CUSTOMER) and `POST /api/reservations/staff` (OWNER/EMPLOYEE) require `Idempotency-Key`, the session cookie and CSRF header. A key belongs to the authenticated realm/account. Its original payload is durably bound even when validation fails; retrying that payload may later succeed, while changing it returns 409. After success, the key permanently identifies the reservation. Replays return its current details, including after edits, outcomes and archive, with no allocation or repeated side effect. Concurrent identical submissions wait up to five seconds, then return an explicit in-progress conflict if necessary.
+
+Responses contain the reservation/company/service/employee IDs; current company name/address and employee name; accepted service name, price and duration; start/end, status, revision, archive flag and original creation time. Private cancellation reasons never appear in customer responses. `serviceNameSource` identifies names reconstructed from the current catalog during legacy migration; they are not presented as verified historical names.
+
+Every booking POST counts toward rolling request limits: 10/account/minute and 60/IP/minute, including retries. Limits are atomic in Redis and return 429 with `Retry-After`. The company future customer-created booking cap defaults to 10; staff-created appointments are exempt, and reducing the cap preserves existing bookings.
+
+## Customer booking
+
+The customer endpoint accepts an optional employee ID; null requests any eligible employee. Minimum notice defaults to zero, meaning strictly future start. Positive notice is inclusive and uses elapsed minutes. The maximum horizon defaults to 90 Warsaw calendar days, including the entire final date. The full accepted duration must fit the effective shift and shift-relative grid. Current qualification, staff activity, blocks, customer blocks, employee conflicts and company-local customer conflicts apply. Missing schedules offer no slots. Appointment times must be unique Warsaw local times and cannot span a DST transition.
+
+Any-employee allocation runs under the company lock. Among eligible free staff it minimizes booked-plus-completed service minutes for the requested date divided by full effective shift minutes; blocks do not reduce the denominator. Ties are randomized.
+
+Pricing and ten-minute quotes are described in [pricing](./pricing.md). A quote protects the accepted price, duration and service name without holding a slot; it does not bypass current hard scheduling rules.
+
+## Manual booking and editing
+
+Both staff roles may book future or ongoing appointments whose resulting end remains future. Manual bookings bypass customer grid, hours, notice and horizon, use regular catalog price by default, and may explicitly override whole-złoty price and duration. Active qualified staff, active service, customer restrictions and both conflict invariants remain. Only an owner may explicitly override a stored employee block.
+
+`PUT /api/reservations/{id}` requires `If-Match` with the last observed revision (numeric or quoted ETag). Only `BOOKED` visits whose current and resulting ends remain future may be edited. IDs, creation time and customer remain unchanged. For the same service, accepted name/price/duration are retained unless price/duration are explicitly overridden; an unchanged inactive service may remain. Changing service defaults to its regular price, duration and current name. Customers cannot self-reschedule. A blocked customer's ongoing visit may keep its original start for finishing edits but cannot move to a future start.
 
 ## Lifecycle
 
-Decision records: [ADR-0002](./adr/0002-reservation-lifecycle-and-cancellation.md), cancellation and no-show windows in [ADR-0010](./adr/0010-cancellation-window-and-no-show-correction.md).
+Lifecycle PATCH requests require `If-Match`. A successful cancellation/completion/no-show command can be repeated without further effects while its original outcome remains unchanged. Replaying an old command after reversal/correction conflicts, even if a later command reached the same status again. Stale ordinary writes return 409.
 
-| Status | Meaning | Active (occupies the slot)? |
-| ------ | ------- | --------------------------- |
-| `PENDING` | Booked. Initial state for every reservation. No confirmation step exists. | Yes |
-| `CONFIRMED` | Not used by the business process; never set by code. Treated like `PENDING`. Scheduled for removal. | Yes |
-| `COMPLETED` | Visit took place (set by staff or by the hourly auto-complete job). | No |
-| `CANCELLED` | Cancelled. | No |
-| `NO_SHOW` | Customer did not attend. Increments the company-scoped no-show counter. | No |
+| Transition | Who | Conditions |
+| --- | --- | --- |
+| BOOKED → CANCELLED | Owning customer | Strictly before start; optional reason |
+| BOOKED/COMPLETED → CANCELLED | Either staff role | Any time; private internal reason required; separate customer explanation optional |
+| BOOKED → COMPLETED | Either staff role | From scheduled start |
+| BOOKED → COMPLETED | Automatic | Every minute, catches up after restart; each row audited/versioned |
+| BOOKED/COMPLETED → NO_SHOW | Staff | From start; employee deadline is end +24 elapsed hours, owner unlimited |
+| NO_SHOW → COMPLETED/CANCELLED | Staff | Employee same deadline, owner unlimited; remove mistaken penalty |
+| NO_SHOW → BOOKED | Staff | Ongoing visit only, correction deadline and current hard checks |
+| CANCELLED → BOOKED | Staff | Future/ongoing, unarchived, current restoration hard checks; preserve agreement |
 
-"Active" means the reservation blocks the slot in availability, in the overlap check, and in the database exclusion constraint.
+Completed appointments retain their full original occupied interval. Corrections cannot violate employee or customer exclusions.
 
-### Transitions
+Owner-only `/archive` and `/unarchive` retain the database record, audit and submission identity. Only CANCELLED visits may be archived. Archived visits are hidden from normal customer and staff lists and must be unarchived before restoration. There is no permanent deletion endpoint.
 
-| From | To | Who | Endpoint | Conditions |
-| ---- | -- | --- | -------- | ---------- |
-| — | `PENDING` | Customer | `POST /api/reservations` | See [booking rules](#booking-rules) |
-| — | `PENDING` | OWNER, EMPLOYEE | `POST /api/reservations/staff` | See [booking rules](#booking-rules) |
-| `PENDING` | `CANCELLED` | Owning customer | `PATCH /api/reservations/{id}/cancel` | Only while `now < startTime`; at or after start → 409 |
-| `PENDING` | `CANCELLED` | OWNER, EMPLOYEE | `PATCH /api/reservations/{id}/cancel-by-staff` | Same company. Any time, including after start |
-| `PENDING` | `COMPLETED` | OWNER, EMPLOYEE | `PATCH /api/reservations/{id}/complete` | Same company |
-| `PENDING` | `COMPLETED` | System | Hourly job | `endTime` has passed |
-| `PENDING` | `NO_SHOW` | OWNER, EMPLOYEE | `PATCH /api/reservations/{id}/no-show` | Same company. Only once `now >= startTime` |
-| `COMPLETED` | `NO_SHOW` | OWNER, EMPLOYEE | `PATCH /api/reservations/{id}/no-show` | Same company. Correction window: until `endTime + 24 h`. Applies whether staff or the hourly job completed it |
-| any | (deleted) | OWNER | `DELETE /api/reservations/{id}` | Same company. Hard delete, no SMS. |
+## Blocking and no-show history
 
-Every `PENDING` row above applies equally to `CONFIRMED`. Apart from the `COMPLETED → NO_SHOW` correction, transitions out of terminal states (`COMPLETED`, `CANCELLED`, `NO_SHOW`) are rejected with 409 `INVALID_STATUS_TRANSITION`, as are the time-window violations above. A reservation of another company, or another customer's reservation on cancel, is reported as 404 `RESERVATION_NOT_FOUND`.
+Owner manual block/unblock is company-local and does not affect authentication. Blocking cancels future BOOKED visits, preserves ongoing visits, and prevents both customer and staff future bookings. Unblocking never restores visits and never resets penalties. Manual and automatic block provenance are separate.
 
-## Booking rules
+Durable no-show penalties count by Warsaw appointment date over the inclusive interval from today's date minus one calendar year through today. Default threshold is three; zero disables new automatic blocks. Aging decreases the displayed current count without removing an existing block. Correcting a mistaken no-show removes its penalty and may remove an automatic block below threshold, preserving manual blocks. An owner unblock grants reprieve; the next counted no-show may block again. Threshold changes do not retroactively add/remove blocks.
 
-Both endpoints end in `ReservationService.createReservation()`. Checks run in this order; failures use the [error codes](./api/errors.md) shown:
+## Atomicity, audit and notifications
 
-| Check | Customer booking | Staff booking | Failure |
-| ----- | ---------------- | ------------- | ------- |
-| `startTime` is in the future (`@Future`) | Yes | Yes | 400 `VALIDATION_FAILED` |
-| Offering exists (staff: and belongs to the staff member's company) | — | Yes, checked first | 400 `OFFERING_UNAVAILABLE` |
-| Customer resolved by phone; created if unknown, then `customerFirstName` and `customerLastName` are required | — | Yes | 400 `CUSTOMER_NAME_REQUIRED` |
-| `startTime` exists in Europe/Warsaw (not in the DST gap) | Yes | Yes | 400 `INVALID_LOCAL_TIME` |
-| Customer exists | Yes (from session identity) | Yes | 404 `CUSTOMER_NOT_FOUND` |
-| Offering exists and is active | Yes | Yes | 400 `OFFERING_UNAVAILABLE` |
-| Employee is employed by the offering's company (and row lock is taken) | Yes | Yes | 400 `EMPLOYEE_NOT_IN_COMPANY` |
-| Identical active booking already exists → return it with 200 ([retries](#retries-and-idempotency)) | Yes | Yes | — |
-| Employee performs the offering (only if the employee has any assignments) | Yes | Yes | 400 `EMPLOYEE_OFFERING_NOT_ASSIGNED` |
-| Customer not blocked at the company | Yes | Yes | 400 `CUSTOMER_BLOCKED` |
-| `startTime` at least `minBookingAdvanceMinutes` from now | Yes | **No** | 400 `BOOKING_ADVANCE_REQUIRED` |
-| `startTime` is a slot on the grid: inside the employee's work schedule at the offering's company, a multiple of `slotIntervalMinutes` from the schedule start, and ending by the schedule end (`BookableSlotPolicy`) | Yes | **No** | 409 `SLOT_UNAVAILABLE` |
-| No overlap with active reservations or schedule blocks at the same company | Yes | Yes | 409 `SLOT_UNAVAILABLE` |
+Booking obtains the company row lock and the company/employee row lock before authoritative clock checks. Company policy mutations use the same lock order. PostgreSQL exclusion constraints independently protect `(company, employee)` and `(company, customer)` occupied intervals. Optimistic revisions protect record changes. Every actual creation, edit, outcome, restoration, archive and unarchive is durably audited with actor, account, time and before/after state.
 
-Customer bookings accept exactly the start times [availability](./availability.md) would list. Staff are intentionally allowed to book outside working hours and off the grid. Changing a work schedule or the slot interval does not affect existing bookings; only new customer bookings are checked, so a client who loaded slots before the change can get 409 and must pick again.
-
-## Concurrency
-
-Decision record: [ADR-0001](./adr/0001-double-booking-prevention.md).
-
-- Bookings and block creation for one employee in one company are serialized by a `PESSIMISTIC_WRITE` lock on the `company_employees` row.
-- The overlap check runs under that lock; a database exclusion constraint is the backstop.
-- `@Version` protects status changes on an existing reservation, not slot conflicts.
-- An exclusion-constraint violation returns 409 `SLOT_UNAVAILABLE`; a `@Version` conflict returns 409 `CONCURRENT_MODIFICATION`.
-- Overlap is checked per (company, employee) in both the query and the constraint (`V2__scope_reservation_overlap_by_company.sql`): a booking at salon A does not block the same person at salon B.
-
-## Retries and idempotency
-
-Decision record: [ADR-0006](./adr/0006-booking-idempotency.md). There are no payments or webhooks and no `Idempotency-Key` header.
-
-- Both booking endpoints are naturally idempotent. If the customer already has an active reservation with the same `employeeId`, `serviceId`, and `startTime`, the response is **200** with that reservation instead of **201** with a new one. No second confirmation SMS is sent.
-- The check runs under the employment row lock, so concurrent retries cannot both create a reservation.
-- Staff bookings for an unknown phone number create the customer with `INSERT ... ON CONFLICT DO NOTHING`; concurrent requests for the same number share one account.
-
-## Pricing
-
-Whole złoty, integer ([ADR-0008](./adr/0008-whole-zloty-pricing.md)). `reservations.price` is a snapshot at booking time: customer price applies the last-minute discount within an inclusive elapsed-time window and rounds nearest with ties to even. Staff manual booking defaults to regular price. Optional [quotes](./pricing.md) protect accepted service name, price and duration for ten elapsed minutes; a valid quote survives catalog deactivation and commercial changes. An idempotent replay returns current reservation details with its saved commercial agreement.
-
-## Side effects
-
-- Confirmation SMS after a booking commits; cancellation SMS after a cancellation commits. Failures are logged only.
-- Reminder SMS 23–25 hours before `startTime` (hourly job, deduplicated by `reminder_sent`).
-- See [architecture: notifications](./architecture.md#notifications-and-scheduled-jobs) for the known SMS gap.
-
-## Reading reservations
-
-| Endpoint | Who | Returns |
-| -------- | --- | ------- |
-| `GET /api/reservations/me` | Customer | Own reservations, newest first (`ReservationResponse`) |
-| `GET /api/reservations/employee?start=&end=` | OWNER, EMPLOYEE | Caller's own schedule at the session's company in the range, all statuses |
-| `GET /api/reservations?employeeId=&start=&end=` | OWNER (any employee in company), EMPLOYEE (self only, else 403) | `DashboardReservationResponse` with customer names; used by dashboard calendar |
-
-Ranges match reservations that overlap `[start, end)`. `start` and `end` are ISO date-times without offset ([time handling](./time-handling.md)).
+Customer-created bookings have page/API confirmation only. Staff create/edit/restore/cancel SMS is opt-in, default off, and only actual changes generate it. All sends occur after commit through durable delivery state. Block cancellations generate one filtered mandatory summary. Reminder timing/retry and ambiguous-provider rules are described in [notifications](./notifications.md).

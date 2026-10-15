@@ -76,7 +76,12 @@ class RestExceptionHandler : ResponseEntityExceptionHandler() {
     /** OTP or login rate limit exceeded. */
     @ExceptionHandler(RateLimitExceededException::class)
     fun handleRateLimit(ex: RateLimitExceededException): ResponseEntity<ProblemDetail> =
-        problem(ErrorCode.RATE_LIMITED, ex.message ?: "Zbyt wiele żądań")
+        ResponseEntity.status(429)
+            .header("Retry-After", ex.retryAfterSeconds.coerceAtLeast(1).toString())
+            .body(
+                ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.message ?: "Zbyt wiele żądań")
+                    .coded(ErrorCode.RATE_LIMITED),
+            )
 
     /** Fallback for uncoded business rule violations. */
     @ExceptionHandler(IllegalArgumentException::class)

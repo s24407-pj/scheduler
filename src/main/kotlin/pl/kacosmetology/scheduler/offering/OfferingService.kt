@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 
@@ -13,6 +14,7 @@ import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 @Service
 class OfferingService(
     private val offeringRepository: OfferingRepository,
+    private val companies: CompanyRepository,
     private val offeringImageService: OfferingImageService,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
     private val assignmentRepository: EmployeeOfferingAssignmentRepository,
@@ -56,6 +58,7 @@ class OfferingService(
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun createOffering(companyId: Long, request: OfferingRequest): Offering {
+        companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         return offeringRepository.save(
             Offering(
                 companyId = companyId,
@@ -70,6 +73,7 @@ class OfferingService(
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun updateOffering(id: Long, companyId: Long, request: OfferingRequest): Offering {
+        companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val existing = getOfferingById(id)
 
         if (existing.companyId != companyId) {
@@ -86,6 +90,7 @@ class OfferingService(
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun activateOffering(id: Long, companyId: Long) {
+        companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val existing = getOfferingById(id)
 
         if (existing.companyId != companyId) {
@@ -102,6 +107,7 @@ class OfferingService(
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun uploadImage(offeringId: Long, companyId: Long, file: MultipartFile): Offering {
+        companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val offering = getOfferingById(offeringId)
         if (offering.companyId != companyId) throw NoSuchElementException("Usługa nie istnieje")
         offeringImageService.upload(companyId, offeringId, file)
@@ -112,6 +118,7 @@ class OfferingService(
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun deleteImage(offeringId: Long, imageId: Long, companyId: Long): Offering {
+        companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val offering = getOfferingById(offeringId)
         if (offering.companyId != companyId) throw NoSuchElementException("Usługa nie istnieje")
         offeringImageService.delete(imageId, offeringId)
@@ -122,6 +129,7 @@ class OfferingService(
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun deleteOffering(id: Long, companyId: Long) {
+        companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val existing = getOfferingById(id)
 
         if (existing.companyId != companyId) {

@@ -35,6 +35,7 @@ class Reservation(
     @Column(name = "customer_explanation") var customerExplanation: String? = null,
     @Column(name = "reminder_sent", nullable = false) var reminderSent: Boolean = false,
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
+    @org.hibernate.annotations.Generated(event = [org.hibernate.generator.EventType.INSERT])
     val createdAt: LocalDateTime? = null,
 ) {
     @Id

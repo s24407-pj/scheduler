@@ -14,7 +14,10 @@ import tools.jackson.databind.deser.std.StdDeserializer
 import tools.jackson.databind.module.SimpleModule
 
 /** Parses an offset-free local date-time without silently discarding timezone data. */
-fun parseLocalDateTime(value: String): LocalDateTime = LocalDateTime.parse(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+fun parseLocalDateTime(value: String): LocalDateTime =
+    LocalDateTime.parse(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME).also {
+        require(it.nano % 1000 == 0) { "Czas może zawierać maksymalnie 6 cyfr ułamkowych sekundy" }
+    }
 
 /** Strict JSON and query conversion; numeric fractions and unknown fields are never discarded. */
 @Configuration

@@ -7,168 +7,238 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
-import org.springframework.web.server.ResponseStatusException
 import pl.kacosmetology.scheduler.reservation.dto.*
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
-/**
- * REST API for managing reservations from both customer and staff perspectives. Customers can create and cancel their
- * own reservations; staff can view schedules and complete bookings.
- */
+/** Cookie-authenticated booking, revision-bound lifecycle operations, and company calendars. */
 @RestController
 @RequestMapping("/api/reservations")
 class ReservationController(
     private val reservationService: ReservationService,
+    private val submissions: BookingSubmissionService,
 ) {
-
-    /**
-     * Creates a new reservation for the authenticated customer (201). Repeating an identical request returns the
-     * existing active reservation with 200 instead of failing as a conflict.
-     */
+    /** Required durable submission identity binds the original payload, including after a failed booking attempt. */
     @PostMapping
     @PreAuthorize("hasRole('CUSTOMER')")
     fun createReservation(
         @Valid @RequestBody request: CreateReservationRequest,
+        @RequestHeader("Idempotency-Key") key: String,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
-    ): ResponseEntity<ReservationResponse> {
-        return reservationService
-            .createReservation(
-                customerId = userDetails.id,
-                employeeId = request.employeeId,
-                offeringId = request.serviceId,
-                startTime = request.startTime,
-            )
+    ): ResponseEntity<ReservationResponse> =
+        submissions
+            .execute(userDetails.accountKey(), key, request) {
+                reservationService.createReservation(
+                    userDetails.id,
+                    request.employeeId,
+                    request.serviceId,
+                    request.startTime,
+                    firstName = request.firstName,
+                    lastName = request.lastName,
+                    contactEmail = request.contactEmail,
+                    quoteId = request.quoteId,
+                )
+            }
             .toResponseEntity()
-    }
 
-    /** Cancels the customer's own reservation. Allowed only before the visit starts. */
-    @PreAuthorize("hasRole('CUSTOMER')")
+    /** Both staff roles may create company bookings; regular price and notification-off are the defaults. */
+    @PostMapping("/staff")
+    @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
+    fun createReservationByStaff(
+        @Valid @RequestBody request: StaffCreateReservationRequest,
+        @RequestHeader("Idempotency-Key") key: String,
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
+    ): ResponseEntity<ReservationResponse> =
+        submissions
+            .execute(userDetails.accountKey(), key, request) {
+                reservationService.createReservationByStaff(
+                    requireNotNull(request.employeeId),
+                    requireNotNull(request.serviceId),
+                    requireNotNull(request.startTime),
+                    requireNotNull(request.customerPhone),
+                    request.customerFirstName,
+                    request.customerLastName,
+                    userDetails.requireCompanyId(),
+                    request.price,
+                    request.durationMinutes,
+                    request.overrideEmployeeBlock,
+                    userDetails.isOwner(),
+                    request.notifyCustomer,
+                )
+            }
+            .toResponseEntity()
+
+    /** Direct edits preserve ID/creation time and require the last observed revision. */
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
+    fun edit(
+        @PathVariable id: Long,
+        @RequestHeader("If-Match") revision: String,
+        @Valid @RequestBody request: EditReservationRequest,
+        @AuthenticationPrincipal user: CustomUserDetails,
+    ): ReservationResponse =
+        reservationService.response(
+            reservationService.editReservation(
+                id,
+                user.requireCompanyId(),
+                revision(revision),
+                request,
+                user.isOwner(),
+            ),
+        )
+
+    /** Owning customers may cancel strictly before the scheduled start. */
     @PatchMapping("/{id}/cancel")
+    @PreAuthorize("hasRole('CUSTOMER')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun cancelReservation(
         @PathVariable id: Long,
+        @RequestHeader("If-Match") revision: String,
+        @Valid @RequestBody(required = false) request: ReservationActionRequest?,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
-        reservationService.cancelReservation(id, userDetails.id)
+        reservationService.cancelReservation(id, userDetails.id, revision(revision), request?.reason)
     }
 
-    /**
-     * Cancels any active reservation of the staff member's company, including after the visit started. Requires OWNER
-     * or EMPLOYEE role.
-     */
+    /** Staff cancellation reason is required and remains private. */
     @PatchMapping("/{id}/cancel-by-staff")
+    @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun cancelReservationByStaff(
         @PathVariable id: Long,
+        @RequestHeader("If-Match") revision: String,
+        @Valid @RequestBody request: ReservationActionRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
-        reservationService.cancelReservationByStaff(id, userDetails.requireCompanyId())
+        reservationService.cancelReservationByStaff(
+            id,
+            userDetails.requireCompanyId(),
+            revision(revision),
+            request,
+            userDetails.isOwner(),
+        )
     }
 
-    /** Marks a reservation as completed. Requires OWNER or EMPLOYEE role. */
+    /** Completion is available from scheduled start, including correction of a mistaken no-show. */
     @PatchMapping("/{id}/complete")
+    @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun completeReservation(
         @PathVariable id: Long,
+        @RequestHeader("If-Match") revision: String,
+        @Valid @RequestBody(required = false) request: ReservationActionRequest?,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
-        val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
-        reservationService.completeReservation(id, companyId)
+        reservationService.completeReservation(
+            id,
+            userDetails.requireCompanyId(),
+            revision(revision),
+            request ?: ReservationActionRequest(),
+            userDetails.isOwner(),
+        )
     }
 
-    /** Marks a reservation as no-show and increments the customer's counter. Requires OWNER or EMPLOYEE role. */
+    /** Marks no-show with role-specific correction deadline and a durable penalty event. */
     @PatchMapping("/{id}/no-show")
+    @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun markNoShow(
         @PathVariable id: Long,
+        @RequestHeader("If-Match") revision: String,
+        @Valid @RequestBody(required = false) request: ReservationActionRequest?,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
-        val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
-        reservationService.markNoShow(id, companyId)
+        reservationService.markNoShow(
+            id,
+            userDetails.requireCompanyId(),
+            revision(revision),
+            request ?: ReservationActionRequest(),
+            userDetails.isOwner(),
+        )
     }
 
-    /** Returns the authenticated customer's reservation history. */
-    @PreAuthorize("hasRole('CUSTOMER')")
+    /** Restores a cancelled visit, or reopens an ongoing mistaken no-show, under current hard rules. */
+    @PatchMapping("/{id}/restore")
+    @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun restore(
+        @PathVariable id: Long,
+        @RequestHeader("If-Match") revision: String,
+        @Valid @RequestBody(required = false) request: ReservationActionRequest?,
+        @AuthenticationPrincipal user: CustomUserDetails,
+    ) {
+        reservationService.restoreReservation(
+            id,
+            user.requireCompanyId(),
+            revision(revision),
+            request ?: ReservationActionRequest(),
+            user.isOwner(),
+        )
+    }
+
+    /** Archives only cancelled appointments, retaining audit and replay identity. */
+    @PatchMapping("/{id}/archive")
+    @PreAuthorize("hasRole('OWNER')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun archive(
+        @PathVariable id: Long,
+        @RequestHeader("If-Match") revision: String,
+        @AuthenticationPrincipal user: CustomUserDetails,
+    ) {
+        reservationService.archiveReservation(id, user.requireCompanyId(), revision(revision), true)
+    }
+
+    /** Unarchiving is required before restoration. */
+    @PatchMapping("/{id}/unarchive")
+    @PreAuthorize("hasRole('OWNER')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun unarchive(
+        @PathVariable id: Long,
+        @RequestHeader("If-Match") revision: String,
+        @AuthenticationPrincipal user: CustomUserDetails,
+    ) {
+        reservationService.archiveReservation(id, user.requireCompanyId(), revision(revision), false)
+    }
+
+    /** Lists own unarchived history without staff-only notes or reasons. */
     @GetMapping("/me")
-    fun getMyReservations(@AuthenticationPrincipal userDetails: CustomUserDetails): List<ReservationResponse> {
-        return reservationService.getCustomerReservations(userDetails.id).map { it.toResponse() }
-    }
+    @PreAuthorize("hasRole('CUSTOMER')")
+    fun getMyReservations(@AuthenticationPrincipal userDetails: CustomUserDetails): List<ReservationResponse> =
+        reservationService.getCustomerReservations(userDetails.id).map(reservationService::response)
 
-    /**
-     * Returns the authenticated employee's schedule at their session's company within a time range. Requires OWNER or
-     * EMPLOYEE role.
-     */
+    /** Reads the caller's calendar in the authenticated company. */
     @GetMapping("/employee")
-    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
     fun getEmployeeSchedule(
         @AuthenticationPrincipal userDetails: CustomUserDetails,
         @RequestParam start: LocalDateTime,
         @RequestParam end: LocalDateTime,
-    ): List<EmployeeReservationResponse> {
-        return reservationService.getEmployeeSchedule(userDetails.requireCompanyId(), userDetails.id, start, end).map {
+    ): List<EmployeeReservationResponse> =
+        reservationService.getEmployeeSchedule(userDetails.requireCompanyId(), userDetails.id, start, end).map {
             it.toEmployeeResponse()
         }
-    }
 
-    /**
-     * Returns reservations for the given employee filtered by date range. OWNER can query any employee within their
-     * company; EMPLOYEE can only query their own schedule.
-     */
+    /** Both staff roles may read company calendars and company-local customer visit information. */
     @GetMapping
-    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
     fun getReservations(
         @RequestParam employeeId: Long,
         @RequestParam start: LocalDateTime,
         @RequestParam end: LocalDateTime,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
-    ): List<DashboardReservationResponse> {
-        val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
-        val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
-        if (!isOwner && userDetails.id != employeeId) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Możesz przeglądać tylko swoje rezerwacje")
-        }
-        return reservationService.getCompanyReservations(companyId, employeeId, start, end)
-    }
-
-    /** Permanently deletes a reservation. Requires OWNER role. */
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    @PreAuthorize("hasRole('OWNER')")
-    fun deleteReservation(
-        @PathVariable id: Long,
-        @AuthenticationPrincipal userDetails: CustomUserDetails,
-    ) {
-        val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
-        reservationService.deleteReservation(id, companyId)
-    }
-
-    /**
-     * Creates a reservation for a client by phone number (201), or returns the identical existing active reservation
-     * with 200. Requires OWNER or EMPLOYEE role.
-     */
-    @PostMapping("/staff")
-    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
-    fun createReservationByStaff(
-        @Valid @RequestBody request: StaffCreateReservationRequest,
-        @AuthenticationPrincipal userDetails: CustomUserDetails,
-    ): ResponseEntity<ReservationResponse> {
-        val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
-        return reservationService
-            .createReservationByStaff(
-                employeeId = requireNotNull(request.employeeId) { "Pracownik jest wymagany" },
-                serviceId = requireNotNull(request.serviceId) { "Usługa jest wymagana" },
-                startTime = requireNotNull(request.startTime) { "Czas rozpoczęcia jest wymagany" },
-                customerPhone = requireNotNull(request.customerPhone) { "Numer telefonu jest wymagany" },
-                customerFirstName = request.customerFirstName,
-                customerLastName = request.customerLastName,
-                requesterCompanyId = companyId,
-            )
-            .toResponseEntity()
-    }
+    ): List<DashboardReservationResponse> =
+        reservationService.getCompanyReservations(userDetails.requireCompanyId(), employeeId, start, end)
 
     private fun BookingResult.toResponseEntity(): ResponseEntity<ReservationResponse> =
-        ResponseEntity.status(if (created) HttpStatus.CREATED else HttpStatus.OK).body(reservation.toResponse())
+        ResponseEntity.status(if (created) HttpStatus.CREATED else HttpStatus.OK)
+            .eTag(reservation.version.toString())
+            .body(reservationService.response(reservation))
+
+    private fun revision(header: String): Long =
+        header.removeSurrounding("\"").toLongOrNull()?.takeIf { it >= 0 }
+            ?: throw pl.kacosmetology.scheduler.config.ApiException(
+                pl.kacosmetology.scheduler.config.ErrorCode.REVISION_REQUIRED,
+                "If-Match musi zawierać aktualną wersję wizyty",
+            )
+
+    private fun CustomUserDetails.isOwner(): Boolean = role == "ROLE_OWNER"
 }
