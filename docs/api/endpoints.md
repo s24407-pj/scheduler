@@ -12,8 +12,8 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| POST | `/api/auth/request-code` | Public | Sends OTP to phone; rate-limited per phone and IP |
-| POST | `/api/auth/verify-code` | Public | Creates customer HttpOnly session; rate-limited per code and IP |
+| POST | `/api/auth/request-code` | Public | Sends six-digit OTP after commit; 60s cooldown, rolling phone/IP limits and global daily cap |
+| POST | `/api/auth/verify-code` | Public | Creates phone-only customer HttpOnly session without names; atomic single-use OTP, rolling IP limit |
 | POST | `/api/auth/login-staff` | Public | `email`, `password`, optional `employmentId`; rate-limited per IP |
 | POST | `/api/auth/logout` | Public, CSRF required | Revokes the session of the current browser; 204 |
 | GET | `/api/auth/csrf` | Public | Sets XSRF-TOKEN; returns CSRF token/header name |

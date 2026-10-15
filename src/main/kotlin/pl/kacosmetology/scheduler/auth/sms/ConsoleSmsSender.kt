@@ -5,17 +5,17 @@ import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Service
 
 /**
- * Development implementation that logs OTP codes to the console instead of sending real SMS. Disabled in the `prod`
- * profile so OTP codes never reach production logs; prod requires a real [SmsSender].
+ * Development implementation that records OTP dispatch to the console instead of sending real SMS. Disabled in the
+ * `prod` profile so OTP codes never reach production logs; prod requires a real [SmsSender].
  */
 @Service
 @Profile("!prod")
 class ConsoleSmsSender : SmsSender {
     private val logger = LoggerFactory.getLogger(ConsoleSmsSender::class.java)
 
-    /** Logs the OTP to the console instead of sending a real SMS. */
+    /** Records a development dispatch without logging the secret OTP. */
     override fun sendOtp(phoneNumber: String, code: String) {
-        logger.info("MOCK SMS to: $phoneNumber | OTP code: $code")
+        logger.info("MOCK OTP SMS dispatch to {}", phoneNumber)
     }
 
     /** Logs the message to the console instead of sending a real SMS. */

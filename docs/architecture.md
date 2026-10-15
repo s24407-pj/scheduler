@@ -59,19 +59,25 @@ Security 7's `csrf.spa()` uses standard cookie tokens and SPA request handling, 
 
 ### Login hardening
 
-Staff login keeps the same error message for unknown email, SMS-only accounts and wrong passwords and runs one bcrypt comparison in each case. OTP registration, Lua verification/consumption, validation, SMS and rate limits are unchanged.
+Staff login keeps the same error message for unknown email, SMS-only accounts and wrong passwords and runs one bcrypt comparison in each case. OTP identity is global and phone-only: normalize to `+digits` before lookup; verification requires no name and creates no company customer profile. OTP SMS dispatch runs after transaction commit; failures are logged without secrets and never escape into the request.
 
 ### Rate limiting (Redis)
 
 | Limiter | Redis key | Limit (default) | Config |
 | ------- | --------- | --------------- | ------ |
-| OTP requests per phone | `rate:sms:<phone>` | 3 per 5 min | `OTP_MAX_ATTEMPTS`, `OTP_RATE_WINDOW_MINUTES` |
-| OTP requests per client IP | `rate:otp-request:<ip>` | 10 per 15 min | `OTP_REQUEST_IP_MAX_ATTEMPTS`, `OTP_REQUEST_IP_RATE_WINDOW_MINUTES` |
-| OTP failed attempts per code | stored with `otp:<phone>` | 3 | `OTP_VERIFICATION_MAX_ATTEMPTS` |
-| OTP verification per client IP | `rate:otp-verify:<ip>` | 10 per 5 min | `OTP_VERIFICATION_IP_MAX_ATTEMPTS`, `OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES` |
+| Accepted OTP issuances per phone | `rate:sms:<phone>` | 3 per rolling 5 min | Fixed contract |
+| OTP resend cooldown | `otp:cooldown:<phone>` | 60 seconds | Fixed contract |
+| OTP requests per client IP | `rate:otp-request:<ip>` | 10 per rolling 15 min | Fixed contract |
+| OTP failed attempts per code | stored with `otp:<phone>` | 3 | Fixed contract |
+| OTP verification per client IP | `rate:otp-verify:<ip>` | 10 per rolling 5 min | Fixed contract |
+| Global daily OTP SMS cap | `otp:global-daily` | Operator-defined, positive in prod | `OTP_GLOBAL_DAILY_SMS_CAP` |
 | Staff login per client IP | `rate:login:<ip>` | 10 per 1 min | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` |
 
-OTP codes live under `otp:<phone>` with TTL `OTP_TTL_MINUTES`. A Lua script verifies and consumes a correct code atomically and keeps the TTL after failed attempts. Client IP is `request.remoteAddr`. With `server.forward-headers-strategy: native`, Tomcat replaces it with the `X-Forwarded-For` client only when the direct peer matches the `TRUSTED_PROXIES` regex; the default (empty) trusts no proxy, so a client-supplied header cannot bypass the limits. Behind a reverse proxy, set `TRUSTED_PROXIES` to the proxy's address, otherwise every client shares the proxy's limit. For Dokploy behind Cloudflare, see [deployment.md](./deployment.md#client-ip-for-rate-limiting). Exceeding a limit returns 429.
+OTP codes contain exactly six digits and expire after five minutes. Lua scripts enforce limits using Redis server time, atomically issue replacements, preserve expiry after failures and consume a correct code only once. A replacement differs from the preceding code, invalidates it, and receives a new expiry and attempt allowance. The phone limit counts accepted issuances only; every issuance request, including cooldown denials, counts against the IP limit. IP verification requests count regardless of outcome. No browser bot challenge is required.
+
+The global daily cap uses UTC calendar days from Redis time and counts accepted issuances conservatively before dispatch. Failed or rolled-back dispatches do not refund capacity. Production refuses to start unless `OTP_GLOBAL_DAILY_SMS_CAP` is positive. Request limits and accepted-issuance accounting fail closed if Redis is unavailable. Development dispatch logs never include codes; inspect the local Redis `otp:<canonical-phone>` key for manual testing.
+
+Client IP is `request.remoteAddr`. With `server.forward-headers-strategy: native`, Tomcat replaces it with the `X-Forwarded-For` client only when the direct peer matches the `TRUSTED_PROXIES` regex; the default (empty) trusts no proxy, so a client-supplied header cannot bypass the limits. Behind a reverse proxy, set `TRUSTED_PROXIES` to the proxy's address, otherwise every client shares the proxy's limit. For Dokploy behind Cloudflare, see [deployment.md](./deployment.md#client-ip-for-rate-limiting). Exceeding a limit returns 429 with `Retry-After`.
 
 ## Authorization and company isolation
 
@@ -95,7 +101,7 @@ Block state is **per company** in `company_customer_blocks` (`no_show_count`, `b
   - **Reminders:** reservations starting in 23–25 hours with `reminder_sent = false` get an SMS; successfully sent ones are flagged.
 - Jobs assume a single instance; see [ADR-0007](./adr/0007-single-instance-deployment.md).
 
-> **Known gap:** `ConsoleSmsSender` is the only `SmsSender` implementation. It writes OTP codes and notifications to the application log instead of sending them, and is disabled in the `prod` profile (`@Profile("!prod")`), so `prod` fails at startup until a real `SmsSender` exists.
+> **Known gap:** `ConsoleSmsSender` is the only `SmsSender` implementation. It records OTP dispatch without codes and writes development notifications to the application log instead of sending them, and is disabled in the `prod` profile (`@Profile("!prod")`), so `prod` fails at startup until a real `SmsSender` exists.
 
 ## Caching
 

@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.auth
 
-import java.security.SecureRandom
 import org.slf4j.LoggerFactory
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -11,9 +11,10 @@ import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginResponse
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginStatus
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
-import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -23,7 +24,7 @@ import pl.kacosmetology.scheduler.user.UserRepository
 class AuthService(
     private val userRepository: UserRepository,
     private val otpStore: OtpStore,
-    private val smsSender: SmsSender,
+    private val eventPublisher: ApplicationEventPublisher,
     private val passwordEncoder: PasswordEncoder,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
     private val companyRepository: CompanyRepository,
@@ -38,8 +39,6 @@ class AuthService(
 
     private val log = LoggerFactory.getLogger(AuthService::class.java)
 
-    private val secureRandom = SecureRandom()
-
     /**
      * Compared against when the account is unknown or has no password, so every failed login costs one bcrypt check.
      */
@@ -47,55 +46,33 @@ class AuthService(
         requireNotNull(passwordEncoder.encode("dummy-password-for-timing-equalization"))
     }
 
-    /**
-     * Generates a 6-digit OTP code, stores it in Redis with TTL and sends it via SMS. Throws
-     * [RateLimitExceededException] if [clientIp] or the phone number exceeded its request limit.
-     */
+    /** Issues a six-digit OTP atomically and sends it only after the surrounding transaction commits. */
+    @Transactional
     fun requestCode(request: RequestCodeRequest, clientIp: String) {
-        if (!otpRequestRateLimiter.checkAndIncrement(clientIp)) {
-            rateLimited("otp-request", clientIp)
-        }
-        if (!otpStore.checkAndIncrementRateLimit(request.phoneNumber)) {
-            rateLimited("otp-phone", clientIp)
-        }
-
-        val code = (100000 + secureRandom.nextInt(900000)).toString()
-        otpStore.saveCode(request.phoneNumber, code)
-        smsSender.sendOtp(request.phoneNumber, code)
+        val limit = otpRequestRateLimiter.check(clientIp)
+        if (!limit.allowed) throw RateLimitExceededException(retryAfterSeconds = limit.retryAfterSeconds)
+        val phoneNumber = canonicalPhone(request.phoneNumber)
+        val code = otpStore.issueCode(phoneNumber)
+        eventPublisher.publishEvent(OtpIssuedEvent(phoneNumber, code))
     }
 
-    /**
-     * Verifies the OTP code and returns a safe authenticated identity. Creates a new user on first verification
-     * (requires firstName and lastName).
-     */
+    /** Consumes an OTP once and creates only a global phone authentication account, without salon profile data. */
     @Transactional
     fun verifyCode(request: VerifyCodeRequest, clientIp: String): CustomUserDetails {
-        if (!otpVerificationRateLimiter.checkAndIncrement(clientIp)) {
-            rateLimited("otp-verify", clientIp)
-        }
-
-        requireVerified(otpStore.verifyCode(request.phoneNumber, request.code), clientIp)
-
-        val existingUser = userRepository.findByPhoneNumber(request.phoneNumber)
-
-        if (existingUser == null) {
-            requireNotNull(request.firstName) { "Imię jest wymagane przy pierwszej rejestracji" }
-            requireNotNull(request.lastName) { "Nazwisko jest wymagane przy pierwszej rejestracji" }
-        }
-
-        requireVerified(otpStore.verifyAndConsumeCode(request.phoneNumber, request.code), clientIp)
-
+        val limit = otpVerificationRateLimiter.check(clientIp)
+        if (!limit.allowed) throw RateLimitExceededException(retryAfterSeconds = limit.retryAfterSeconds)
+        val phoneNumber = canonicalPhone(request.phoneNumber)
+        requireVerified(otpStore.verifyAndConsumeCode(phoneNumber, request.code), clientIp)
         val user =
-            existingUser
-                ?: userRepository.save(
-                    User(
-                        phoneNumber = request.phoneNumber,
-                        firstName = request.firstName!!,
-                        lastName = request.lastName!!,
-                    ),
-                )
-
+            userRepository.findByPhoneNumber(phoneNumber)
+                ?: userRepository.save(User(phoneNumber = phoneNumber, firstName = "", lastName = ""))
         return CustomUserDetails(requireNotNull(user.id), user.phoneNumber, "ROLE_CUSTOMER")
+    }
+
+    private fun canonicalPhone(value: String): String {
+        val digits = value.trim().removePrefix("+")
+        require(digits.matches(Regex("[0-9]{9,15}"))) { "Nieprawidłowy format numeru telefonu" }
+        return "+$digits"
     }
 
     private fun rateLimited(limiter: String, clientIp: String): Nothing {
@@ -109,8 +86,8 @@ class AuthService(
         }
         when (result) {
             OtpVerificationResult.EXPIRED_OR_MISSING ->
-                throw IllegalArgumentException("Brak kodu dla tego numeru lub kod wygasł")
-            OtpVerificationResult.INVALID -> throw IllegalArgumentException("Nieprawidłowy kod")
+                throw ApiException(ErrorCode.INVALID_CREDENTIALS, "Brak kodu dla tego numeru lub kod wygasł")
+            OtpVerificationResult.INVALID -> throw ApiException(ErrorCode.INVALID_CREDENTIALS, "Nieprawidłowy kod")
             OtpVerificationResult.ATTEMPTS_EXCEEDED ->
                 throw RateLimitExceededException("Zbyt wiele nieudanych prób kodu. Poproś o nowy kod.")
             OtpVerificationResult.VERIFIED -> Unit

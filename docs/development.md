@@ -69,7 +69,7 @@ curl -fsS -b /tmp/scheduler-cookies -c /tmp/scheduler-cookies -X POST \
 rm -f /tmp/scheduler-cookies
 ```
 
-For customers, obtain CSRF first, call `request-code`, then `verify-code` with the same cookie jar/header. In development read the received OTP locally; never publish OTP logs. First login needs `firstName` and `lastName`. Refresh CSRF after verification. Authentication JSON contains status/options and no credential. Browser clients use `credentials: 'include'`; follow the [frontend contract](./architecture.md#csrf-cookies-and-frontend-contract).
+For customers, obtain CSRF first, call `request-code`, then `verify-code` with the same cookie jar/header. In development inspect the local Redis `otp:<canonical-phone>` key; codes are never logged. Verification needs only phone and six-digit code; names are collected atomically with the first successful salon booking. Refresh CSRF after verification. Authentication JSON contains status/options and no credential. Browser clients use `credentials: 'include'`; follow the [frontend contract](./architecture.md#csrf-cookies-and-frontend-contract).
 
 
 ## Configuration
@@ -86,11 +86,7 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 | `SPRING_SESSION_DATA_REDIS_NAMESPACE` | `scheduler:sessions` | Application-specific session namespace; share between API instances |
 | `SERVER_SERVLET_SESSION_COOKIE_SECURE` | request HTTPS detection; true in prod | Keep true in production; no cookie Domain; SameSite=Lax |
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed origins |
-| `OTP_TTL_MINUTES` | 5 | OTP lifetime |
-| `OTP_MAX_ATTEMPTS`, `OTP_RATE_WINDOW_MINUTES` | 3 / 5 | OTP requests per phone per window |
-| `OTP_VERIFICATION_MAX_ATTEMPTS` | 3 | Failed attempts per code |
-| `OTP_VERIFICATION_IP_MAX_ATTEMPTS`, `OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES` | 10 / 5 | Verifications per IP per window |
-| `OTP_REQUEST_IP_MAX_ATTEMPTS`, `OTP_REQUEST_IP_RATE_WINDOW_MINUTES` | 10 / 15 | OTP send requests per IP per window |
+| `OTP_GLOBAL_DAILY_SMS_CAP` | 0 outside prod | Positive operator-configured daily OTP issuance cap required in prod, UTC calendar day. Fixed OTP rules: 5-minute lifetime, 60-second cooldown, 3 failed attempts, 3 accepted phone issuances/rolling 5 minutes, 10 issuance requests/IP/rolling 15 minutes, 10 verification requests/IP/rolling 5 minutes. |
 | `TRUSTED_PROXIES` | empty | Regex of reverse-proxy IPs whose `X-Forwarded-For` is trusted for the client IP; empty trusts none |
 | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` | 10 / 1 | Staff logins per IP per window (not passed through by Compose; edit `docker-compose.yml` to override) |
 | `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | endpoint and bucket preset, keys empty | Image storage. Without keys the app starts but uploads fail. |

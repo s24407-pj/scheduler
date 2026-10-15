@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
 
-private const val PHONE_REGEXP = "^\\+?[0-9]{9,15}$"
+private const val PHONE_REGEXP = "^\\s*\\+?[0-9]{9,15}\\s*$"
 
 data class RequestCodeRequest(
     @field:NotBlank(message = "Numer telefonu jest wymagany")
@@ -19,8 +19,8 @@ data class VerifyCodeRequest(
     @field:Pattern(regexp = PHONE_REGEXP, message = "Nieprawidłowy format numeru telefonu")
     val phoneNumber: String,
     @field:NotBlank(message = "Kod SMS jest wymagany")
-    @field:Size(min = 4, max = 6, message = "Kod SMS musi mieć 4-6 znaków")
-    @field:Pattern(regexp = "^[0-9]+$", message = "Kod musi zawierać tylko cyfry")
+    @field:Size(min = 6, max = 6, message = "Kod SMS musi mieć dokładnie 6 cyfr")
+    @field:Pattern(regexp = "^[0-9]{6}$", message = "Kod musi zawierać tylko cyfry")
     val code: String,
     @field:Size(max = 50, message = "Imię nie może być dłuższe niż 50 znaków") val firstName: String? = null,
     @field:Size(max = 50, message = "Nazwisko nie może być dłuższe niż 50 znaków") val lastName: String? = null,

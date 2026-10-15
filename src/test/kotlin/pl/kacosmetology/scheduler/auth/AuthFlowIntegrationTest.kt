@@ -126,60 +126,50 @@ class AuthFlowIntegrationTest {
         // 4. Upewniamy się, że użytkownik został stworzony w bazie i zużyty kod zniknął
         val createdUser = userRepository.findByPhoneNumber(phoneNumber)
         Assertions.assertNotNull(createdUser, "Uzytkownik powinien zostac utworzony")
-        assertEquals("Jan", createdUser?.firstName)
+        assertEquals("", createdUser?.firstName)
 
         val codeAfterVerification = redisTemplate.opsForValue().get("otp:$phoneNumber")
         Assertions.assertNull(codeAfterVerification, "Zużyty kod powinien zostac usuniety z Redis")
     }
 
     @Test
-    fun `incomplete registration should preserve OTP for retry with names`() {
-        val phoneNumber = "+48111222444"
-
+    fun `OTP verification needs no names and normalizes phone before identity lookup`() {
         mockMvc
             .post("/api/auth/request-code") {
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(RequestCodeRequest(phoneNumber))
+                content = """{"phoneNumber":" 48111222444 "}"""
             }
-            .andExpect {
-                status { isOk() }
-            }
-
-        val otpCode = requireNotNull(redisTemplate.opsForValue().get("otp:$phoneNumber"))
-
+            .andExpect { status { isOk() } }
+        val phone = "+48111222444"
+        val code = requireNotNull(redisTemplate.opsForValue().get("otp:$phone"))
         mockMvc
             .post("/api/auth/verify-code") {
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content =
-                    objectMapper.writeValueAsString(
-                        VerifyCodeRequest(phoneNumber, otpCode, firstName = null, lastName = "Kowalski"),
-                    )
-            }
-            .andExpect {
-                status { isBadRequest() }
-            }
-
-        assertEquals(otpCode, redisTemplate.opsForValue().get("otp:$phoneNumber"))
-
-        mockMvc
-            .post("/api/auth/verify-code") {
-                with(csrf())
-                contentType = MediaType.APPLICATION_JSON
-                content =
-                    objectMapper.writeValueAsString(
-                        VerifyCodeRequest(phoneNumber, otpCode, firstName = "Jan", lastName = "Kowalski"),
-                    )
+                content = """{"phoneNumber":"48111222444","code":"$code"}"""
             }
             .andExpect {
                 status { isOk() }
-                jsonPath("$.token") { doesNotExist() }
                 cookie { exists("SESSION") }
             }
+        val account = requireNotNull(userRepository.findByPhoneNumber(phone))
+        assertEquals("", account.firstName)
+        assertEquals("", account.lastName)
+        Assertions.assertNull(redisTemplate.opsForValue().get("otp:$phone"))
+    }
 
-        Assertions.assertNotNull(userRepository.findByPhoneNumber(phoneNumber))
-        Assertions.assertNull(redisTemplate.opsForValue().get("otp:$phoneNumber"))
+    @Test
+    fun `OTP endpoint rejects codes other than exactly six digits`() {
+        listOf("1234", "12345", "1234567", "12345a").forEach { code ->
+            mockMvc
+                .post("/api/auth/verify-code") {
+                    with(csrf())
+                    contentType = MediaType.APPLICATION_JSON
+                    content = """{"phoneNumber":"+48111222444","code":"$code"}"""
+                }
+                .andExpect { status { isBadRequest() } }
+        }
     }
 
     @Test
@@ -494,33 +484,22 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
-    fun `request-code should return 429 after exceeding rate limit`() {
-        val phoneNumber = "+48555666777"
-        val requestDto = RequestCodeRequest(phoneNumber = phoneNumber)
-
-        // Wysyłamy 3 razy — powinno być OK
-        repeat(3) {
-            mockMvc
-                .post("/api/auth/request-code") {
-                    with(csrf())
-                    contentType = MediaType.APPLICATION_JSON
-                    content = objectMapper.writeValueAsString(requestDto)
-                }
-                .andExpect {
-                    status { isOk() }
-                }
-        }
-
-        // 4. próba — powinien zwrócić 429 Too Many Requests
+    fun `request-code returns 429 during sixty second resend cooldown`() {
+        val body = objectMapper.writeValueAsString(RequestCodeRequest("+48555666777"))
         mockMvc
             .post("/api/auth/request-code") {
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(requestDto)
+                content = body
             }
-            .andExpect {
-                status { isTooManyRequests() }
+            .andExpect { status { isOk() } }
+        mockMvc
+            .post("/api/auth/request-code") {
+                with(csrf())
+                contentType = MediaType.APPLICATION_JSON
+                content = body
             }
+            .andExpect { status { isTooManyRequests() } }
     }
 
     @Test
@@ -538,7 +517,7 @@ class AuthFlowIntegrationTest {
         val otpKey = "otp:$phoneNumber"
         val firstCode = requireNotNull(redisTemplate.opsForValue().get(otpKey))
         val initialTtl = requireNotNull(redisTemplate.getExpire(otpKey, TimeUnit.SECONDS))
-        val wrongCode = "000000"
+        val wrongCode = if (firstCode == "000000") "000001" else "000000"
 
         repeat(2) {
             mockMvc
@@ -547,7 +526,7 @@ class AuthFlowIntegrationTest {
                     contentType = MediaType.APPLICATION_JSON
                     content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, wrongCode))
                 }
-                .andExpect { status { isBadRequest() } }
+                .andExpect { status { isUnauthorized() } }
         }
 
         val ttlAfterFailures = requireNotNull(redisTemplate.getExpire(otpKey, TimeUnit.SECONDS))
@@ -571,6 +550,7 @@ class AuthFlowIntegrationTest {
             }
             .andExpect { status { isTooManyRequests() } }
 
+        redisTemplate.delete("otp:cooldown:$phoneNumber")
         mockMvc
             .post("/api/auth/request-code") {
                 with(csrf())
@@ -631,7 +611,7 @@ class AuthFlowIntegrationTest {
             start.countDown()
             val statuses = requests.map { it.get(10, TimeUnit.SECONDS) }.sorted()
 
-            assertEquals(listOf(200, 400), statuses)
+            assertEquals(listOf(200, 401), statuses)
             Assertions.assertNotNull(userRepository.findByPhoneNumber(phoneNumber))
         } finally {
             executor.shutdownNow()
@@ -649,7 +629,7 @@ class AuthFlowIntegrationTest {
                     contentType = MediaType.APPLICATION_JSON
                     content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, "123456"))
                 }
-                .andExpect { status { isBadRequest() } }
+                .andExpect { status { isUnauthorized() } }
         }
 
         mockMvc
@@ -661,7 +641,7 @@ class AuthFlowIntegrationTest {
             }
             .andExpect { status { isTooManyRequests() } }
 
-        assertEquals("11", redisTemplate.opsForValue().get("rate:otp-verify:127.0.0.1"))
+        assertEquals(11L, redisTemplate.opsForZSet().zCard("rate:otp-verify:127.0.0.1"))
     }
 
     @Test

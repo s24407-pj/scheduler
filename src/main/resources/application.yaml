@@ -57,14 +57,8 @@ cors:
   allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
 
 otp:
-  ttl-minutes: ${OTP_TTL_MINUTES:5}
-  max-attempts: ${OTP_MAX_ATTEMPTS:3}
-  rate-window-minutes: ${OTP_RATE_WINDOW_MINUTES:5}
-  verification-max-attempts: ${OTP_VERIFICATION_MAX_ATTEMPTS:3}
-  verification-ip-max-attempts: ${OTP_VERIFICATION_IP_MAX_ATTEMPTS:10}
-  verification-ip-rate-window-minutes: ${OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES:5}
-  request-ip-max-attempts: ${OTP_REQUEST_IP_MAX_ATTEMPTS:10}
-  request-ip-rate-window-minutes: ${OTP_REQUEST_IP_RATE_WINDOW_MINUTES:15}
+  # Mandatory positive operator-configured cap in prod; zero disables this cap in development only.
+  global-daily-sms-cap: ${OTP_GLOBAL_DAILY_SMS_CAP:0}
 
 login:
   max-attempts: ${LOGIN_MAX_ATTEMPTS:10}

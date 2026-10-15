@@ -64,7 +64,7 @@ sequenceDiagram
     opt Not signed in
         C->>API: POST /auth/request-code (phoneNumber)
         API->>SMS: OTP code
-        C->>API: POST /auth/verify-code (phoneNumber, code, firstName and lastName for new users)
+        C->>API: POST /auth/verify-code (canonical phoneNumber, six-digit code)
         API-->>C: HttpOnly customer session (registers the user on first sign-in)
     end
     C->>API: POST /reservations (employeeId, serviceId, startTime)

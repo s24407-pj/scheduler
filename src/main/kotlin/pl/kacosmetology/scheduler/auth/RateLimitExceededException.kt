@@ -1,5 +1,7 @@
 package pl.kacosmetology.scheduler.auth
 
-/** Thrown when an authentication request or verification-attempt limit is exceeded. Maps to HTTP 429. */
-class RateLimitExceededException(message: String = "Zbyt wiele prób. Spróbuj ponownie za kilka minut.") :
-    RuntimeException(message)
+/** Authentication or booking rate limit, including the delay exposed through the Retry-After header. */
+class RateLimitExceededException(
+    message: String = "Zbyt wiele prób. Spróbuj ponownie za kilka minut.",
+    val retryAfterSeconds: Long = 60,
+) : RuntimeException(message)

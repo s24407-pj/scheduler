@@ -26,7 +26,7 @@ import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
 /** Verifies the prod profile forces Secure cookies even when the servlet connection is plain HTTP behind TLS. */
-@SpringBootTest
+@SpringBootTest(properties = ["otp.global-daily-sms-cap=100"])
 @AutoConfigureMockMvc
 @ActiveProfiles("prod")
 @Import(TestcontainersConfiguration::class)
