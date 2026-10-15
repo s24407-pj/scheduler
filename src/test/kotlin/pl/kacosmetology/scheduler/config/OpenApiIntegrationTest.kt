@@ -42,6 +42,14 @@ class OpenApiIntegrationTest {
             jsonPath("$.paths['/api/reservations'].post.security[0].csrfToken") { exists() }
             jsonPath("$.paths['/api/auth/verify-code'].post.security[0].sessionAuth") { doesNotExist() }
             jsonPath("$.paths['/api/auth/verify-code'].post.security[0].csrfToken") { exists() }
+            jsonPath("$.paths['/api/auth/staff-password'].post.security[0].sessionAuth") { doesNotExist() }
+            jsonPath("$.paths['/api/auth/staff-password'].post.security[0].csrfToken") { exists() }
+            jsonPath("$.paths['/api/staff/password'].post.security[0].sessionAuth") { exists() }
+            jsonPath("$.paths['/api/staff/password'].post.security[0].csrfToken") { exists() }
+            jsonPath("$.paths['/api/customers/{id}/visits'].get") { exists() }
+            jsonPath("$.paths['/api/users/me'].put") { doesNotExist() }
+            jsonPath("$.components.schemas.StaffLoginRequest.properties.companyId") { exists() }
+            jsonPath("$.components.schemas.StaffLoginRequest.properties.employmentId") { doesNotExist() }
         }
     }
 }

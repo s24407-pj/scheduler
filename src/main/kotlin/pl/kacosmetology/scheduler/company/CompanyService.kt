@@ -46,7 +46,11 @@ class CompanyService(
             .filter {
                 it.enabled &&
                     (it.eligibilityMode == EmployeeEligibilityMode.ALL_SERVICES ||
-                        assignmentRepository.existsByEmployeeIdAndOfferingId(it.userId, offeringId))
+                        assignmentRepository.existsByCompanyIdAndEmployeeIdAndOfferingId(
+                            companyId,
+                            it.userId,
+                            offeringId,
+                        ))
             }
             .map { PublicEmployeeResponse(it.userId, it.firstName, it.lastName, it.photoUrl) }
     }

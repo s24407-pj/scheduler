@@ -214,6 +214,39 @@ class EmployeePhotoIntegrationTest {
         verify(exactly = 0) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
     }
 
+    @Test
+    fun `removing one company photo preserves another company legacy reference`() {
+        val otherCompany = companyRepository.save(Company(name = "Other photo salon"))
+        val shared = "https://pub-e2e7a57b5ea74031a70f3c42d58af33f.r2.dev/legacy/shared.png"
+        employeeEmployment.photoUrl = shared
+        companyEmployeeRepository.saveAndFlush(employeeEmployment)
+        val foreign =
+            companyEmployeeRepository.saveAndFlush(
+                CompanyEmployee(
+                    companyId = otherCompany.id!!,
+                    userId = employee.id!!,
+                    role = "EMPLOYEE",
+                    firstName = "Other",
+                    lastName = "Presentation",
+                    photoUrl = shared,
+                ),
+            )
+        mockMvc
+            .delete("/api/employees/${employee.id!!}/photo") {
+                with(csrf())
+                cookie(ownerSession())
+            }
+            .andExpect { status { isOk() } }
+        org.junit.jupiter.api.Assertions.assertNull(
+            companyEmployeeRepository.findById(employeeEmployment.id!!).orElseThrow().photoUrl,
+        )
+        org.junit.jupiter.api.Assertions.assertEquals(
+            shared,
+            companyEmployeeRepository.findById(foreign.id!!).orElseThrow().photoUrl,
+        )
+        verify(exactly = 0) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
+    }
+
     private fun pngBytes(): ByteArray =
         java.io
             .ByteArrayOutputStream()

@@ -179,8 +179,12 @@ class CustomerListIntegrationTest {
     }
 
     @Test
-    fun `GET customers retains company customer relationship when reservations are removed`() {
-        reservationRepository.deleteAll()
+    fun `GET customers retains company customer relationship when reservations are archived`() {
+        reservationRepository.findAll().forEach {
+            it.status = ReservationStatus.CANCELLED
+            it.archived = true
+            reservationRepository.save(it)
+        }
 
         mockMvc
             .get("/api/customers") {

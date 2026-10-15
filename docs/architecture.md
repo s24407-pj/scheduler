@@ -53,7 +53,7 @@ Security 7's `csrf.spa()` uses standard cookie tokens and SPA request handling, 
 1. Fetch `GET /api/auth/csrf` with `credentials: 'include'` before the first unsafe call. It materializes a JavaScript-readable, host-only `XSRF-TOKEN` cookie (Path=/, SameSite=Lax) and returns `{token, headerName: "X-XSRF-TOKEN"}`. Its `token` is only a CSRF token, never the session credential. Cross-origin frontends should use this response rather than trying to read the API host's cookie.
 2. Send `X-XSRF-TOKEN: <token>` and credentials/cookies on POST/PUT/PATCH/DELETE, including login, OTP requests/verification and both logout endpoints. Missing/invalid CSRF returns 403 ProblemDetail.
 3. Successful authentication and logout clear the prior CSRF cookie. Fetch `/api/auth/csrf` again afterward before the next unsafe request. Refresh on a CSRF failure; do not blindly retry non-idempotent operations.
-4. Remove localStorage JWT handling and bearer headers, and stop decoding credential claims. Use `/api/auth/me` for scope/authorities and `/api/users/me` for profile. Handle 401 by clearing local identity state and returning to sign-in. Use fetch `credentials: 'include'` or Axios `withCredentials: true` on all API requests.
+4. Remove localStorage JWT handling and bearer headers, and stop decoding credential claims. Use `/api/auth/me` for scope/authorities, `/api/users/me` for customer phone identity, and `/api/staff/me` for company-local staff presentation. Handle 401 by clearing local identity state and returning to sign-in. Use fetch `credentials: 'include'` or Axios `withCredentials: true` on all API requests.
 
 `SESSION` is HttpOnly, Path=/, host-only (no Domain), SameSite=Lax and Secure in `prod`; development works on HTTP localhost. Different localhost ports and HTTPS subdomains under the same registrable domain are cross-origin but same-site, so Lax works with explicit credentialed CORS origins. Deploy frontend/API on the same site. Unrelated sites require a deliberate deployment change (including Secure SameSite=None cookies and browser third-party-cookie constraints); they are not assumed here. Never use wildcard origins with credentialed CORS. OPTIONS preflight remains unauthenticated and bypasses CSRF normally.
 
@@ -114,7 +114,7 @@ Redis-backed Spring Cache (`RedisConfig`), JSON values, default TTL 10 minutes. 
 S3-compatible client from `R2Config`. With no access key and secret key configured, it uses anonymous credentials (startup succeeds, uploads fail).
 
 - Offering images: gallery capacity is serialized by a pessimistic lock on the tenant-owned offering row. Uploaded objects are compensated after database rollback; deleted objects are removed only after database commit (storage errors can leave an orphan object, never a live database reference to a prematurely deleted object). Actual JPEG/PNG/WebP bytes are decoded, MIME headers are not trusted; decoded dimensions are limited to 25 million pixels. Up to 5 per offering, `POST /api/offerings/{id}/image` (multipart field `image`), JPEG/PNG/WebP, max 5 MB. `OfferingImageService`.
-- Employee photo: one per employee, `POST /api/employees/{id}/photo` (multipart field `photo`), same limits; replaces and deletes the previous object. Stored as `users.photo_url`. `EmployeePhotoService`.
+- Employee photo: one per company employee, `POST /api/employees/{id}/photo` (multipart field `photo`), same byte validation/limits. Stored as `company_employees.photo_url`. The employment row serializes replacement; after-commit deletion retains any object referenced by another legacy company profile, and rollback compensates new uploads. `EmployeePhotoService`.
 
 ## Database
 
@@ -123,9 +123,11 @@ PostgreSQL, schema managed by Flyway (`src/main/resources/db/migration/`). `V1__
 | Table | Purpose |
 | ----- | ------- |
 | `companies` | Salons; settings: hours, `slot_interval_minutes`, `max_no_shows`, `last_minute_discount_percent`, `last_minute_discount_hours`, `min_booking_advance_minutes` |
-| `users` | Customers and staff in one table; staff are users with `company_employees` rows; `photo_url` |
-| `company_employees` | Employment: (company, user, role `OWNER`/`EMPLOYEE`); row lock target for booking ([ADR-0001](./adr/0001-double-booking-prevention.md)) |
-| `company_customers` | Per-company customer data (notes) |
+| `customer_accounts` | Global phone-only customer authentication identity |
+| `users` | Legacy migration archive; never consulted by runtime identity/profile reads |
+| `company_employees` | Company-owned staff credentials, local presentation/photo, role, enabled state, eligibility and auth version; booking lock target |
+| `staff_password_links` | One-use hash-only setup/recovery token per staff account, 24h expiry |
+| `company_customers` | Company-local names, optional contact email and staff-only notes |
 | `company_customer_blocks` | Per-company no-show count and block flag |
 | `offerings`, `offering_categories`, `offering_images` | Catalog |
 | `employee_offerings` | Which offerings an employee performs |

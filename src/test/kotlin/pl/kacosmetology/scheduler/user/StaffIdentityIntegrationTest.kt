@@ -55,6 +55,8 @@ class StaffIdentityIntegrationTest {
     @Autowired private lateinit var fixtures: TestSessions
     @Autowired private lateinit var auth: AuthService
     @Autowired private lateinit var sessions: RedisIndexedSessionRepository
+    @Autowired private lateinit var offerings: pl.kacosmetology.scheduler.offering.OfferingRepository
+    @Autowired private lateinit var bookings: pl.kacosmetology.scheduler.reservation.ReservationRepository
     @MockkBean private lateinit var sms: SmsSender
     @MockkBean private lateinit var s3: S3Client
     @MockkBean private lateinit var clock: Clock
@@ -283,6 +285,78 @@ class StaffIdentityIntegrationTest {
                 .response
                 .status,
         )
+    }
+
+    @Test
+    fun `disable preserves ongoing and future visits and returns future warning`() {
+        val employee = employee(company.id!!)
+        val customer = customers.save(User(phoneNumber = "+48500100200"))
+        val offering =
+            offerings.save(
+                pl.kacosmetology.scheduler.offering.Offering(
+                    companyId = company.id!!,
+                    name = "Visit",
+                    durationMinutes = 30,
+                    price = 100,
+                ),
+            )
+        val start = java.time.LocalDateTime.ofInstant(now, ZoneId.of("Europe/Warsaw"))
+        val future =
+            bookings.save(
+                pl.kacosmetology.scheduler.reservation.Reservation(
+                    companyId = company.id!!,
+                    customerId = customer.id!!,
+                    employeeId = employee.userId,
+                    serviceId = offering.id!!,
+                    price = 100,
+                    startTime = start.plusDays(1),
+                    endTime = start.plusDays(1).plusMinutes(30),
+                ),
+            )
+        bookings.save(
+            pl.kacosmetology.scheduler.reservation.Reservation(
+                companyId = company.id!!,
+                customerId = customer.id!!,
+                employeeId = employee.userId,
+                serviceId = offering.id!!,
+                price = 100,
+                startTime = start.minusMinutes(10),
+                endTime = start.plusMinutes(20),
+            ),
+        )
+        val response = putJson("/api/employees/${employee.userId}/enabled", mapOf("enabled" to false), owner)
+        assertEquals(200, response.response.status)
+        val warnings = mapper.readTree(response.response.contentAsString)["affectedFutureBookings"]
+        assertEquals(1, warnings.size())
+        assertEquals(future.id, warnings[0]["reservationId"].asLong())
+        assertEquals(2L, bookings.count())
+        assertTrue(
+            bookings.findAll().all { it.status == pl.kacosmetology.scheduler.reservation.ReservationStatus.BOOKED },
+        )
+    }
+
+    @Test
+    fun `concurrent setup token consumption succeeds once`() {
+        val token = create()["passwordSetup"]["token"].asString()
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+        val ready = java.util.concurrent.CountDownLatch(2)
+        val go = java.util.concurrent.CountDownLatch(1)
+        try {
+            val attempts =
+                (1..2).map {
+                    pool.submit<Int> {
+                        ready.countDown()
+                        check(go.await(10, java.util.concurrent.TimeUnit.SECONDS))
+                        consume(token)
+                    }
+                }
+            assertTrue(ready.await(10, java.util.concurrent.TimeUnit.SECONDS))
+            go.countDown()
+            assertEquals(listOf(204, 401), attempts.map { it.get(15, java.util.concurrent.TimeUnit.SECONDS) }.sorted())
+        } finally {
+            go.countDown()
+            pool.shutdownNow()
+        }
     }
 
     private fun employee(companyId: Long) =
