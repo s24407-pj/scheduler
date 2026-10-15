@@ -1,46 +1,23 @@
 package pl.kacosmetology.scheduler.notification
 
-import java.time.Clock
-import java.time.LocalDateTime
-import org.slf4j.LoggerFactory
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.boot.context.event.ApplicationReadyEvent
+import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE_ID
-import pl.kacosmetology.scheduler.reservation.ReservationRepository
 
-/** Periodically sends reminder SMS to customers for upcoming appointments. */
+/** Single-instance trigger: completion has its own reservation scheduler; missed reminder runs are not recovered. */
 @Component
-class NotificationScheduler(
-    private val reservationRepository: ReservationRepository,
-    private val notificationService: NotificationService,
-    private val clock: Clock,
-) {
-    private val logger = LoggerFactory.getLogger(NotificationScheduler::class.java)
+@ConditionalOnProperty(name = ["scheduler.jobs.enabled"], havingValue = "true", matchIfMissing = true)
+class NotificationScheduler(private val notificationService: NotificationService) {
+    /** Marks unknown provider outcomes conservatively at startup without recovering a missed reminder run. */
+    @EventListener(ApplicationReadyEvent::class) fun recoverDeliveryState() = notificationService.recoverAfterRestart()
 
-    /** Runs every hour on the hour. Auto-completes all PENDING/CONFIRMED reservations whose end time has passed. */
-    @Scheduled(cron = "0 0 * * * *", zone = BUSINESS_ZONE_ID)
-    fun autoCompleteElapsedReservations() {
-        val count = reservationRepository.autoCompleteElapsed(LocalDateTime.now(clock))
-        if (count > 0) logger.info("Auto-completed $count elapsed reservations")
-    }
+    /** Begins the previous-calendar-day reminder run exactly at 09:00 Warsaw, with a fixed 09:05 deadline. */
+    @Scheduled(cron = "0 0 9 * * *", zone = BUSINESS_ZONE_ID)
+    fun sendReminders() = notificationService.startReminderRun()
 
-    /** Runs every hour on the hour. Sends reminders for reservations starting in 23–25 hours. */
-    @Scheduled(cron = "0 0 * * * *", zone = BUSINESS_ZONE_ID)
-    fun sendReminders() {
-        val now = LocalDateTime.now(clock)
-        val pending =
-            reservationRepository.findPendingReminders(
-                windowStart = now.plusHours(23),
-                windowEnd = now.plusHours(25),
-            )
-        val sentIds = mutableListOf<Long>()
-        pending.forEach { reservation ->
-            runCatching { notificationService.sendReminder(reservation) }
-                .onSuccess {
-                    sentIds += requireNotNull(reservation.id) { "Scheduled reservation must have an ID" }
-                }
-                .onFailure { logger.warn("Failed to send reminder for reservation ${reservation.id}", it) }
-        }
-        if (sentIds.isNotEmpty()) reservationRepository.markRemindersAsSent(sentIds)
-    }
+    /** Retries durable staff/summary work and only the currently uninterrupted reminder run. */
+    @Scheduled(fixedDelay = 30_000) fun retryDeliveries() = notificationService.dispatchDue()
 }

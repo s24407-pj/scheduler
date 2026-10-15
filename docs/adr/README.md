@@ -25,3 +25,4 @@ To add one, copy the structure of an existing ADR, use the next number, and add 
 | [0013](./0013-commercial-quotes.md) | Durable commercial quotes without capacity holds | Accepted — implemented |
 | [0014](./0014-effective-schedules-and-explicit-qualification.md) | Effective schedules and explicit qualification | Accepted — implemented |
 | [0016](./0016-reservation-contract-and-durable-submissions.md) | Reservation contract and durable submissions | Accepted |
+| [0015](./0015-durable-notification-delivery.md) | Durable notification delivery | Accepted — implemented |

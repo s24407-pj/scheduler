@@ -97,13 +97,11 @@ Block state is **per company** in `company_customer_blocks` (`no_show_count`, `b
 
 ## Notifications and scheduled jobs
 
-- `ReservationService` publishes `ReservationCreatedEvent` / `ReservationCancelledEvent`. `NotificationEventListener` handles them **after the transaction commits** and sends SMS through `NotificationService`. SMS failures are logged and never roll back or fail the request.
-- `NotificationScheduler` (enabled by `@EnableScheduling` on `RedisConfig`) runs two jobs every hour on the hour:
-  - **Auto-complete:** `PENDING`/`CONFIRMED` reservations whose `endTime` has passed become `COMPLETED`.
-  - **Reminders:** reservations starting in 23–25 hours with `reminder_sent = false` get an SMS; successfully sent ones are flagged.
-- Jobs assume a single instance; see [ADR-0007](./adr/0007-single-instance-deployment.md).
-
-> **Known gap:** `ConsoleSmsSender` is the only `SmsSender` implementation. It records OTP dispatch without codes and writes development notifications to the application log instead of sending them, and is disabled in the `prod` profile (`@Profile("!prod")`), so `prod` fails at startup until a real `SmsSender` exists.
+- Customer booking sends no confirmation SMS/email. Staff create/edit/restore/cancel SMS is explicit opt-in, default off; actual edits invalidate obsolete pending messages even when opting out. Blocking produces a mandatory filtered summary.
+- Transactional events persist delivery intent **before commit**. Provider calls run **after commit** using durable state. `SENDING` is committed before each attempt; restart converts an unknown in-flight outcome to `AMBIGUOUS`, never blindly retried. Provider failure cannot roll back a booking.
+- Reminders run at 09:00 Warsaw on the previous calendar day, with a 09:05 deadline and uninterrupted in-memory run token. Durable audit excludes post-cutoff creations/date moves; unique reservation/date identity prevents same-date repeats. Missed reminder runs are not recovered after restart.
+- Reservation completion has a separate audited job that catches up after restart. Jobs assume one instance ([ADR-0007](./adr/0007-single-instance-deployment.md)).
+- See [complete delivery rules](./notifications.md) and [ADR-0015](./adr/0015-durable-notification-delivery.md). A sent boolean does not establish crash-safe delivery. Production requires a real SMS adapter; the development console adapter is disabled in prod.
 
 ## Caching
 

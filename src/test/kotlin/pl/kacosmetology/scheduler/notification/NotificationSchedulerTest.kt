@@ -1,112 +1,17 @@
 package pl.kacosmetology.scheduler.notification
 
-import io.mockk.every
-import io.mockk.impl.annotations.InjectMockKs
-import io.mockk.impl.annotations.MockK
-import io.mockk.junit5.MockKExtension
-import io.mockk.just
-import io.mockk.runs
-import io.mockk.verify
-import java.time.Clock
-import java.time.LocalDateTime
-import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.extension.ExtendWith
-import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
-import pl.kacosmetology.scheduler.reservation.Reservation
-import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.reservation.ReservationStatus
+import org.springframework.scheduling.annotation.Scheduled
+import pl.kacosmetology.scheduler.config.BUSINESS_ZONE_ID
 
-@ExtendWith(MockKExtension::class)
 class NotificationSchedulerTest {
-
-    @MockK private lateinit var reservationRepository: ReservationRepository
-
-    @MockK private lateinit var notificationService: NotificationService
-
-    @MockK private lateinit var clock: Clock
-
-    @InjectMockKs private lateinit var notificationScheduler: NotificationScheduler
-
-    private val now = LocalDateTime.of(2026, 11, 3, 14, 0)
-
-    private val startTime = now.plusHours(24)
-
-    private val reservation =
-        Reservation(
-            id = 1L,
-            companyId = 5L,
-            customerId = 1L,
-            employeeId = 2L,
-            serviceId = 10L,
-            price = 200,
-            startTime = startTime,
-            endTime = startTime.plusHours(1),
-            status = ReservationStatus.BOOKED,
-        )
-
-    @BeforeEach
-    fun setupClock() {
-        every { clock.instant() } returns now.atZone(BUSINESS_ZONE).toInstant()
-        every { clock.zone } returns BUSINESS_ZONE
-    }
-
     @Test
-    fun `sendReminders should call sendReminder and bulk-mark sent when reservation found`() {
-        every { reservationRepository.findPendingReminders(any(), any()) } returns listOf(reservation)
-        every { notificationService.sendReminder(reservation) } just runs
-        every { reservationRepository.markRemindersAsSent(listOf(1L)) } just runs
-
-        notificationScheduler.sendReminders()
-
-        verify { notificationService.sendReminder(reservation) }
-        verify { reservationRepository.markRemindersAsSent(listOf(1L)) }
-    }
-
-    @Test
-    fun `sendReminders should query the 23 to 25 hour window relative to the injected clock`() {
-        every { reservationRepository.findPendingReminders(any(), any()) } returns emptyList()
-
-        notificationScheduler.sendReminders()
-
-        verify { reservationRepository.findPendingReminders(now.plusHours(23), now.plusHours(25)) }
-    }
-
-    @Test
-    fun `sendReminders should not call sendReminder when no pending reservations`() {
-        every { reservationRepository.findPendingReminders(any(), any()) } returns emptyList()
-
-        notificationScheduler.sendReminders()
-
-        verify(exactly = 0) { notificationService.sendReminder(any()) }
-        verify(exactly = 0) { reservationRepository.markRemindersAsSent(any()) }
-    }
-
-    @Test
-    fun `sendReminders should not mark reservation when sendReminder throws`() {
-        every { reservationRepository.findPendingReminders(any(), any()) } returns listOf(reservation)
-        every { notificationService.sendReminder(reservation) } throws RuntimeException("SMS failed")
-
-        notificationScheduler.sendReminders()
-
-        verify(exactly = 0) { reservationRepository.markRemindersAsSent(any()) }
-    }
-
-    @Test
-    fun `autoCompleteElapsedReservations should call autoCompleteElapsed with the injected clock time`() {
-        every { reservationRepository.autoCompleteElapsed(any()) } returns 3
-
-        notificationScheduler.autoCompleteElapsedReservations()
-
-        verify { reservationRepository.autoCompleteElapsed(now) }
-    }
-
-    @Test
-    fun `autoCompleteElapsedReservations should not log when no reservations completed`() {
-        every { reservationRepository.autoCompleteElapsed(any()) } returns 0
-
-        notificationScheduler.autoCompleteElapsedReservations()
-
-        verify { reservationRepository.autoCompleteElapsed(any()) }
+    fun `reminder trigger is previous calendar day nine Warsaw and completion is separate`() {
+        val method = NotificationScheduler::class.java.getMethod("sendReminders")
+        val schedule = method.getAnnotation(Scheduled::class.java)
+        assertEquals("0 0 9 * * *", schedule.cron)
+        assertEquals(BUSINESS_ZONE_ID, schedule.zone)
+        assertFalse(NotificationScheduler::class.java.methods.any { it.name == "autoCompleteElapsedReservations" })
     }
 }

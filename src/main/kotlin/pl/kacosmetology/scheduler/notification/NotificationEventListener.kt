@@ -4,36 +4,38 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.event.TransactionPhase
 import org.springframework.transaction.event.TransactionalEventListener
-import pl.kacosmetology.scheduler.reservation.ReservationCancelledEvent
-import pl.kacosmetology.scheduler.reservation.ReservationCreatedEvent
+import pl.kacosmetology.scheduler.reservation.CustomerBlockedBookingsEvent
+import pl.kacosmetology.scheduler.reservation.ReservationChangedEvent
 
-/** Sends SMS notifications after reservation transactions commit, keeping SMS calls outside DB transactions. */
+/** Durable before-commit intent followed by best-effort after-commit dispatch; customer bookings emit no SMS event. */
 @Component
-class NotificationEventListener(private val notificationService: NotificationService) {
+class NotificationEventListener(
+    private val outbox: NotificationOutbox,
+    private val notificationService: NotificationService,
+) {
+    private val log = LoggerFactory.getLogger(NotificationEventListener::class.java)
 
-    private val logger = LoggerFactory.getLogger(NotificationEventListener::class.java)
+    /** Persists an actual staff change atomically with its reservation revision. */
+    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
+    fun onReservationChanged(event: ReservationChangedEvent) = outbox.record(event)
 
-    /** Sends a booking confirmation SMS after a new reservation is committed. */
+    /** Persists a mandatory block-driven cancellation summary atomically with cancellations. */
+    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
+    fun onCustomerBlocked(event: CustomerBlockedBookingsEvent) = outbox.record(event)
+
+    /** Provider or worker failure after commit cannot roll back the successful staff operation. */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    fun onReservationCreated(event: ReservationCreatedEvent) {
-        runCatching { notificationService.sendBookingConfirmation(event.reservation) }
-            .onFailure {
-                logger.warn(
-                    "Failed to send booking confirmation for reservation ${event.reservation.id}",
-                    it,
-                )
-            }
-    }
+    fun afterReservationChanged(event: ReservationChangedEvent) = wake()
 
-    /** Sends a cancellation SMS after a reservation cancellation is committed. */
+    /** Starts delivery of a committed summary; durable retry state survives a worker failure. */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    fun onReservationCancelled(event: ReservationCancelledEvent) {
-        runCatching { notificationService.sendCancellationNotification(event.reservation) }
-            .onFailure {
-                logger.warn(
-                    "Failed to send cancellation notification for reservation ${event.reservation.id}",
-                    it,
-                )
-            }
+    fun afterCustomerBlocked(event: CustomerBlockedBookingsEvent) = wake()
+
+    private fun wake() {
+        try {
+            notificationService.dispatchDue()
+        } catch (failure: Exception) {
+            log.warn("Notification dispatch deferred: type={}", failure.javaClass.simpleName)
+        }
     }
 }
