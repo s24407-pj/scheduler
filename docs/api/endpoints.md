@@ -4,7 +4,7 @@ A short index of paths and authorization rules. Request and response schemas com
 
 **Access:** *Public* = no authentication (listed in `SecurityConfig`). *Authenticated* = any valid authenticated session, no `@PreAuthorize`. Roles = `@PreAuthorize`. All staff operations are limited to the authenticated session's company. A missing or invalid authenticated session on a non-public path returns 401; a role mismatch returns 403.
 
-All unsafe methods require `X-XSRF-TOKEN` and its cookie, including public auth calls. Successful login returns status/options and sets HttpOnly `SESSION`; refresh `/api/auth/csrf` after authentication/logout. See the [frontend contract](../architecture.md#csrf-cookies-and-frontend-contract).
+All unsafe methods require `X-XSRF-TOKEN` and its cookie, including public auth calls. Successful login returns status and sets HttpOnly `SESSION`; refresh `/api/auth/csrf` after authentication/logout. See the [frontend contract](../architecture.md#csrf-cookies-and-frontend-contract).
 
 Times and dates: see [time handling](../time-handling.md). Errors: see [errors](./errors.md).
 
@@ -20,7 +20,8 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | ------ | ---- | ------ | ----- |
 | POST | `/api/auth/request-code` | Public | Sends six-digit OTP after commit; 60s cooldown, rolling phone/IP limits and global daily cap |
 | POST | `/api/auth/verify-code` | Public | Creates phone-only customer HttpOnly session without names; atomic single-use OTP, rolling IP limit |
-| POST | `/api/auth/login-staff` | Public | `email`, `password`, optional `employmentId`; rate-limited per IP |
+| POST | `/api/auth/login-staff` | Public | `companyId`, normalized `email`, `password`; failed authentication is 401, no employment selection |
+| POST | `/api/auth/staff-password` | Public, CSRF required | One-use 24h setup/recovery token, sets password without login; 204 |
 | POST | `/api/auth/logout` | Public, CSRF required | Revokes the session of the current browser; 204 |
 | GET | `/api/auth/csrf` | Public | Sets XSRF-TOKEN; returns CSRF token/header name |
 | GET | `/api/auth/me` | Authenticated | Safe account ID/username/authorities/company/employment scope |
@@ -47,6 +48,12 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | ------ | ---- | ------ | ----- |
 | GET | `/api/employees/public/company/{companyId}?offeringId` | Public | Employees eligible for the offering |
 | GET | `/api/employees` | OWNER, EMPLOYEE | |
+| POST | `/api/employees` | OWNER | Creates EMPLOYEE account plus initial setup token; 201 |
+| PUT | `/api/employees/{id}` | OWNER | Company-local names, login email, optional contact phone |
+| PUT | `/api/employees/{id}/enabled` | OWNER | Revokes access/links when disabled; returns preserved future booking warnings |
+| POST | `/api/employees/{id}/password-link` | OWNER | Replaces one-use 24h setup/recovery token |
+| GET | `/api/staff/me` | OWNER, EMPLOYEE | Current company-local staff profile |
+| POST | `/api/staff/password` | OWNER, EMPLOYEE | Current password required; revokes all account sessions; 204 |
 | POST | `/api/employees/{id}/photo` | OWNER | Multipart field `photo` |
 | DELETE | `/api/employees/{id}/photo` | OWNER | |
 | GET | `/api/employees/{employeeId}/work-schedule` | OWNER, EMPLOYEE | authenticated session company's schedule only |
@@ -111,7 +118,9 @@ See [reservations](../reservations.md).
 | ------ | ---- | ------ | ----- |
 | GET | `/api/customers` | OWNER, EMPLOYEE | Customers of the caller's company |
 | GET | `/api/customers/{id}` | OWNER, EMPLOYEE | Company-scoped status (no-shows, blocked) |
-| PUT | `/api/customers/{id}/notes` | OWNER, EMPLOYEE | |
+| PUT | `/api/customers/{id}/notes` | OWNER, EMPLOYEE | Existing local profile required; never creates a relationship |
+| PUT | `/api/customers/{id}/profile` | OWNER, EMPLOYEE | Updates local names and optional contact email |
+| GET | `/api/customers/{id}/visits` | OWNER, EMPLOYEE | Company-scoped visit history, existing relationship required |
 | PATCH | `/api/customers/{id}/block` | OWNER | |
 | PATCH | `/api/customers/{id}/unblock` | OWNER | Resets no-show count |
 
@@ -119,8 +128,7 @@ See [reservations](../reservations.md).
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| GET | `/api/users/me` | Authenticated | |
-| PUT | `/api/users/me` | Authenticated | |
+| GET | `/api/users/me` | CUSTOMER | Global canonical phone identity only |
 
 ## API docs
 

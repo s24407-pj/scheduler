@@ -20,7 +20,7 @@ class UserRepositoryTest {
         val inserted = userRepository.insertIfPhoneAbsent("+48600100200", "Anna", "Nowak")
 
         assertEquals(1, inserted)
-        assertEquals("Anna", userRepository.findByPhoneNumber("+48600100200")?.firstName)
+        assertEquals("+48600100200", userRepository.findByPhoneNumber("+48600100200")?.phoneNumber)
     }
 
     @Test
@@ -30,6 +30,6 @@ class UserRepositoryTest {
         val inserted = userRepository.insertIfPhoneAbsent("+48600100300", "Druga", "Osoba")
 
         assertEquals(0, inserted)
-        assertEquals("Pierwsza", userRepository.findByPhoneNumber("+48600100300")?.firstName)
+        assertEquals("+48600100300", userRepository.findByPhoneNumber("+48600100300")?.phoneNumber)
     }
 }

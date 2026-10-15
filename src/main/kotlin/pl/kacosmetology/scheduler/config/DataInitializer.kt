@@ -13,15 +13,12 @@ import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingCategory
 import pl.kacosmetology.scheduler.offering.OfferingCategoryRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
 
 /** Seeds the database with sample data. Only active in the `dev` profile. Idempotent — safe to run on every startup. */
 @Component
 @Profile("dev")
 class DataInitializer(
     private val companyRepository: CompanyRepository,
-    private val userRepository: UserRepository,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
     private val offeringRepository: OfferingRepository,
     private val offeringCategoryRepository: OfferingCategoryRepository,
@@ -43,52 +40,33 @@ class DataInitializer(
         }
     }
 
-    private fun ensureOwner(companyId: Long) {
-        if (userRepository.findByEmail("gabinet@kacosmetology.pl") != null) return
+    private fun ensureOwner(companyId: Long) =
+        ensureStaff(companyId, "gabinet@kacosmetology.pl", "admin123", "Katarzyna", "Suwalska", "OWNER")
 
-        logger.info("Seeding owner account...")
-        val owner =
-            userRepository.save(
-                User(
-                    phoneNumber = "+48726154460",
-                    firstName = "Katarzyna",
-                    lastName = "Suwalska",
-                    email = "gabinet@kacosmetology.pl",
-                    passwordHash = passwordEncoder.encode("admin123"),
-                ),
-            )
+    private fun ensureTestEmployee(companyId: Long) =
+        ensureStaff(companyId, "pracownik@kacosmetology.pl", "employee123", "Jan", "Kowalski", "EMPLOYEE")
+
+    private fun ensureStaff(
+        companyId: Long,
+        email: String,
+        password: String,
+        firstName: String,
+        lastName: String,
+        role: String,
+    ) {
+        if (companyEmployeeRepository.findByCompanyIdAndLoginEmail(companyId, email) != null) return
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = companyId,
-                userId = requireNotNull(owner.id) { "Seeded owner must have an ID" },
-                role = "OWNER",
+                userId = companyEmployeeRepository.nextPublicId(),
+                role = role,
+                loginEmail = email,
+                passwordHash = passwordEncoder.encode(password),
+                firstName = firstName,
+                lastName = lastName,
             ),
         )
-        logger.info("Owner seeded: gabinet@kacosmetology.pl / admin123")
-    }
-
-    private fun ensureTestEmployee(companyId: Long) {
-        if (userRepository.findByEmail("pracownik@kacosmetology.pl") != null) return
-
-        logger.info("Seeding test employee account...")
-        val employee =
-            userRepository.save(
-                User(
-                    phoneNumber = "+48100200300",
-                    firstName = "Jan",
-                    lastName = "Kowalski",
-                    email = "pracownik@kacosmetology.pl",
-                    passwordHash = passwordEncoder.encode("employee123"),
-                ),
-            )
-        companyEmployeeRepository.save(
-            CompanyEmployee(
-                companyId = companyId,
-                userId = requireNotNull(employee.id) { "Seeded employee must have an ID" },
-                role = "EMPLOYEE",
-            ),
-        )
-        logger.info("Test employee seeded: pracownik@kacosmetology.pl / employee123")
+        logger.info("Seeded {} account for company {}", role, companyId)
     }
 
     private fun seedOfferings(cid: Long) {

@@ -72,6 +72,7 @@ class SessionSecurityIntegrationTest {
     @MockkBean private lateinit var s3Client: S3Client
     @MockkBean private lateinit var clock: Clock
     @Autowired private lateinit var accountSessions: AccountSessionRegistry
+    @Autowired private lateinit var testSessions: pl.kacosmetology.scheduler.security.TestSessions
     private lateinit var loginTime: Instant
 
     private lateinit var staff: User
@@ -102,8 +103,30 @@ class SessionSecurityIntegrationTest {
             )
         val a = companies.save(Company(name = "Alpha"))
         val b = companies.save(Company(name = "Beta"))
-        owner = employments.save(CompanyEmployee(companyId = a.id!!, userId = staff.id!!, role = "OWNER"))
-        employee = employments.save(CompanyEmployee(companyId = b.id!!, userId = staff.id!!, role = "EMPLOYEE"))
+        owner =
+            employments.save(
+                CompanyEmployee(
+                    companyId = a.id!!,
+                    userId = staff.id!!,
+                    role = "OWNER",
+                    loginEmail = staff.email,
+                    passwordHash = staff.passwordHash,
+                    firstName = "Alpha",
+                    lastName = "Owner",
+                ),
+            )
+        employee =
+            employments.save(
+                CompanyEmployee(
+                    companyId = b.id!!,
+                    userId = staff.id!!,
+                    role = "EMPLOYEE",
+                    loginEmail = staff.email,
+                    passwordHash = staff.passwordHash,
+                    firstName = "Beta",
+                    lastName = "Employee",
+                ),
+            )
     }
 
     @Test
@@ -132,17 +155,10 @@ class SessionSecurityIntegrationTest {
     }
 
     @Test
-    fun `selection response does not create an authenticated or anonymous session`() {
-        val browser = csrf()
-        val result = post(browser, "/api/auth/login-staff", credentials())
-        assertEquals(200, result.response.status)
-        val body = mapper.readTree(result.response.contentAsString)
-        assertEquals("EMPLOYMENT_SELECTION_REQUIRED", body["status"].asString())
-        assertEquals(owner.id, body["employments"][0]["employmentId"].asLong())
-        assertEquals(employee.id, body["employments"][1]["employmentId"].asLong())
+    fun `staff login requires explicit company and creates no session when company is missing`() {
+        val result = post(csrf(), "/api/auth/login-staff", mapOf("email" to staff.email, "password" to password))
+        assertEquals(400, result.response.status)
         assertNull(result.response.getCookie("SESSION"))
-        assertNull(result.request.getSession(false))
-        assertEquals(401, mvc.perform(get("/api/auth/me")).andReturn().response.status)
     }
 
     @Test
@@ -220,7 +236,7 @@ class SessionSecurityIntegrationTest {
     @Test
     fun `customer logout all isolates customer account from staff and other customers`() {
         val first = customer(staff.phoneNumber)
-        val second = customer(staff.phoneNumber)
+        val second = csrf(testSessions.customer(staff))
         val staffBrowser = login(owner.id!!)
         val otherCustomer = customer("+48500777777")
         assertEquals(204, post(first, "/api/auth/logout-all").response.status)
@@ -391,8 +407,13 @@ class SessionSecurityIntegrationTest {
         val other = users.save(User(phoneNumber = "+48500444444", firstName = "Other", lastName = "Staff"))
         val foreign =
             employments.save(CompanyEmployee(companyId = owner.companyId, userId = other.id!!, role = "OWNER"))
-        val result = post(csrf(), "/api/auth/login-staff", credentials(foreign.id!!))
-        assertEquals(400, result.response.status)
+        val result =
+            post(
+                csrf(),
+                "/api/auth/login-staff",
+                mapOf("email" to "foreign@salon.pl", "password" to password, "companyId" to foreign.companyId),
+            )
+        assertEquals(401, result.response.status)
         assertNull(result.response.getCookie("SESSION"))
     }
 
@@ -452,32 +473,19 @@ class SessionSecurityIntegrationTest {
     }
 
     @Test
-    fun `real CSRF allows profile mutation and profile changes are loaded from database`() {
+    fun `staff profile reads company local presentation and customer profile update route is removed`() {
         val browser = login(employee.id!!)
-        val result =
-            mvc.perform(
-                    put("/api/users/me")
-                        .cookie(browser.session!!, browser.csrf)
-                        .header("X-XSRF-TOKEN", browser.token)
-                        .contentType("application/json")
-                        .content(
-                            mapper.writeValueAsString(
-                                mapOf("firstName" to "Updated", "lastName" to "Session", "email" to staff.email),
-                            ),
-                        ),
-                )
-                .andReturn()
-        assertEquals(200, result.response.status)
-        val profile = mvc.perform(get("/api/users/me").cookie(browser.session)).andReturn().response
-        assertEquals("Updated", mapper.readTree(profile.contentAsString)["firstName"].asString())
-        assertEquals(employee.id, me(browser)["employmentId"].asLong())
+        val profile = mvc.perform(get("/api/staff/me").cookie(browser.session!!)).andReturn().response
+        assertEquals(200, profile.status)
+        assertEquals("Beta", mapper.readTree(profile.contentAsString)["firstName"].asString())
+        assertEquals(403, mvc.perform(get("/api/users/me").cookie(browser.session)).andReturn().response.status)
     }
 
     @Test
     fun `recycled phone number cannot bind an old account session to a new user`() {
         val browser = customer("+48500888888")
         val userId = me(browser)["userId"].asLong()
-        jdbc.update("update users set phone_number = ? where id = ?", "+48500888889", userId)
+        jdbc.update("update customer_accounts set phone_number = ? where id = ?", "+48500888889", userId)
         users.save(User(phoneNumber = "+48500888888", firstName = "New", lastName = "Identity"))
         assertRevoked(browser)
     }
@@ -590,7 +598,11 @@ class SessionSecurityIntegrationTest {
     private fun id(cookie: Cookie) = String(Base64.getDecoder().decode(cookie.value))
 
     private fun credentials(employmentId: Long? = null) =
-        mapOf("email" to staff.email, "password" to password, "employmentId" to employmentId)
+        mapOf(
+            "email" to staff.email,
+            "password" to password,
+            "companyId" to if (employmentId == employee.id) employee.companyId else owner.companyId,
+        )
 
     private fun csrf(session: Cookie? = null): Browser {
         val builder = get("/api/auth/csrf")

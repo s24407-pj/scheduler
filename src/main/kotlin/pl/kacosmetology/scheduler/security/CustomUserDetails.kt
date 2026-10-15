@@ -12,6 +12,7 @@ data class CustomUserDetails(
     val role: String,
     val companyId: Long? = null,
     val employmentId: Long? = null,
+    val authVersion: Long = 0,
 ) : UserDetails {
     /** Returns the exact staff company scope or rejects an unscoped principal. */
     fun requireCompanyId(): Long = companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)

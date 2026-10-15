@@ -1,45 +1,24 @@
 package pl.kacosmetology.scheduler.user
 
-import jakarta.validation.Valid
-import org.springframework.http.HttpStatus
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
-import org.springframework.web.bind.annotation.*
-import org.springframework.web.server.ResponseStatusException
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RestController
 import pl.kacosmetology.scheduler.security.CustomUserDetails
-import pl.kacosmetology.scheduler.user.dto.UpdateUserProfileRequest
-import pl.kacosmetology.scheduler.user.dto.UserProfileResponse
 
-/** REST API for reading and updating the authenticated user's own profile. */
+/** Exposes only the global customer's authentication account; salon profiles are staff-managed. */
 @RestController
 @RequestMapping("/api/users")
-class UserController(
-    private val userService: UserService,
-) {
-
-    /** Returns the authenticated user's profile. */
+class UserController(private val userService: UserService) {
+    /** Returns the authenticated customer's canonical phone without salon profile data. */
     @GetMapping("/me")
-    fun getMyProfile(@AuthenticationPrincipal principal: CustomUserDetails?): UserProfileResponse {
-        val userId = principal?.id ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
-        return userService.getProfile(userId).toProfileResponse()
+    @PreAuthorize("hasRole('CUSTOMER')")
+    fun getMyProfile(@AuthenticationPrincipal principal: CustomUserDetails): CustomerAccountResponse {
+        val account = userService.getProfile(principal.id)
+        return CustomerAccountResponse(requireNotNull(account.id), account.phoneNumber)
     }
-
-    /** Updates the authenticated user's profile data. */
-    @PutMapping("/me")
-    fun updateMyProfile(
-        @Valid @RequestBody request: UpdateUserProfileRequest,
-        @AuthenticationPrincipal principal: CustomUserDetails?,
-    ): UserProfileResponse {
-        val userId = principal?.id ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak autoryzacji")
-        return userService.updateProfile(userId, request).toProfileResponse()
-    }
-
-    private fun User.toProfileResponse() =
-        UserProfileResponse(
-            id = requireNotNull(id) { "Persisted user must have an ID" },
-            phoneNumber = phoneNumber,
-            firstName = firstName,
-            lastName = lastName,
-            email = email,
-            photoUrl = photoUrl,
-        )
 }
+
+/** Global customer authentication identity without company-owned presentation. */
+data class CustomerAccountResponse(val id: Long, val phoneNumber: String)

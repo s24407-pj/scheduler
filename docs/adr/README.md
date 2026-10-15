@@ -21,4 +21,5 @@ To add one, copy the structure of an existing ADR, use the next number, and add 
 | [0009](./0009-revocable-sessions.md) | Revocable sessions behind JWTs | Superseded by 0011 |
 | [0010](./0010-cancellation-window-and-no-show-correction.md) | Cancellation window and no-show correction | Accepted — implemented |
 | [0011](./0011-spring-session-redis.md) | Spring Security sessions backed by Redis | Accepted — implemented |
+| [0012](./0012-separate-account-realms.md) | Separate customer and company staff realms | Accepted — implemented |
 | [0013](./0013-commercial-quotes.md) | Durable commercial quotes without capacity holds | Accepted — implemented |

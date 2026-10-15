@@ -10,9 +10,6 @@ import org.springframework.stereotype.Repository
 @Repository
 interface UserRepository : JpaRepository<User, Long> {
 
-    /** Finds a user by email address. Used for staff login and email uniqueness validation. */
-    fun findByEmail(email: String): User?
-
     /** Finds a user by phone number. Used for SMS OTP authentication. */
     fun findByPhoneNumber(phoneNumber: String): User?
 
@@ -24,8 +21,8 @@ interface UserRepository : JpaRepository<User, Long> {
     @Query(
         value =
             """
-        INSERT INTO users (phone_number, first_name, last_name)
-        VALUES (:phoneNumber, :firstName, :lastName)
+        INSERT INTO customer_accounts (phone_number)
+        SELECT :phoneNumber WHERE :firstName IS NOT NULL AND :lastName IS NOT NULL
         ON CONFLICT (phone_number) DO NOTHING
         """,
         nativeQuery = true,

@@ -62,11 +62,12 @@ class CustomUserDetailsServiceTest {
     @Test
     fun `staff loading should use only the exact employment role and scope`() {
         val user = User(id = 1, phoneNumber = testPhone, firstName = "Anna", lastName = "Nowak")
-        val employment = CompanyEmployee(id = 8L, companyId = 99L, userId = 1L, role = "OWNER")
+        val employment =
+            CompanyEmployee(id = 8L, companyId = 99L, userId = 1L, role = "OWNER", loginEmail = "staff@example.test")
         every { userRepository.findByPhoneNumber(testPhone) } returns user
         every { companyEmployeeRepository.findById(8L) } returns Optional.of(employment)
 
-        val details = customUserDetailsService.loadStaffByEmployment(testPhone, 8L)
+        val details = customUserDetailsService.loadStaffByEmployment("staff@example.test", 8L)
 
         Assertions.assertEquals(8L, details.employmentId)
         Assertions.assertEquals(99L, details.companyId)
@@ -83,7 +84,7 @@ class CustomUserDetailsServiceTest {
             )
 
         assertThrows<UsernameNotFoundException> {
-            customUserDetailsService.loadStaffByEmployment(testPhone, 8L)
+            customUserDetailsService.loadStaffByEmployment("staff@example.test", 8L)
         }
     }
 }

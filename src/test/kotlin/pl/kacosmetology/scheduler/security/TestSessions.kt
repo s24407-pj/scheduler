@@ -15,19 +15,32 @@ import pl.kacosmetology.scheduler.user.User
 class TestSessions(
     private val repository: RedisIndexedSessionRepository,
     private val accountSessions: AccountSessionRegistry,
+    private val staffAccounts: pl.kacosmetology.scheduler.company.CompanyEmployeeRepository,
 ) {
     fun customer(user: User): Cookie =
         create(CustomUserDetails(requireNotNull(user.id), user.phoneNumber, "ROLE_CUSTOMER"))
 
     fun staff(user: User, employment: CompanyEmployee): Cookie {
         require(employment.userId == user.id)
+        // Test-only adapter for legacy feature fixtures. Runtime never obtains staff data from customer accounts.
+        val local = staffAccounts.findById(requireNotNull(employment.id)).orElseThrow()
+        if (local.loginEmail == null) {
+            local.loginEmail = user.email?.trim()?.lowercase() ?: "fixture-${local.id}@example.test"
+            local.passwordHash = user.passwordHash
+            local.firstName = user.firstName
+            local.lastName = user.lastName
+            local.contactPhone = user.phoneNumber
+            local.photoUrl = user.photoUrl
+            staffAccounts.saveAndFlush(local)
+        }
         return create(
             CustomUserDetails(
                 requireNotNull(user.id),
-                user.phoneNumber,
+                requireNotNull(local.loginEmail),
                 "ROLE_${employment.role}",
                 employment.companyId,
                 requireNotNull(employment.id),
+                local.authVersion,
             ),
         )
     }

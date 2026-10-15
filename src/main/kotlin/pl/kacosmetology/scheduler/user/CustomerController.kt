@@ -68,6 +68,22 @@ class CustomerController(
         customerService.setCustomerNotes(id, companyId, request.notes)
     }
 
+    /** Both staff roles may read all visits in the company's existing customer relationship. */
+    @GetMapping("/{id}/visits")
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun visits(@PathVariable id: Long, @AuthenticationPrincipal principal: CustomUserDetails) =
+        customerService.getVisitHistory(id, principal.requireCompanyId())
+
+    /** Edits the salon's customer profile; names and email are staff-managed. */
+    @PutMapping("/{id}/profile")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun updateProfile(
+        @PathVariable id: Long,
+        @Valid @RequestBody request: pl.kacosmetology.scheduler.user.dto.UpdateCustomerProfileRequest,
+        @AuthenticationPrincipal principal: CustomUserDetails,
+    ) = customerService.updateProfile(id, principal.requireCompanyId(), request)
+
     /** Unblocks a customer and resets their no-show counter. Requires OWNER role. */
     @PatchMapping("/{id}/unblock")
     @ResponseStatus(HttpStatus.NO_CONTENT)

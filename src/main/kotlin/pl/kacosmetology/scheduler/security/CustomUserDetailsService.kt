@@ -29,26 +29,24 @@ class CustomUserDetailsService(
 
     /** Loads a principal from one employment and grants only that employment's role. */
     fun loadStaffByEmployment(username: String, employmentId: Long): CustomUserDetails {
-        val user =
-            userRepository.findByPhoneNumber(username)
-                ?: throw UsernameNotFoundException("User not found with phone number: $username")
         val employment =
             companyEmployeeRepository.findById(employmentId).orElseThrow {
-                UsernameNotFoundException("Employment not found: $employmentId")
+                UsernameNotFoundException("Staff account not found")
             }
-        if (employment.userId != user.id) {
-            throw UsernameNotFoundException("Employment does not belong to user: $username")
+        if (!employment.enabled || employment.loginEmail != username) {
+            throw UsernameNotFoundException("Staff account unavailable")
         }
 
         if (employment.role !in setOf("OWNER", "EMPLOYEE")) {
             throw UsernameNotFoundException("Unsupported employment role")
         }
         return CustomUserDetails(
-            id = requireNotNull(user.id),
-            phoneNumber = user.phoneNumber,
+            id = employment.userId,
+            phoneNumber = requireNotNull(employment.loginEmail),
             companyId = employment.companyId,
             role = "ROLE_${employment.role.uppercase()}",
             employmentId = employment.id,
+            authVersion = employment.authVersion,
         )
     }
 }

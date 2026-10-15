@@ -2,7 +2,6 @@ package pl.kacosmetology.scheduler.user
 
 import com.ninjasquad.springmockk.MockkBean
 import jakarta.servlet.http.Cookie
-import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -72,60 +71,22 @@ class UserIntegrationTest {
             }
             .andExpect {
                 status { isOk() }
-                jsonPath("$.firstName") { value("Jan") }
-                jsonPath("$.lastName") { value("Kowalski") }
+                jsonPath("$.firstName") { doesNotExist() }
+                jsonPath("$.lastName") { doesNotExist() }
                 jsonPath("$.phoneNumber") { value("+48111222333") }
             }
     }
 
     @Test
-    fun `PUT api-users-me should update profile and save to database (200)`() {
-        val updateRequest =
-            UpdateUserProfileRequest(
-                firstName = "Piotr",
-                lastName = "Nowak",
-                email = "piotr.nowak@example.com",
-            )
-
+    fun `PUT api-users-me cannot edit salon owned profiles`() {
         mockMvc
             .put("/api/users/me") {
                 with(csrf())
                 cookie(sessionCookie)
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(updateRequest)
+                content = objectMapper.writeValueAsString(UpdateUserProfileRequest("Piotr", "Nowak", null))
             }
-            .andExpect {
-                status { isOk() }
-                jsonPath("$.firstName") { value("Piotr") }
-                jsonPath("$.email") { value("piotr.nowak@example.com") }
-            }
-
-        // Upewniamy się, że zmiana zapisała się w prawdziwej bazie
-        val userInDb = userRepository.findById(testUser.id!!).get()
-        assertEquals("Piotr", userInDb.firstName)
-        assertEquals("piotr.nowak@example.com", userInDb.email)
-    }
-
-    @Test
-    fun `PUT api-users-me should return 400 when validation fails`() {
-        // Próbujemy wysłać puste imię i niepoprawny adres e-mail
-        val badRequest =
-            UpdateUserProfileRequest(
-                firstName = "",
-                lastName = "Kowalski",
-                email = "to-nie-jest-email",
-            )
-
-        mockMvc
-            .put("/api/users/me") {
-                with(csrf())
-                cookie(sessionCookie)
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(badRequest)
-            }
-            .andExpect {
-                status { isBadRequest() } // Dzięki @Valid powinno natychmiast odrzucić!
-            }
+            .andExpect { status { isMethodNotAllowed() } }
     }
 
     @Test
@@ -158,7 +119,7 @@ class UserIntegrationTest {
             }
             .andExpect {
                 status { isOk() }
-                jsonPath("$.firstName") { value("Anna") }
+                jsonPath("$.firstName") { doesNotExist() }
                 // Kluczowe! Pole passwordHash NIE MOŻE istnieć w odpowiedzi
                 jsonPath("$.passwordHash") { doesNotExist() }
                 jsonPath("$.password_hash") { doesNotExist() }

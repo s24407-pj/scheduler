@@ -23,7 +23,6 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
-import org.springframework.test.web.servlet.put
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
@@ -126,7 +125,7 @@ class AuthFlowIntegrationTest {
         // 4. Upewniamy się, że użytkownik został stworzony w bazie i zużyty kod zniknął
         val createdUser = userRepository.findByPhoneNumber(phoneNumber)
         Assertions.assertNotNull(createdUser, "Uzytkownik powinien zostac utworzony")
-        assertEquals("", createdUser?.firstName)
+        assertEquals(phoneNumber, createdUser?.phoneNumber)
 
         val codeAfterVerification = redisTemplate.opsForValue().get("otp:$phoneNumber")
         Assertions.assertNull(codeAfterVerification, "Zużyty kod powinien zostac usuniety z Redis")
@@ -154,8 +153,7 @@ class AuthFlowIntegrationTest {
                 cookie { exists("SESSION") }
             }
         val account = requireNotNull(userRepository.findByPhoneNumber(phone))
-        assertEquals("", account.firstName)
-        assertEquals("", account.lastName)
+        assertEquals(phone, account.phoneNumber)
         Assertions.assertNull(redisTemplate.opsForValue().get("otp:$phone"))
     }
 
@@ -170,232 +168,6 @@ class AuthFlowIntegrationTest {
                 }
                 .andExpect { status { isBadRequest() } }
         }
-    }
-
-    @Test
-    fun `staff login with email and password should create session`() {
-        // 1. GIVEN - Mamy pracownika w bazie z ustawionym hasłem
-        val rawPassword = "superSecretPassword"
-        val staff =
-            userRepository.save(
-                User(
-                    phoneNumber = "+48999888777",
-                    firstName = "Anna",
-                    lastName = "Manager",
-                    email = "anna@salon.pl",
-                    passwordHash = passwordEncoder.encode(rawPassword),
-                ),
-            )
-        val company = companyRepository.save(Company(name = "Anna Salon"))
-        companyEmployeeRepository.save(
-            CompanyEmployee(companyId = company.id!!, userId = staff.id!!, role = "EMPLOYEE"),
-        )
-
-        // 2. WHEN - Pracownik próbuje się zalogować
-        val loginDto =
-            StaffLoginRequest(
-                email = "anna@salon.pl",
-                password = rawPassword,
-            )
-
-        // 3. THEN - Oczekujemy 200 OK i sesji
-        mockMvc
-            .post("/api/auth/login-staff") {
-                with(csrf())
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(loginDto)
-            }
-            .andExpect {
-                status { isOk() }
-                jsonPath("$.status") { value("AUTHENTICATED") }
-                jsonPath("$.token") { doesNotExist() }
-                cookie { exists("SESSION") }
-                jsonPath("$.employments") { isEmpty() }
-            }
-    }
-
-    @Test
-    fun `staff login as owner should create session with role owner`() {
-        // GIVEN
-        val rawPassword = "securePassword1"
-        val company = companyRepository.save(Company(name = "Test Salon"))
-        val owner =
-            userRepository.save(
-                User(
-                    phoneNumber = "+48777666555",
-                    firstName = "Właściciel",
-                    lastName = "Salonu",
-                    email = "owner@salon.pl",
-                    passwordHash = passwordEncoder.encode(rawPassword),
-                ),
-            )
-        companyEmployeeRepository.save(CompanyEmployee(companyId = company.id!!, userId = owner.id!!, role = "OWNER"))
-
-        // WHEN
-        val result =
-            mockMvc
-                .post("/api/auth/login-staff") {
-                    with(csrf())
-                    contentType = MediaType.APPLICATION_JSON
-                    content =
-                        objectMapper.writeValueAsString(
-                            StaffLoginRequest(email = "owner@salon.pl", password = rawPassword),
-                        )
-                }
-                .andExpect {
-                    status { isOk() }
-                }
-                .andReturn()
-
-        val session = requireNotNull(result.response.getCookie("SESSION"))
-
-        // THEN
-        assertEquals("ROLE_OWNER", identity(session)["authorities"][0].asString())
-        assertEquals(company.id!!, identity(session)["companyId"].asLong())
-        Assertions.assertNotNull(identity(session)["employmentId"].asLong())
-    }
-
-    @Test
-    fun `multi-company staff login should bind authorization to selected employment`() {
-        val rawPassword = "securePassword1"
-        val companyB = companyRepository.save(Company(name = "Beta Salon"))
-        val companyA = companyRepository.save(Company(name = "Alpha Salon"))
-        val staff =
-            userRepository.save(
-                User(
-                    phoneNumber = "+48700111222",
-                    firstName = "Multi",
-                    lastName = "Staff",
-                    email = "multi@salon.pl",
-                    passwordHash = passwordEncoder.encode(rawPassword),
-                ),
-            )
-        val ownerInB =
-            companyEmployeeRepository.save(
-                CompanyEmployee(companyId = companyB.id!!, userId = staff.id!!, role = "OWNER"),
-            )
-        val employeeInA =
-            companyEmployeeRepository.save(
-                CompanyEmployee(companyId = companyA.id!!, userId = staff.id!!, role = "EMPLOYEE"),
-            )
-
-        val selectionResult =
-            mockMvc
-                .post("/api/auth/login-staff") {
-                    with(csrf())
-                    contentType = MediaType.APPLICATION_JSON
-                    content =
-                        objectMapper.writeValueAsString(
-                            StaffLoginRequest(email = "multi@salon.pl", password = rawPassword),
-                        )
-                }
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.status") { value("EMPLOYMENT_SELECTION_REQUIRED") }
-                    jsonPath("$.token") { doesNotExist() }
-                    jsonPath("$.employments[0].employmentId") { value(employeeInA.id!!) }
-                    jsonPath("$.employments[0].companyName") { value("Alpha Salon") }
-                    jsonPath("$.employments[1].employmentId") { value(ownerInB.id!!) }
-                    jsonPath("$.employments[1].companyName") { value("Beta Salon") }
-                }
-                .andReturn()
-        Assertions.assertTrue(selectionResult.response.contentAsString.contains("EMPLOYMENT_SELECTION_REQUIRED"))
-
-        val employeeSession = loginForEmployment(rawPassword, employeeInA.id!!)
-        assertEquals("ROLE_EMPLOYEE", identity(employeeSession)["authorities"][0].asString())
-        assertEquals(companyA.id!!, identity(employeeSession)["companyId"].asLong())
-        assertEquals(employeeInA.id!!, identity(employeeSession)["employmentId"].asLong())
-        mockMvc
-            .put("/api/company/settings") {
-                with(csrf())
-                cookie(employeeSession)
-                contentType = MediaType.APPLICATION_JSON
-                content = settingsBody()
-            }
-            .andExpect { status { isForbidden() } }
-
-        val ownerSession = loginForEmployment(rawPassword, ownerInB.id!!)
-        assertEquals("ROLE_OWNER", identity(ownerSession)["authorities"][0].asString())
-        assertEquals(companyB.id!!, identity(ownerSession)["companyId"].asLong())
-        mockMvc
-            .get("/api/company/settings") {
-                cookie(ownerSession)
-            }
-            .andExpect {
-                status { isOk() }
-                jsonPath("$.id") { value(companyB.id!!) }
-            }
-
-        companyEmployeeRepository.delete(employeeInA)
-        mockMvc
-            .get("/api/company/settings") {
-                cookie(employeeSession)
-            }
-            .andExpect { status { isUnauthorized() } }
-    }
-
-    @Test
-    fun `staff login should reject account without employment`() {
-        val password = "securePassword1"
-        userRepository.save(
-            User(
-                phoneNumber = "+48700999888",
-                firstName = "No",
-                lastName = "Employment",
-                email = "none@salon.pl",
-                passwordHash = passwordEncoder.encode(password),
-            ),
-        )
-
-        mockMvc
-            .post("/api/auth/login-staff") {
-                with(csrf())
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(StaffLoginRequest("none@salon.pl", password))
-            }
-            .andExpect { status { isBadRequest() } }
-    }
-
-    @Test
-    fun `loginStaff with wrong password should return 400`() {
-        // GIVEN
-        userRepository.save(
-            User(
-                phoneNumber = "+48999888777",
-                firstName = "Anna",
-                lastName = "Manager",
-                email = "anna@salon.pl",
-                passwordHash = passwordEncoder.encode("poprawneHaslo"),
-            ),
-        )
-
-        val loginDto = StaffLoginRequest(email = "anna@salon.pl", password = "zleHaslo")
-
-        // WHEN & THEN
-        mockMvc
-            .post("/api/auth/login-staff") {
-                with(csrf())
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(loginDto)
-            }
-            .andExpect {
-                status { isBadRequest() }
-            }
-    }
-
-    @Test
-    fun `loginStaff with non-existent email should return 400`() {
-        val loginDto = StaffLoginRequest(email = "nieistnieje@salon.pl", password = "jakiesHaslo1")
-
-        mockMvc
-            .post("/api/auth/login-staff") {
-                with(csrf())
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(loginDto)
-            }
-            .andExpect {
-                status { isBadRequest() }
-            }
     }
 
     @Test
@@ -461,7 +233,7 @@ class AuthFlowIntegrationTest {
     @Test
     fun `login-staff should return 429 after exceeding rate limit`() {
         // GIVEN - 10 attempts allowed per minute (application.yaml default)
-        val loginDto = StaffLoginRequest(email = "test@salon.pl", password = "jakiesHaslo1")
+        val loginDto = StaffLoginRequest(email = "test@salon.pl", password = "jakiesHaslo1", companyId = 1L)
 
         repeat(10) {
             mockMvc.post("/api/auth/login-staff") {
@@ -709,7 +481,15 @@ class AuthFlowIntegrationTest {
                     passwordHash = passwordEncoder.encode(rawPassword),
                 ),
             )
-        companyEmployeeRepository.save(CompanyEmployee(companyId = company.id!!, userId = owner.id!!, role = "OWNER"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(
+                companyId = company.id!!,
+                userId = owner.id!!,
+                role = "OWNER",
+                loginEmail = owner.email,
+                passwordHash = owner.passwordHash,
+            ),
+        )
         val sessions =
             List(2) {
                 val result =
@@ -717,7 +497,10 @@ class AuthFlowIntegrationTest {
                         .post("/api/auth/login-staff") {
                             with(csrf())
                             contentType = MediaType.APPLICATION_JSON
-                            content = objectMapper.writeValueAsString(StaffLoginRequest("logout@salon.pl", rawPassword))
+                            content =
+                                objectMapper.writeValueAsString(
+                                    StaffLoginRequest("logout@salon.pl", rawPassword, company.id),
+                                )
                         }
                         .andExpect { status { isOk() } }
                         .andReturn()
@@ -759,7 +542,6 @@ class AuthFlowIntegrationTest {
                 .andExpect {
                     status { isOk() }
                     jsonPath("$.status") { value("AUTHENTICATED") }
-                    jsonPath("$.employments") { isEmpty() }
                 }
                 .andReturn()
         return requireNotNull(result.response.getCookie("SESSION"))

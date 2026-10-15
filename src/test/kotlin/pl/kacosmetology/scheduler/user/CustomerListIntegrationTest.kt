@@ -79,6 +79,14 @@ class CustomerListIntegrationTest {
 
         customer = userRepository.save(User(phoneNumber = "+48811333001", firstName = "Anna", lastName = "Kowalska"))
         customerSession = testSessions.customer(customer)
+        companyCustomerRepository.save(
+            CompanyCustomer(
+                companyId = companyId,
+                userId = customer.id!!,
+                firstName = customer.firstName,
+                lastName = customer.lastName,
+            ),
+        )
 
         val offering =
             offeringRepository.save(
@@ -150,7 +158,14 @@ class CustomerListIntegrationTest {
     @Test
     fun `GET customers includes notes when set`() {
         companyCustomerRepository.save(
-            CompanyCustomer(companyId = companyId, userId = customer.id!!, notes = "VIP klientka"),
+            CompanyCustomer(
+                id = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!.id,
+                companyId = companyId,
+                userId = customer.id!!,
+                firstName = customer.firstName,
+                lastName = customer.lastName,
+                notes = "VIP klientka",
+            ),
         )
 
         mockMvc
@@ -164,7 +179,7 @@ class CustomerListIntegrationTest {
     }
 
     @Test
-    fun `GET customers returns empty list when no reservations exist`() {
+    fun `GET customers retains company customer relationship when reservations are removed`() {
         reservationRepository.deleteAll()
 
         mockMvc
@@ -173,7 +188,7 @@ class CustomerListIntegrationTest {
             }
             .andExpect {
                 status { isOk() }
-                jsonPath("$.length()") { value(0) }
+                jsonPath("$.length()") { value(1) }
             }
     }
 
@@ -202,6 +217,9 @@ class CustomerListIntegrationTest {
             userRepository.save(
                 User(phoneNumber = "+48811444001", firstName = "Obcy", lastName = "Klient"),
             )
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = employee.id!!, role = "EMPLOYEE"),
+        )
         val otherOffering =
             offeringRepository.save(
                 Offering(companyId = otherCompany.id!!, name = "Usługa", durationMinutes = 30, price = 100),

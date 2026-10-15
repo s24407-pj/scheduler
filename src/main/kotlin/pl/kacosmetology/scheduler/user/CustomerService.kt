@@ -20,24 +20,22 @@ class CustomerService(
      */
     @Transactional(readOnly = true)
     fun listCustomers(companyId: Long): List<CustomerStatusResponse> {
-        val customerIds = reservationRepository.findDistinctCustomerIdsByCompanyId(companyId)
-        if (customerIds.isEmpty()) return emptyList()
-        val usersById = userRepository.findAllById(customerIds).associateBy { it.id }
-        val blocksByCustomerId = companyCustomerBlockRepository.findByCompanyId(companyId).associateBy { it.customerId }
-        val companyCustomersByUserId = companyCustomerRepository.findByCompanyId(companyId).associateBy { it.userId }
-        return customerIds
-            .mapNotNull { id ->
-                val user = usersById[id] ?: return@mapNotNull null
-                val block = blocksByCustomerId[id]
-                val companyCustomer = companyCustomersByUserId[id]
+        val profiles = companyCustomerRepository.findByCompanyId(companyId)
+        val accounts = userRepository.findAllById(profiles.map { it.userId }).associateBy { it.id }
+        val blocks = companyCustomerBlockRepository.findByCompanyId(companyId).associateBy { it.customerId }
+        return profiles
+            .mapNotNull { profile ->
+                val account = accounts[profile.userId] ?: return@mapNotNull null
+                val block = blocks[profile.userId]
                 CustomerStatusResponse(
-                    id = requireNotNull(user.id) { "Persisted customer must have an ID" },
-                    firstName = user.firstName,
-                    lastName = user.lastName,
-                    phoneNumber = user.phoneNumber,
-                    noShowCount = block?.noShowCount ?: 0,
-                    blocked = block?.blocked ?: false,
-                    notes = companyCustomer?.notes,
+                    profile.userId,
+                    profile.firstName,
+                    profile.lastName,
+                    account.phoneNumber,
+                    block?.noShowCount ?: 0,
+                    block?.blocked ?: false,
+                    profile.notes,
+                    profile.contactEmail,
                 )
             }
             .sortedWith(compareBy({ it.lastName }, { it.firstName }))
@@ -49,34 +47,72 @@ class CustomerService(
      */
     @Transactional(readOnly = true)
     fun getCustomerStatus(customerId: Long, companyId: Long): CustomerStatusResponse {
+        val companyCustomer =
+            companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
+                ?: throw NoSuchElementException("Klient nie istnieje")
         val customer = userRepository.findById(customerId).orElseThrow { NoSuchElementException("Klient nie istnieje") }
         val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId)
-        val companyCustomer = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
         return CustomerStatusResponse(
             id = requireNotNull(customer.id) { "Persisted customer must have an ID" },
-            firstName = customer.firstName,
-            lastName = customer.lastName,
+            firstName = companyCustomer.firstName,
+            lastName = companyCustomer.lastName,
             phoneNumber = customer.phoneNumber,
             noShowCount = block?.noShowCount ?: 0,
             blocked = block?.blocked ?: false,
-            notes = companyCustomer?.notes,
+            notes = companyCustomer.notes,
+            contactEmail = companyCustomer.contactEmail,
         )
     }
 
     /**
-     * Creates or updates a free-text note for a customer at the given company. Blank notes are normalised to null
+     * Updates a free-text note for an existing local customer at the given company. Blank notes are normalised to null
      * (cleared). Throws [NoSuchElementException] if the user is not found.
      */
     @Transactional
     fun setCustomerNotes(customerId: Long, companyId: Long, notes: String?) {
-        if (!userRepository.existsById(customerId)) {
-            throw NoSuchElementException("Klient nie istnieje")
-        }
         val record =
             companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
-                ?: CompanyCustomer(companyId = companyId, userId = customerId)
+                ?: throw NoSuchElementException("Klient nie istnieje")
         record.notes = notes?.ifBlank { null }
         companyCustomerRepository.save(record)
+    }
+
+    /** Reads the company's visit history for either staff role, after checking the local relationship. */
+    @Transactional(readOnly = true)
+    fun getVisitHistory(
+        customerId: Long,
+        companyId: Long,
+    ): List<pl.kacosmetology.scheduler.user.dto.CustomerVisitResponse> {
+        companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
+            ?: throw NoSuchElementException("Klient nie istnieje")
+        return companyCustomerRepository.findVisitHistory(companyId, customerId).map {
+            pl.kacosmetology.scheduler.user.dto.CustomerVisitResponse(
+                requireNotNull(it.id),
+                it.employeeId,
+                it.serviceId,
+                it.acceptedServiceName,
+                it.price,
+                it.startTime,
+                it.endTime,
+                it.status,
+                it.createdAt,
+            )
+        }
+    }
+
+    /** Updates only an existing company profile; global phone identities remain unchanged. */
+    @Transactional
+    fun updateProfile(
+        customerId: Long,
+        companyId: Long,
+        request: pl.kacosmetology.scheduler.user.dto.UpdateCustomerProfileRequest,
+    ) {
+        val profile =
+            companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
+                ?: throw NoSuchElementException("Klient nie istnieje")
+        profile.firstName = request.firstName.trim()
+        profile.lastName = request.lastName.trim()
+        profile.contactEmail = request.contactEmail?.trim()?.ifBlank { null }
     }
 
     /**

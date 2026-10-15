@@ -88,7 +88,7 @@ class EmployeePhotoIntegrationTest {
 
     @Test
     fun `POST photo - owner uploads photo and gets 200 with photoUrl`() {
-        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(1024))
+        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", pngBytes())
 
         mockMvc
             .perform(
@@ -102,7 +102,7 @@ class EmployeePhotoIntegrationTest {
     @Test
     fun `POST photo - uploading replacement deletes old key and returns new URL`() {
         // First upload
-        val file1 = MockMultipartFile("photo", "first.jpg", "image/jpeg", ByteArray(512))
+        val file1 = MockMultipartFile("photo", "first.jpg", "image/jpeg", pngBytes())
         mockMvc
             .perform(
                 multipart("/api/employees/${employee.id!!}/photo").file(file1).with(csrf()).cookie(ownerSession()),
@@ -110,7 +110,7 @@ class EmployeePhotoIntegrationTest {
             .andExpect(status().isOk)
 
         // Second upload should trigger a delete of the old key
-        val file2 = MockMultipartFile("photo", "second.png", "image/png", ByteArray(256))
+        val file2 = MockMultipartFile("photo", "second.png", "image/png", pngBytes())
         mockMvc
             .perform(
                 multipart("/api/employees/${employee.id!!}/photo").file(file2).with(csrf()).cookie(ownerSession()),
@@ -124,7 +124,7 @@ class EmployeePhotoIntegrationTest {
 
     @Test
     fun `POST photo - employee (non-owner) gets 403`() {
-        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
+        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", pngBytes())
 
         mockMvc
             .perform(
@@ -135,7 +135,7 @@ class EmployeePhotoIntegrationTest {
 
     @Test
     fun `POST photo - unauthenticated gets 401`() {
-        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
+        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", pngBytes())
 
         mockMvc
             .perform(
@@ -148,7 +148,7 @@ class EmployeePhotoIntegrationTest {
     fun `POST photo - employee not in company returns 404`() {
         val outsider =
             userRepository.save(User(phoneNumber = "+48199999999", firstName = "Outside", lastName = "Person"))
-        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
+        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", pngBytes())
 
         mockMvc
             .perform(
@@ -159,7 +159,7 @@ class EmployeePhotoIntegrationTest {
 
     @Test
     fun `POST photo - invalid MIME type returns 400`() {
-        val file = MockMultipartFile("photo", "doc.pdf", "application/pdf", ByteArray(100))
+        val file = MockMultipartFile("photo", "doc.pdf", "application/pdf", "fake".toByteArray())
 
         mockMvc
             .perform(
@@ -182,8 +182,9 @@ class EmployeePhotoIntegrationTest {
     @Test
     fun `DELETE photo - owner removes existing photo and gets 200 with null photoUrl`() {
         // Persist photo URL directly
-        employee.photoUrl = "https://pub.r2.dev/employees/$companyId/${employee.id!!}/abc.jpg"
-        userRepository.save(employee)
+        employeeEmployment.photoUrl =
+            "${"https://pub-e2e7a57b5ea74031a70f3c42d58af33f.r2.dev"}/employees/$companyId/${employee.id!!}/abc.jpg"
+        companyEmployeeRepository.save(employeeEmployment)
 
         mockMvc
             .delete("/api/employees/${employee.id!!}/photo") {
@@ -212,4 +213,16 @@ class EmployeePhotoIntegrationTest {
 
         verify(exactly = 0) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
     }
+
+    private fun pngBytes(): ByteArray =
+        java.io
+            .ByteArrayOutputStream()
+            .also {
+                javax.imageio.ImageIO.write(
+                    java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_RGB),
+                    "png",
+                    it,
+                )
+            }
+            .toByteArray()
 }

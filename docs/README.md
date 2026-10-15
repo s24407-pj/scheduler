@@ -15,3 +15,5 @@
 | [adr/](./adr/README.md) | want to know why something is built the way it is, or need to change a recorded decision |
 
 Docs describe the code as it is. Where an accepted decision is not implemented yet, the text says **Pending** and links the ADR.
+
+- [Identity and staff administration](./identity.md) — separate realms, salon profiles and password lifecycle.

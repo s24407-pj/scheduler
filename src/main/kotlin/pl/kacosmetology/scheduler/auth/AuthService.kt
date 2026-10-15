@@ -1,20 +1,21 @@
 package pl.kacosmetology.scheduler.auth
 
+import java.util.Locale
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
+import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
-import pl.kacosmetology.scheduler.auth.dto.StaffEmploymentOption
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginResponse
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginStatus
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
-import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.ErrorCode
+import pl.kacosmetology.scheduler.security.AccountSessionRegistry
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -27,7 +28,7 @@ class AuthService(
     private val eventPublisher: ApplicationEventPublisher,
     private val passwordEncoder: PasswordEncoder,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
-    private val companyRepository: CompanyRepository,
+    private val accountSessions: AccountSessionRegistry,
     private val loginRateLimiter: LoginRateLimiter,
     private val otpVerificationRateLimiter: OtpVerificationRateLimiter,
     private val otpRequestRateLimiter: OtpRequestRateLimiter,
@@ -63,9 +64,7 @@ class AuthService(
         if (!limit.allowed) throw RateLimitExceededException(retryAfterSeconds = limit.retryAfterSeconds)
         val phoneNumber = canonicalPhone(request.phoneNumber)
         requireVerified(otpStore.verifyAndConsumeCode(phoneNumber, request.code), clientIp)
-        val user =
-            userRepository.findByPhoneNumber(phoneNumber)
-                ?: userRepository.save(User(phoneNumber = phoneNumber, firstName = "", lastName = ""))
+        val user = userRepository.findByPhoneNumber(phoneNumber) ?: userRepository.save(User(phoneNumber = phoneNumber))
         return CustomUserDetails(requireNotNull(user.id), user.phoneNumber, "ROLE_CUSTOMER")
     }
 
@@ -94,79 +93,43 @@ class AuthService(
         }
     }
 
-    /**
-     * Authenticates a staff member using email and password. Returns an identity scoped to one employment, or available
-     * employments when a selection is required. Throws [RateLimitExceededException] if [clientIp] has exceeded the
-     * allowed login attempt rate.
-     */
-    @Transactional(readOnly = true)
+    /** Authenticates one company-owned account; the row lock serializes validation with password reset/disable. */
+    @Transactional
     fun loginStaff(request: StaffLoginRequest, clientIp: String): StaffAuthenticationResult {
-        if (!loginRateLimiter.checkAndIncrement(clientIp)) {
-            rateLimited("login", clientIp)
-        }
-        val user = userRepository.findByEmail(request.email)
-        val passwordHash = user?.passwordHash
-        if (user == null || passwordHash == null) {
+        if (!loginRateLimiter.checkAndIncrement(clientIp)) rateLimited("login", clientIp)
+        val email = request.email.trim().lowercase(Locale.ROOT)
+        val companyId = request.companyId
+        val account = companyId?.let { companyEmployeeRepository.findLoginForUpdate(it, email) }
+        if (
+            account == null ||
+                !account.enabled ||
+                account.passwordHash == null ||
+                account.role !in setOf("OWNER", "EMPLOYEE")
+        ) {
             passwordEncoder.matches(request.password, dummyPasswordHash)
-            log.info("Staff login failed: unknown account or no password, ip={}", clientIp)
-            throw IllegalArgumentException(INVALID_CREDENTIALS_MESSAGE)
+            throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
         }
-
-        if (!passwordEncoder.matches(request.password, passwordHash)) {
-            log.info("Staff login failed: wrong password, userId={}, ip={}", user.id, clientIp)
-            throw IllegalArgumentException(INVALID_CREDENTIALS_MESSAGE)
-        }
-
-        val userId = requireNotNull(user.id) { "Persisted staff user must have an ID" }
-        val employments = companyEmployeeRepository.findAllByUserId(userId)
-        if (employments.isEmpty()) {
-            throw IllegalArgumentException("Użytkownik nie ma przypisania do firmy")
-        }
-
-        if (employments.size > 1 && request.employmentId == null) {
-            val companies =
-                companyRepository.findAllById(employments.map { it.companyId }).associateBy { requireNotNull(it.id) }
-            val options =
-                employments
-                    .map { employment ->
-                        val company =
-                            companies[employment.companyId]
-                                ?: throw IllegalStateException("Firma przypisana do zatrudnienia nie istnieje")
-                        StaffEmploymentOption(
-                            employmentId = requireNotNull(employment.id),
-                            companyId = employment.companyId,
-                            companyName = company.name,
-                            role = employment.role,
-                        )
-                    }
-                    .sortedWith(compareBy<StaffEmploymentOption> { it.companyName }.thenBy { it.companyId })
-            return StaffAuthenticationResult(
-                StaffLoginResponse(StaffLoginStatus.EMPLOYMENT_SELECTION_REQUIRED, options),
-                null,
-            )
-        }
-
-        val selected =
-            if (request.employmentId == null) {
-                employments.single()
-            } else {
-                employments.find { it.id == request.employmentId }
-                    ?: throw IllegalArgumentException("Nieprawidłowy wybór zatrudnienia")
-            }
-        log.info("Staff login succeeded: userId={}, employmentId={}, ip={}", userId, selected.id, clientIp)
-        require(selected.role in setOf("OWNER", "EMPLOYEE")) { "Nieprawidłowa rola zatrudnienia" }
-        return StaffAuthenticationResult(
-            StaffLoginResponse(StaffLoginStatus.AUTHENTICATED, emptyList()),
+        val principal =
             CustomUserDetails(
-                userId,
-                user.phoneNumber,
-                "ROLE_${selected.role}",
-                selected.companyId,
-                requireNotNull(selected.id),
-            ),
-        )
+                account.userId,
+                requireNotNull(account.loginEmail),
+                "ROLE_${account.role}",
+                account.companyId,
+                requireNotNull(account.id),
+                account.authVersion,
+            )
+        // Capture before password verification under the credential row lock. A subsequent reset cannot validate this
+        // response with a new revocation generation, even when the browser's session is saved after reset commits.
+        val attributes = accountSessions.sessionAttributes(principal)
+        if (!passwordEncoder.matches(request.password, account.passwordHash))
+            throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
+        return StaffAuthenticationResult(StaffLoginResponse(StaffLoginStatus.AUTHENTICATED), principal, attributes)
     }
 }
 
-/** Internal login outcome; the identity is never serialized as an authentication response. */
-data class StaffAuthenticationResult(val response: StaffLoginResponse, val principal: CustomUserDetails?)
+/** Internal login outcome; generation attributes and identity never become response credentials. */
+data class StaffAuthenticationResult(
+    val response: StaffLoginResponse,
+    val principal: CustomUserDetails,
+    val sessionAttributes: Map<String, Any>,
+)

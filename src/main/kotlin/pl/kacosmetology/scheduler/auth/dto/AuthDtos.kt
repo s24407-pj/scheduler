@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.auth.dto
 
-import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
@@ -28,12 +28,15 @@ data class VerifyCodeRequest(
 
 data class StaffLoginRequest(
     @field:NotBlank(message = "Email jest wymagany")
-    @field:Email(message = "Nieprawidłowy format adresu email")
+    @field:Size(max = 255, message = "Email jest za długi")
+    @field:Pattern(regexp = "^\\s*[^\\s@]+@[^\\s@]+\\.[^\\s@]+\\s*$", message = "Nieprawidłowy email")
     val email: String,
     @field:NotBlank(message = "Hasło jest wymagane")
     @field:Size(min = 8, message = "Hasło musi mieć co najmniej 8 znaków")
     val password: String,
-    @field:Positive(message = "Identyfikator zatrudnienia musi być dodatni") val employmentId: Long? = null,
+    @field:NotNull(message = "Firma jest wymagana")
+    @field:Positive(message = "Identyfikator firmy musi być dodatni")
+    val companyId: Long? = null,
 )
 
 data class AuthResponse(
@@ -43,21 +46,11 @@ data class AuthResponse(
 /** Possible outcomes of a staff login request. */
 enum class StaffLoginStatus {
     AUTHENTICATED,
-    EMPLOYMENT_SELECTION_REQUIRED,
 }
-
-/** A company employment that can be selected for a staff session. */
-data class StaffEmploymentOption(
-    val employmentId: Long,
-    val companyId: Long,
-    val companyName: String,
-    val role: String,
-)
 
 /** Staff login result; the HttpOnly cookie, never the response body, carries authentication. */
 data class StaffLoginResponse(
     val status: StaffLoginStatus,
-    val employments: List<StaffEmploymentOption>,
 )
 
 /** Safe identity and exact authorization scope; the credential is never included. */

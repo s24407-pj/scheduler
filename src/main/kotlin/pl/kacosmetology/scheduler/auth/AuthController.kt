@@ -54,7 +54,7 @@ class AuthController(
         return ResponseEntity.ok(AuthResponse())
     }
 
-    /** Authenticates staff or returns their employments when an explicit employment selection is required. */
+    /** Authenticates one company-owned staff account with company, normalized email and password. */
     @PostMapping("/login-staff")
     fun loginStaff(
         @Valid @RequestBody request: StaffLoginRequest,
@@ -63,7 +63,7 @@ class AuthController(
     ): ResponseEntity<StaffLoginResponse> {
         sessionAuthenticationService.requireAnonymous()
         val result = authService.loginStaff(request, httpRequest.remoteAddr)
-        result.principal?.let { sessionAuthenticationService.authenticate(it, httpRequest, httpResponse) }
+        sessionAuthenticationService.authenticate(result.principal, httpRequest, httpResponse, result.sessionAttributes)
         return ResponseEntity.ok(result.response)
     }
 

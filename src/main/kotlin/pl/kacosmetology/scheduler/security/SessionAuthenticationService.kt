@@ -31,7 +31,12 @@ class SessionAuthenticationService(
     }
 
     /** Rotates a preexisting session, clears pre-login CSRF, and explicitly saves a fresh authenticated context. */
-    fun authenticate(principal: CustomUserDetails, request: HttpServletRequest, response: HttpServletResponse) {
+    fun authenticate(
+        principal: CustomUserDetails,
+        request: HttpServletRequest,
+        response: HttpServletResponse,
+        attributes: Map<String, Any> = accountSessions.sessionAttributes(principal),
+    ) {
         requireAnonymous()
         val authentication = UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.authorities)
         sessionAuthenticationStrategy.onAuthentication(authentication, request, response)
@@ -40,7 +45,7 @@ class SessionAuthenticationService(
         SecurityContextHolder.setContext(context)
         val session = request.getSession(true)
         session.maxInactiveInterval = AccountSessionRegistry.SESSION_DURATION.seconds.toInt()
-        accountSessions.sessionAttributes(principal).forEach { (name, value) -> session.setAttribute(name, value) }
+        attributes.forEach { (name, value) -> session.setAttribute(name, value) }
         securityContextRepository.saveContext(context, request, response)
     }
 

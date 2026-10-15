@@ -99,6 +99,7 @@ class SecurityConfig(
                         "/api/auth/request-code",
                         "/api/auth/verify-code",
                         "/api/auth/login-staff",
+                        "/api/auth/staff-password",
                     )
                     .permitAll()
                     .requestMatchers("/api/availability")

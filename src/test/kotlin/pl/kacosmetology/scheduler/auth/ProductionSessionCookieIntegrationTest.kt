@@ -56,7 +56,15 @@ class ProductionSessionCookieIntegrationTest {
                     passwordHash = passwords.encode("password123"),
                 ),
             )
-        employments.save(CompanyEmployee(companyId = company.id!!, userId = staff.id!!, role = "OWNER"))
+        employments.save(
+            CompanyEmployee(
+                companyId = company.id!!,
+                userId = staff.id!!,
+                role = "OWNER",
+                loginEmail = staff.email,
+                passwordHash = staff.passwordHash,
+            ),
+        )
         val before = mvc.perform(get("/api/auth/csrf")).andReturn().response
         val csrfCookie = requireNotNull(before.getCookie("XSRF-TOKEN"))
         assertTrue(csrfCookie.secure)
@@ -66,7 +74,11 @@ class ProductionSessionCookieIntegrationTest {
                         .cookie(csrfCookie)
                         .header("X-XSRF-TOKEN", mapper.readTree(before.contentAsString)["token"].asString())
                         .contentType("application/json")
-                        .content(mapper.writeValueAsString(mapOf("email" to staff.email, "password" to "password123"))),
+                        .content(
+                            mapper.writeValueAsString(
+                                mapOf("email" to staff.email, "password" to "password123", "companyId" to company.id),
+                            ),
+                        ),
                 )
                 .andReturn()
                 .response

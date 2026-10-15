@@ -79,6 +79,7 @@ class OpenApiConfig {
                                 "/api/auth/request-code",
                                 "/api/auth/verify-code",
                                 "/api/auth/login-staff",
+                                "/api/auth/staff-password",
                             )
                 val unsafe =
                     method !in setOf(PathItem.HttpMethod.GET, PathItem.HttpMethod.HEAD, PathItem.HttpMethod.OPTIONS)

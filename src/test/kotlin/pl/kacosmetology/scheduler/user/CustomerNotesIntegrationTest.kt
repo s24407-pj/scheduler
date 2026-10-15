@@ -61,8 +61,8 @@ class CustomerNotesIntegrationTest {
     @BeforeEach
     fun setup() {
         reservationRepository.deleteAll()
-        companyCustomerRepository.deleteAll()
         companyCustomerBlockRepository.deleteAll()
+        companyCustomerRepository.deleteAll()
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
         companyRepository.deleteAll()
@@ -86,6 +86,14 @@ class CustomerNotesIntegrationTest {
 
         customer = userRepository.save(User(phoneNumber = "+48801333001", firstName = "Klient", lastName = "Notes"))
         customerSession = testSessions.customer(customer)
+        companyCustomerRepository.save(
+            CompanyCustomer(
+                companyId = companyId,
+                userId = customer.id!!,
+                firstName = customer.firstName,
+                lastName = customer.lastName,
+            ),
+        )
     }
 
     @Test
@@ -126,6 +134,9 @@ class CustomerNotesIntegrationTest {
     fun `GET customer status includes notes`() {
         companyCustomerRepository.save(
             CompanyCustomer(
+                id = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!.id,
+                firstName = customer.firstName,
+                lastName = customer.lastName,
                 companyId = companyId,
                 userId = customer.id!!,
                 notes = "Notatka testowa",
@@ -158,6 +169,9 @@ class CustomerNotesIntegrationTest {
     fun `PUT null notes clears existing note`() {
         companyCustomerRepository.save(
             CompanyCustomer(
+                id = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!.id,
+                firstName = customer.firstName,
+                lastName = customer.lastName,
                 companyId = companyId,
                 userId = customer.id!!,
                 notes = "Stara notatka",
