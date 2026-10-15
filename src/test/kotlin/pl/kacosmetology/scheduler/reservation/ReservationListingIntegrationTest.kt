@@ -106,7 +106,7 @@ class ReservationListingIntegrationTest {
                 price = 100,
                 startTime = todayStart.withHour(10),
                 endTime = todayStart.withHour(11),
-                status = ReservationStatus.CONFIRMED,
+                status = ReservationStatus.BOOKED,
             ),
         )
 
@@ -120,7 +120,7 @@ class ReservationListingIntegrationTest {
                 price = 100,
                 startTime = todayStart.withHour(12),
                 endTime = todayStart.withHour(13),
-                status = ReservationStatus.CONFIRMED,
+                status = ReservationStatus.BOOKED,
             ),
         )
 
@@ -134,7 +134,7 @@ class ReservationListingIntegrationTest {
                 price = 100,
                 startTime = todayStart.withHour(14),
                 endTime = todayStart.withHour(15),
-                status = ReservationStatus.CONFIRMED,
+                status = ReservationStatus.BOOKED,
             ),
         )
     }
@@ -220,7 +220,7 @@ class ReservationListingIntegrationTest {
                 price = 100,
                 startTime = todayStart.minusMinutes(30),
                 endTime = todayStart.plusMinutes(30),
-                status = ReservationStatus.CONFIRMED,
+                status = ReservationStatus.BOOKED,
             ),
         )
 

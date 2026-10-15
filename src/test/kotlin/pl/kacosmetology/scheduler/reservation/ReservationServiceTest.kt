@@ -303,7 +303,7 @@ class ReservationServiceTest {
             result.reservation.endTime,
             "Czas zakończenia powinien być poprawnie wyliczony",
         )
-        assertEquals(ReservationStatus.PENDING, result.reservation.status)
+        assertEquals(ReservationStatus.BOOKED, result.reservation.status)
 
         verify(exactly = 1) { reservationRepository.save(any()) }
         verifyOrder {
@@ -426,7 +426,7 @@ class ReservationServiceTest {
                 price = 100,
                 startTime = startTime,
                 endTime = startTime.plusMinutes(30),
-                status = ReservationStatus.PENDING,
+                status = ReservationStatus.BOOKED,
             )
 
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
@@ -443,7 +443,7 @@ class ReservationServiceTest {
 
     @Test
     fun `cancelReservation should reject customer cancellation once the visit has started`() {
-        val reservation = reservationWithStatus(ReservationStatus.PENDING)
+        val reservation = reservationWithStatus(ReservationStatus.BOOKED)
         every { reservationRepository.findById(1L) } returns Optional.of(reservation)
         setNow(startTime)
 
@@ -454,14 +454,14 @@ class ReservationServiceTest {
 
         assertEquals(ErrorCode.INVALID_STATUS_TRANSITION, exception.code)
         assertEquals("Nie można anulować wizyty, która już się rozpoczęła", exception.message)
-        assertEquals(ReservationStatus.PENDING, reservation.status)
+        assertEquals(ReservationStatus.BOOKED, reservation.status)
         verify(exactly = 0) { reservationRepository.save(any()) }
         verify(exactly = 0) { applicationEventPublisher.publishEvent(any<Any>()) }
     }
 
     @Test
     fun `cancelReservationByStaff should cancel after the visit started and publish the cancellation event`() {
-        val reservation = reservationWithStatus(ReservationStatus.PENDING)
+        val reservation = reservationWithStatus(ReservationStatus.BOOKED)
         every { reservationRepository.findById(1L) } returns Optional.of(reservation)
         every { reservationRepository.save(any()) } answers { firstArg() }
         setNow(startTime.plusMinutes(10))
@@ -476,7 +476,7 @@ class ReservationServiceTest {
     @Test
     fun `cancelReservationByStaff should report another company's reservation as not found`() {
         every { reservationRepository.findById(1L) } returns
-            Optional.of(reservationWithStatus(ReservationStatus.PENDING))
+            Optional.of(reservationWithStatus(ReservationStatus.BOOKED))
 
         val exception =
             assertThrows<ApiException> {
@@ -545,7 +545,7 @@ class ReservationServiceTest {
                 price = 100,
                 startTime = startTime,
                 endTime = startTime.plusMinutes(30),
-                status = ReservationStatus.PENDING,
+                status = ReservationStatus.BOOKED,
             )
 
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
@@ -574,7 +574,7 @@ class ReservationServiceTest {
                 price = 100,
                 startTime = startTime,
                 endTime = startTime.plusMinutes(30),
-                status = ReservationStatus.PENDING,
+                status = ReservationStatus.BOOKED,
             )
 
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
@@ -660,7 +660,7 @@ class ReservationServiceTest {
                 price = 100,
                 startTime = startTime,
                 endTime = startTime.plusMinutes(30),
-                status = ReservationStatus.PENDING,
+                status = ReservationStatus.BOOKED,
             )
 
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
@@ -688,7 +688,7 @@ class ReservationServiceTest {
                 price = 100,
                 startTime = startTime,
                 endTime = startTime.plusMinutes(30),
-                status = ReservationStatus.PENDING,
+                status = ReservationStatus.BOOKED,
             )
 
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
@@ -874,7 +874,7 @@ class ReservationServiceTest {
                 price = 100,
                 startTime = startTime,
                 endTime = startTime.plusMinutes(30),
-                status = ReservationStatus.PENDING,
+                status = ReservationStatus.BOOKED,
             )
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
         every { reservationRepository.save(any()) } answers { firstArg() }
@@ -905,7 +905,7 @@ class ReservationServiceTest {
                 price = 100,
                 startTime = startTime,
                 endTime = startTime.plusMinutes(30),
-                status = ReservationStatus.PENDING,
+                status = ReservationStatus.BOOKED,
             )
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
         every { reservationRepository.save(any()) } answers { firstArg() }
@@ -935,7 +935,7 @@ class ReservationServiceTest {
                 price = 100,
                 startTime = startTime,
                 endTime = startTime.plusMinutes(30),
-                status = ReservationStatus.CONFIRMED,
+                status = ReservationStatus.BOOKED,
             )
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
         every { reservationRepository.save(any()) } answers { firstArg() }
@@ -964,7 +964,7 @@ class ReservationServiceTest {
                 price = 100,
                 startTime = startTime,
                 endTime = startTime.plusMinutes(30),
-                status = ReservationStatus.PENDING,
+                status = ReservationStatus.BOOKED,
             )
         every { reservationRepository.findById(reservationId) } returns Optional.of(reservation)
         every { reservationRepository.save(any()) } answers { firstArg() }
@@ -1012,7 +1012,7 @@ class ReservationServiceTest {
 
     @Test
     fun `markNoShow should reject an active reservation before the visit starts`() {
-        val reservation = reservationWithStatus(ReservationStatus.PENDING)
+        val reservation = reservationWithStatus(ReservationStatus.BOOKED)
         every { reservationRepository.findById(1L) } returns Optional.of(reservation)
         setNow(startTime.minusMinutes(1))
 
@@ -1023,13 +1023,13 @@ class ReservationServiceTest {
 
         assertEquals("Nie można oznaczyć nieobecności przed rozpoczęciem wizyty", exception.message)
         assertEquals(ErrorCode.INVALID_STATUS_TRANSITION, exception.code)
-        assertEquals(ReservationStatus.PENDING, reservation.status)
+        assertEquals(ReservationStatus.BOOKED, reservation.status)
         verify(exactly = 0) { companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(any(), any()) }
     }
 
     @Test
     fun `markNoShow should accept an active reservation exactly at its start time`() {
-        val reservation = reservationWithStatus(ReservationStatus.PENDING)
+        val reservation = reservationWithStatus(ReservationStatus.BOOKED)
         every { reservationRepository.findById(1L) } returns Optional.of(reservation)
         every { reservationRepository.save(any()) } answers { firstArg() }
         every { companyCustomerBlockRepository.incrementNoShowCountAndApplyBlock(companyId, customerId) } returns 1

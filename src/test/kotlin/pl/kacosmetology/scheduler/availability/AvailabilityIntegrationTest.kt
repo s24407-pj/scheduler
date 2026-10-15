@@ -135,7 +135,7 @@ class AvailabilityIntegrationTest {
                 price = 250,
                 startTime = testDate.atTime(10, 0),
                 endTime = testDate.atTime(12, 0),
-                status = ReservationStatus.CONFIRMED,
+                status = ReservationStatus.BOOKED,
             ),
         )
     }

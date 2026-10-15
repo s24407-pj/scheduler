@@ -42,7 +42,7 @@ class NotificationSchedulerTest {
             price = 200,
             startTime = startTime,
             endTime = startTime.plusHours(1),
-            status = ReservationStatus.CONFIRMED,
+            status = ReservationStatus.BOOKED,
         )
 
     @BeforeEach

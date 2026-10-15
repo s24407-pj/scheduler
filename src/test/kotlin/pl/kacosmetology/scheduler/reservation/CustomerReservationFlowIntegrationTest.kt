@@ -203,7 +203,7 @@ class CustomerReservationFlowIntegrationTest {
             }
 
         assertEquals(ReservationStatus.CANCELLED, reservationRepository.findById(future.id!!).get().status)
-        assertEquals(ReservationStatus.PENDING, reservationRepository.findById(started.id!!).get().status)
+        assertEquals(ReservationStatus.BOOKED, reservationRepository.findById(started.id!!).get().status)
     }
 
     @Test
@@ -336,7 +336,7 @@ class CustomerReservationFlowIntegrationTest {
         assertEquals(employeeId, savedReservation.employeeId)
         assertEquals(serviceId, savedReservation.serviceId)
         assertEquals(120, savedReservation.price, "Cena powinna być skopiowana ze snapshotu usługi")
-        assertEquals(ReservationStatus.PENDING, savedReservation.status)
+        assertEquals(ReservationStatus.BOOKED, savedReservation.status)
 
         // Weryfikacja czy nowo zarejestrowany klient jest poprawnie przypisany
         val customerInDb = userRepository.findByPhoneNumber(newCustomerPhone)
@@ -521,7 +521,7 @@ class CustomerReservationFlowIntegrationTest {
                 jsonPath("$.code") { value("RESERVATION_NOT_FOUND") }
             }
 
-        assertEquals(ReservationStatus.PENDING, reservationRepository.findById(reservationId).get().status)
+        assertEquals(ReservationStatus.BOOKED, reservationRepository.findById(reservationId).get().status)
     }
 
     private fun customerSession(phone: String): Cookie =

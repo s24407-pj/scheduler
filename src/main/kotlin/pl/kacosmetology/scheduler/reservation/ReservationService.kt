@@ -143,7 +143,7 @@ class ReservationService(
                     price = price,
                     startTime = startTime,
                     endTime = endTime,
-                    status = ReservationStatus.PENDING,
+                    status = ReservationStatus.BOOKED,
                 ),
             )
         applicationEventPublisher.publishEvent(ReservationCreatedEvent(saved))
@@ -345,8 +345,7 @@ private fun Reservation.complete() {
 
 private fun Reservation.markNoShow(now: LocalDateTime) {
     when (status) {
-        ReservationStatus.PENDING,
-        ReservationStatus.CONFIRMED ->
+        ReservationStatus.BOOKED ->
             if (now.isBefore(startTime)) {
                 invalidTransition("Nie można oznaczyć nieobecności przed rozpoczęciem wizyty")
             }

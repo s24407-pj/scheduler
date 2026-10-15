@@ -65,7 +65,7 @@ class ReservationRepositoryTest {
                 price = 100,
                 startTime = baseTime, // 12:00
                 endTime = baseTime.plusHours(1), // 13:00
-                status = ReservationStatus.PENDING,
+                status = ReservationStatus.BOOKED,
             ),
         )
     }

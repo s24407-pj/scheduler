@@ -78,7 +78,7 @@ class AutoCompleteIntegrationTest {
                 price = 100,
                 startTime = pastStart,
                 endTime = pastStart.plusHours(1),
-                status = ReservationStatus.PENDING,
+                status = ReservationStatus.BOOKED,
             ),
         )
 
@@ -100,7 +100,7 @@ class AutoCompleteIntegrationTest {
                 price = 100,
                 startTime = pastStart,
                 endTime = pastStart.plusHours(1),
-                status = ReservationStatus.CONFIRMED,
+                status = ReservationStatus.BOOKED,
             ),
         )
 
@@ -122,14 +122,14 @@ class AutoCompleteIntegrationTest {
                 price = 100,
                 startTime = futureStart,
                 endTime = futureStart.plusHours(1),
-                status = ReservationStatus.PENDING,
+                status = ReservationStatus.BOOKED,
             ),
         )
 
         notificationScheduler.autoCompleteElapsedReservations()
 
         val unchanged = reservationRepository.findAll().single()
-        assertEquals(ReservationStatus.PENDING, unchanged.status)
+        assertEquals(ReservationStatus.BOOKED, unchanged.status)
     }
 
     @Test

@@ -28,6 +28,10 @@ class Company(
 
     /** Minimum number of minutes in advance a customer must book. 0 disables this restriction. */
     @Column(name = "min_booking_advance_minutes", nullable = false) var minBookingAdvanceMinutes: Int = 0,
+    /** Maximum booking horizon measured by Warsaw calendar date, inclusive. */
+    @Column(name = "max_booking_advance_days", nullable = false) var maxBookingAdvanceDays: Int = 90,
+    /** Maximum future customer-created reservations; staff-created visits are exempt. */
+    @Column(name = "max_future_customer_bookings", nullable = false) var maxFutureCustomerBookings: Int = 10,
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     val createdAt: LocalDateTime? = null,
 ) {

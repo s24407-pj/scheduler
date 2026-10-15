@@ -78,7 +78,7 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
         """
         SELECT r FROM Reservation r
         WHERE r.startTime BETWEEN :windowStart AND :windowEnd
-        AND r.status IN ('PENDING', 'CONFIRMED')
+        AND r.status IN ('BOOKED')
         AND r.reminderSent = false
     """,
     )
@@ -102,7 +102,7 @@ interface ReservationRepository : JpaRepository<Reservation, Long> {
     @Query(
         """
         UPDATE Reservation r SET r.status = 'COMPLETED'
-        WHERE r.status IN ('PENDING', 'CONFIRMED')
+        WHERE r.status IN ('BOOKED')
         AND r.endTime <= :now
     """,
     )

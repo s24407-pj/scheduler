@@ -33,7 +33,7 @@ class NotificationEventListenerTest {
             price = 200,
             startTime = startTime,
             endTime = startTime.plusHours(1),
-            status = ReservationStatus.PENDING,
+            status = ReservationStatus.BOOKED,
         )
 
     @Test

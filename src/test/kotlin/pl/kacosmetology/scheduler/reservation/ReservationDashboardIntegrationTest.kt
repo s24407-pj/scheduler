@@ -93,7 +93,7 @@ class ReservationDashboardIntegrationTest {
                 price = 80,
                 startTime = rangeStart.withHour(10),
                 endTime = rangeStart.withHour(11),
-                status = ReservationStatus.CONFIRMED,
+                status = ReservationStatus.BOOKED,
             ),
         )
 
@@ -115,7 +115,7 @@ class ReservationDashboardIntegrationTest {
                 jsonPath("$.length()") { value(1) }
                 jsonPath("$[0].employeeId") { value(employee.id!!) }
                 jsonPath("$[0].customerId") { value(customer.id!!) }
-                jsonPath("$[0].status") { value("CONFIRMED") }
+                jsonPath("$[0].status") { value("BOOKED") }
             }
     }
 
@@ -188,7 +188,7 @@ class ReservationDashboardIntegrationTest {
                 price = 80,
                 startTime = rangeStart.plusDays(7).withHour(9),
                 endTime = rangeStart.plusDays(7).withHour(10),
-                status = ReservationStatus.PENDING,
+                status = ReservationStatus.BOOKED,
             ),
         )
 
@@ -217,7 +217,7 @@ class ReservationDashboardIntegrationTest {
                 price = 80,
                 startTime = rangeStart.minusMinutes(30),
                 endTime = rangeStart.plusMinutes(30),
-                status = ReservationStatus.CONFIRMED,
+                status = ReservationStatus.BOOKED,
             ),
         )
 

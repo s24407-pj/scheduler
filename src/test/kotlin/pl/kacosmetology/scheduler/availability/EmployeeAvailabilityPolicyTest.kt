@@ -60,7 +60,7 @@ class EmployeeAvailabilityPolicyTest {
                     price = 100,
                     startTime = start.plusMinutes(15),
                     endTime = end.plusMinutes(15),
-                    status = ReservationStatus.PENDING,
+                    status = ReservationStatus.BOOKED,
                 ),
             )
         every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end) } returns emptyList()
@@ -110,7 +110,7 @@ class EmployeeAvailabilityPolicyTest {
                     price = 100,
                     startTime = start,
                     endTime = end,
-                    status = ReservationStatus.CONFIRMED,
+                    status = ReservationStatus.BOOKED,
                 ),
             )
         every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end) } returns

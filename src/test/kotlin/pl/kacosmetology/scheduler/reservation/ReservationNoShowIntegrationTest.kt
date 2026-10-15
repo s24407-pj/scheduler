@@ -79,7 +79,7 @@ class ReservationNoShowIntegrationTest {
     }
 
     private fun saveReservation(
-        status: ReservationStatus = ReservationStatus.PENDING,
+        status: ReservationStatus = ReservationStatus.BOOKED,
         startTime: LocalDateTime = LocalDateTime.now(BUSINESS_ZONE).minusHours(2),
     ): Reservation {
         val service =
@@ -183,7 +183,7 @@ class ReservationNoShowIntegrationTest {
                 jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
             }
 
-        assertEquals(ReservationStatus.PENDING, reservationRepository.findById(reservation.id!!).get().status)
+        assertEquals(ReservationStatus.BOOKED, reservationRepository.findById(reservation.id!!).get().status)
         assertEquals(null, companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!))
     }
 
@@ -229,7 +229,7 @@ class ReservationNoShowIntegrationTest {
 
         // Reservation status must be unchanged
         val unchanged = reservationRepository.findById(reservation.id!!).get()
-        assertEquals(ReservationStatus.PENDING, unchanged.status)
+        assertEquals(ReservationStatus.BOOKED, unchanged.status)
     }
 
     @Test
@@ -259,7 +259,7 @@ class ReservationNoShowIntegrationTest {
             }
 
         val unchanged = reservationRepository.findById(reservation.id!!).get()
-        assertEquals(ReservationStatus.PENDING, unchanged.status)
+        assertEquals(ReservationStatus.BOOKED, unchanged.status)
     }
 
     @Test

@@ -374,7 +374,7 @@ class ReservationStaffIntegrationTest {
                 jsonPath("$.code") { value("RESERVATION_NOT_FOUND") }
             }
 
-        assertEquals(ReservationStatus.PENDING, reservationRepository.findById(reservation.id!!).get().status)
+        assertEquals(ReservationStatus.BOOKED, reservationRepository.findById(reservation.id!!).get().status)
     }
 
     @Test
