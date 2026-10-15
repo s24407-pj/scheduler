@@ -82,7 +82,7 @@ class OfferingCategoryServiceTest {
 
         every { categoryRepository.findById(categoryId) } returns Optional.of(category)
 
-        assertThrows<IllegalStateException> {
+        assertThrows<NoSuchElementException> {
             offeringCategoryService.deleteCategory(categoryId, companyId)
         }
         verify(exactly = 0) { categoryRepository.delete(any()) }
@@ -131,7 +131,7 @@ class OfferingCategoryServiceTest {
         every { offeringRepository.findById(offeringId) } returns Optional.of(offering)
         every { categoryRepository.findById(categoryId) } returns Optional.of(category)
 
-        assertThrows<IllegalStateException> {
+        assertThrows<NoSuchElementException> {
             offeringCategoryService.assignCategory(offeringId, companyId, categoryId)
         }
         verify(exactly = 0) { offeringRepository.save(any()) }

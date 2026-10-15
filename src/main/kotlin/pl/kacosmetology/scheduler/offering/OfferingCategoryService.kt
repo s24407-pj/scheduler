@@ -39,7 +39,7 @@ class OfferingCategoryService(
         val category =
             categoryRepository.findById(categoryId).orElseThrow { NoSuchElementException("Kategoria nie istnieje") }
         if (category.companyId != companyId) {
-            throw IllegalStateException("Brak dostępu do tej kategorii")
+            throw NoSuchElementException("Kategoria nie istnieje")
         }
         categoryRepository.delete(category)
     }
@@ -54,13 +54,13 @@ class OfferingCategoryService(
         val offering =
             offeringRepository.findById(offeringId).orElseThrow { NoSuchElementException("Usługa nie istnieje") }
         if (offering.companyId != companyId) {
-            throw IllegalStateException("Brak dostępu do tej usługi")
+            throw NoSuchElementException("Usługa nie istnieje")
         }
         if (categoryId != null) {
             val category =
                 categoryRepository.findById(categoryId).orElseThrow { NoSuchElementException("Kategoria nie istnieje") }
             if (category.companyId != companyId) {
-                throw IllegalStateException("Brak dostępu do tej kategorii")
+                throw NoSuchElementException("Kategoria nie istnieje")
             }
         }
         offering.categoryId = categoryId

@@ -39,7 +39,7 @@ Codes are defined in `config/ApiException.kt` (`ErrorCode`); each code has a fix
 | Code | Status | Meaning |
 | ---- | ------ | ------- |
 | `VALIDATION_FAILED` | 400 | Request body failed DTO validation; see `errors` |
-| `MALFORMED_REQUEST` | 400 | Body is not valid JSON or has wrong types |
+| `MALFORMED_REQUEST` | 400 | Invalid JSON/types, unknown fields, fractional integral values, or offset-bearing local date-times |
 | `INVALID_PARAMETER` | 400 | Query or path parameter missing or of the wrong type |
 | `INVALID_LOCAL_TIME` | 400 | `startTime` falls in the daylight-saving gap and does not exist in Europe/Warsaw |
 | `OFFERING_UNAVAILABLE` | 400 | Referenced offering does not exist, is inactive, or (staff booking) belongs to another company |

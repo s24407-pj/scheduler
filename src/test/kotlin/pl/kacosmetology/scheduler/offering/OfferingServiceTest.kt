@@ -112,10 +112,10 @@ class OfferingServiceTest {
 
         // WHEN & THEN
         val exception =
-            assertThrows<IllegalArgumentException> {
+            assertThrows<NoSuchElementException> {
                 offeringService.getOfferingById(999L)
             }
-        assertEquals("Usługa o ID 999 nie istnieje", exception.message)
+        assertEquals("Usługa nie istnieje", exception.message)
     }
 
     @Test
@@ -164,10 +164,10 @@ class OfferingServiceTest {
 
         // WHEN & THEN
         val exception =
-            assertThrows<IllegalStateException> {
+            assertThrows<NoSuchElementException> {
                 offeringService.updateOffering(1L, companyId, request)
             }
-        assertEquals("Brak dostępu do tej usługi", exception.message)
+        assertEquals("Usługa nie istnieje", exception.message)
         verify(exactly = 0) { offeringRepository.save(any()) }
     }
 
@@ -192,7 +192,7 @@ class OfferingServiceTest {
         every { offeringRepository.findById(1L) } returns Optional.of(existing)
 
         // WHEN & THEN
-        assertThrows<IllegalStateException> {
+        assertThrows<NoSuchElementException> {
             offeringService.deleteOffering(1L, companyId)
         }
         verify(exactly = 0) { offeringRepository.save(any()) }
@@ -204,7 +204,7 @@ class OfferingServiceTest {
         every { offeringRepository.findById(999L) } returns Optional.empty()
 
         // WHEN & THEN
-        assertThrows<IllegalArgumentException> {
+        assertThrows<NoSuchElementException> {
             offeringService.deleteOffering(999L, companyId)
         }
     }
@@ -234,7 +234,7 @@ class OfferingServiceTest {
         every { offeringRepository.findById(1L) } returns Optional.of(offering)
 
         // WHEN & THEN
-        assertThrows<IllegalStateException> {
+        assertThrows<NoSuchElementException> {
             offeringService.uploadImage(1L, companyId, file)
         }
         verify(exactly = 0) { offeringImageService.upload(any(), any(), any()) }
@@ -262,7 +262,7 @@ class OfferingServiceTest {
         every { offeringRepository.findById(1L) } returns Optional.of(offering)
 
         // WHEN & THEN
-        assertThrows<IllegalStateException> {
+        assertThrows<NoSuchElementException> {
             offeringService.deleteImage(1L, 42L, companyId)
         }
         verify(exactly = 0) { offeringImageService.delete(any(), any()) }

@@ -32,6 +32,16 @@ class OpenApiIntegrationTest {
             jsonPath("$.components.securitySchemes.sessionAuth.type") { value("apiKey") }
             jsonPath("$.components.securitySchemes.sessionAuth.in") { value("cookie") }
             jsonPath("$.components.securitySchemes.sessionAuth.name") { value("SESSION") }
+            jsonPath("$.components.securitySchemes.csrfToken.name") { value("X-XSRF-TOKEN") }
+            jsonPath("$.paths['/api/availability'].get.security.length()") { value(0) }
+            jsonPath("$.paths['/api/reservations'].post.responses['409'].content['application/problem+json']") {
+                exists()
+            }
+            jsonPath("$.components.schemas.ApiProblemDetail.properties.code.type") { value("string") }
+            jsonPath("$.paths['/api/reservations'].post.security[0].sessionAuth") { exists() }
+            jsonPath("$.paths['/api/reservations'].post.security[0].csrfToken") { exists() }
+            jsonPath("$.paths['/api/auth/verify-code'].post.security[0].sessionAuth") { doesNotExist() }
+            jsonPath("$.paths['/api/auth/verify-code'].post.security[0].csrfToken") { exists() }
         }
     }
 }

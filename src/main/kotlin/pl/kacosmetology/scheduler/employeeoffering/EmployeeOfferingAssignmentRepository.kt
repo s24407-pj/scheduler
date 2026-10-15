@@ -21,8 +21,11 @@ interface EmployeeOfferingAssignmentRepository : JpaRepository<EmployeeOfferingA
     /** Returns true if the employee is assigned to the given offering. */
     fun existsByEmployeeIdAndOfferingId(employeeId: Long, offeringId: Long): Boolean
 
-    /** Removes a specific offering assignment for the given employee. */
-    fun deleteByEmployeeIdAndOfferingId(employeeId: Long, offeringId: Long)
+    /** Removes an assignment only within its company. */
+    fun deleteByCompanyIdAndEmployeeIdAndOfferingId(companyId: Long, employeeId: Long, offeringId: Long)
+
+    /** Returns whether the company owns this assignment. */
+    fun existsByCompanyIdAndEmployeeIdAndOfferingId(companyId: Long, employeeId: Long, offeringId: Long): Boolean
 
     /** Removes all offering assignments for the given employee. */
     fun deleteAllByEmployeeId(employeeId: Long)

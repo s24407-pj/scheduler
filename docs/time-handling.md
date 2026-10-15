@@ -5,7 +5,7 @@ Policy and rationale: [ADR-0003](./adr/0003-single-time-zone.md).
 ## Rules
 
 - **One business time zone: `Europe/Warsaw`.** All salons are assumed to be in it. The constant is `BUSINESS_ZONE` in `config/TimeConfig.kt`.
-- **API date-times have no offset** and mean Warsaw wall-clock time: ISO-8601 local format such as `2026-10-12T14:30:00`. Dates are `2026-10-12`. Responses also omit the offset.
+- **API date-times reject `Z` and every numeric offset**, both in JSON bodies and query parameters. Strict parsing never discards zone data. **API date-times have no offset** and mean Warsaw wall-clock time: ISO-8601 local format such as `2026-10-12T14:30:00`. Dates are `2026-10-12`. Responses also omit the offset.
 - **Storage:** `TIMESTAMP WITH TIME ZONE` columns; entities use `LocalDateTime`. Hibernate converts using `hibernate.jdbc.time_zone: Europe/Warsaw`, so stored instants are correct.
 - **"Now"** comes from the injected `java.time.Clock` bean: `LocalDateTime.now(clock)`. Do not call `now()` without a clock or `ZoneId.of(...)` in business code.
 - **JVM default zone** is set to `BUSINESS_ZONE` in `SchedulerApplication.main`, and the Gradle test task sets `user.timezone=Europe/Warsaw`, so `@Future` validation behaves the same everywhere. Cron jobs declare `zone = BUSINESS_ZONE_ID`.

@@ -410,7 +410,10 @@ class SessionSecurityIntegrationTest {
                 "/api/offerings",
                 mapOf("companyId" to owner.companyId, "name" to "Test", "price" to 50, "durationMinutes" to 30),
             )
-        assertEquals(403, result.response.status)
+        assertEquals(400, result.response.status)
+        val validRequest =
+            post(browser, "/api/offerings", mapOf("name" to "Test", "price" to 50, "durationMinutes" to 30))
+        assertEquals(403, validRequest.response.status)
         assertEquals(employee.companyId, me(browser)["companyId"].asLong())
     }
 

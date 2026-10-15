@@ -348,4 +348,150 @@ class EmployeeOfferingIntegrationTest {
                 status { isBadRequest() }
             }
     }
+
+    @Test
+    fun `foreign offering assignment deletion cannot delete multi-salon employees assignment`() {
+        val otherCompany = companyRepository.save(Company(name = "Inna firma"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = employeeId, role = "EMPLOYEE"),
+        )
+        val foreignOffering =
+            offeringRepository.save(
+                Offering(companyId = otherCompany.id!!, name = "Inna usługa", durationMinutes = 30, price = 100),
+            )
+        assignmentRepository.save(
+            EmployeeOfferingAssignment(
+                companyId = otherCompany.id!!,
+                employeeId = employeeId,
+                offeringId = foreignOffering.id!!,
+            ),
+        )
+        mockMvc
+            .delete("/api/employees/$employeeId/offerings/${foreignOffering.id!!}") {
+                with(csrf())
+                cookie(ownerSession)
+            }
+            .andExpect { status { isNotFound() } }
+        assertEquals(1, assignmentRepository.findAllByCompanyIdAndEmployeeId(otherCompany.id!!, employeeId).size)
+    }
+
+    @Test
+    fun `strict integral JSON rejects fractional price duration and identifier`() {
+        listOf(
+                """{"name":"Test","durationMinutes":30,"price":100.9}""",
+                """{"name":"Test","durationMinutes":30.9,"price":100}""",
+                """{"name":"Test","durationMinutes":30,"price":100,"unknown":true}""",
+            )
+            .forEach { payload ->
+                mockMvc
+                    .post("/api/offerings") {
+                        with(csrf())
+                        cookie(ownerSession)
+                        contentType = MediaType.APPLICATION_JSON
+                        content = payload
+                    }
+                    .andExpect {
+                        status { isBadRequest() }
+                        jsonPath("$.code") { value("MALFORMED_REQUEST") }
+                    }
+            }
+        mockMvc
+            .post("/api/reservations/staff") {
+                with(csrf())
+                cookie(ownerSession)
+                contentType = MediaType.APPLICATION_JSON
+                content =
+                    """{"employeeId":$employeeId.5,"serviceId":$offeringId,"startTime":"2030-01-01T10:00:00","customerPhone":"+48123456789"}"""
+            }
+            .andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("MALFORMED_REQUEST") }
+            }
+    }
+
+    @Test
+    fun `appointment body and query reject Z and numeric offsets`() {
+        listOf("Z", "+01:00", "+02:00").forEach { offset ->
+            mockMvc
+                .post("/api/reservations/staff") {
+                    with(csrf())
+                    cookie(ownerSession)
+                    contentType = MediaType.APPLICATION_JSON
+                    content =
+                        """{"employeeId":$employeeId,"serviceId":$offeringId,"startTime":"2030-01-01T10:00:00$offset","customerPhone":"+48123456789"}"""
+                }
+                .andExpect {
+                    status { isBadRequest() }
+                    jsonPath("$.code") { value("MALFORMED_REQUEST") }
+                }
+            mockMvc
+                .get("/api/reservations/employee") {
+                    cookie(employeeSession)
+                    param("start", "2030-01-01T10:00:00$offset")
+                    param("end", "2030-01-02T10:00:00")
+                }
+                .andExpect {
+                    status { isBadRequest() }
+                    jsonPath("$.code") { value("INVALID_PARAMETER") }
+                }
+        }
+    }
+
+    @Test
+    fun `staff session cannot use customer reservation endpoints`() {
+        mockMvc.get("/api/reservations/me") { cookie(employeeSession) }.andExpect { status { isForbidden() } }
+        mockMvc
+            .post("/api/reservations") {
+                with(csrf())
+                cookie(employeeSession)
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"employeeId":$employeeId,"serviceId":$offeringId,"startTime":"2030-01-01T10:00:00"}"""
+            }
+            .andExpect { status { isForbidden() } }
+        mockMvc
+            .perform(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/reservations/1/cancel")
+                    .with(csrf())
+                    .cookie(employeeSession),
+            )
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden)
+    }
+
+    @Test
+    fun `diagnostics remain private even for company owners`() {
+        listOf("/actuator/metrics", "/actuator/prometheus", "/actuator/info", "/actuator/health/readiness").forEach {
+            route ->
+            mockMvc.get(route) { cookie(ownerSession) }.andExpect { status { isForbidden() } }
+        }
+        mockMvc.get("/actuator/health").andExpect {
+            status { isOk() }
+            jsonPath("$.components") { doesNotExist() }
+            jsonPath("$.details") { doesNotExist() }
+        }
+    }
+
+    @Test
+    fun `public category route exposes only requested salon categories`() {
+        val category =
+            mockMvc
+                .post("/api/offering-categories") {
+                    with(csrf())
+                    cookie(ownerSession)
+                    contentType = MediaType.APPLICATION_JSON
+                    content = """{"name":"Pielęgnacja"}"""
+                }
+                .andExpect { status { isCreated() } }
+                .andReturn()
+        val categoryId = objectMapper.readTree(category.response.contentAsString)["id"].asLong()
+        val foreignCompany = companyRepository.save(Company(name = "Inny salon"))
+        mockMvc.get("/api/offering-categories/public/company/$companyId").andExpect {
+            status { isOk() }
+            jsonPath("$[0].id") { value(categoryId) }
+            jsonPath("$[0].name") { value("Pielęgnacja") }
+        }
+        mockMvc.get("/api/offering-categories/public/company/${foreignCompany.id!!}").andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(0) }
+        }
+    }
 }

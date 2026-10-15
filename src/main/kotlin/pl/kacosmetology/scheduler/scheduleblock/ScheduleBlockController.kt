@@ -2,7 +2,6 @@ package pl.kacosmetology.scheduler.scheduleblock
 
 import jakarta.validation.Valid
 import java.time.LocalDateTime
-import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -74,8 +73,8 @@ class ScheduleBlockController(
     fun getMyBlocks(
         @AuthenticationPrincipal userDetails: CustomUserDetails,
         @RequestParam(required = false) employeeId: Long?,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime,
+        @RequestParam start: LocalDateTime,
+        @RequestParam end: LocalDateTime,
     ): List<ScheduleBlockResponse> {
         val requesterId = userDetails.id
         val companyId =

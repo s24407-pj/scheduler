@@ -82,21 +82,39 @@ class EmployeeOfferingServiceTest {
     @Test
     fun `removeAssignment should delete assignment`() {
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
-        every { assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId) } returns true
-        every { assignmentRepository.deleteByEmployeeIdAndOfferingId(employeeId, offeringId) } returns Unit
+        every { offeringRepository.findByIdAndCompanyId(offeringId, companyId) } returns mockOffering
+        every {
+            assignmentRepository.existsByCompanyIdAndEmployeeIdAndOfferingId(companyId, employeeId, offeringId)
+        } returns true
+        every {
+            assignmentRepository.deleteByCompanyIdAndEmployeeIdAndOfferingId(companyId, employeeId, offeringId)
+        } returns Unit
 
         service.removeAssignment(companyId, employeeId, offeringId)
 
-        verify(exactly = 1) { assignmentRepository.deleteByEmployeeIdAndOfferingId(employeeId, offeringId) }
+        verify(exactly = 1) {
+            assignmentRepository.deleteByCompanyIdAndEmployeeIdAndOfferingId(companyId, employeeId, offeringId)
+        }
     }
 
     @Test
     fun `removeAssignment should throw when assignment does not exist`() {
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
-        every { assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId) } returns false
+        every { offeringRepository.findByIdAndCompanyId(offeringId, companyId) } returns mockOffering
+        every {
+            assignmentRepository.existsByCompanyIdAndEmployeeIdAndOfferingId(companyId, employeeId, offeringId)
+        } returns false
 
         assertThrows<NoSuchElementException> {
             service.removeAssignment(companyId, employeeId, offeringId)
         }
+    }
+
+    @Test
+    fun `foreign offering deletion is opaque and never deletes another company assignment`() {
+        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
+        every { offeringRepository.findByIdAndCompanyId(offeringId, companyId) } returns null
+        assertThrows<NoSuchElementException> { service.removeAssignment(companyId, employeeId, offeringId) }
+        verify(exactly = 0) { assignmentRepository.deleteByCompanyIdAndEmployeeIdAndOfferingId(any(), any(), any()) }
     }
 }

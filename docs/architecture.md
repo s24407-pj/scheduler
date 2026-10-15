@@ -82,6 +82,8 @@ Client IP is `request.remoteAddr`. With `server.forward-headers-strategy: native
 ## Authorization and company isolation
 
 - Method security: `@PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")` or `hasRole('OWNER')`. Endpoints without `@PreAuthorize` require a valid authenticated session. Public paths are listed in `SecurityConfig` (see [endpoints](./api/endpoints.md)).
+- Customer booking/history/cancellation routes require `ROLE_CUSTOMER`; a staff session does not qualify as a customer session.
+- Actuator exposes only aggregate public `/actuator/health`; every other actuator route is denied to application principals.
 - Every staff operation is scoped to the session principal's `companyId`. Services verify that the target resource (reservation, offering, employee, block) belongs to that company. The status code for a mismatch is currently inconsistent; see [API errors](./api/errors.md).
 - Database-level isolation exists for schedule blocks: a composite foreign key `(company_id, employee_id)` → `company_employees (company_id, user_id)`.
 
@@ -111,7 +113,7 @@ Redis-backed Spring Cache (`RedisConfig`), JSON values, default TTL 10 minutes. 
 
 S3-compatible client from `R2Config`. With no access key and secret key configured, it uses anonymous credentials (startup succeeds, uploads fail).
 
-- Offering images: up to 5 per offering, `POST /api/offerings/{id}/image` (multipart field `image`), JPEG/PNG/WebP, max 5 MB. `OfferingImageService`.
+- Offering images: gallery capacity is serialized by a pessimistic lock on the tenant-owned offering row. Uploaded objects are compensated after database rollback; deleted objects are removed only after database commit (storage errors can leave an orphan object, never a live database reference to a prematurely deleted object). Actual JPEG/PNG/WebP bytes are decoded, MIME headers are not trusted; decoded dimensions are limited to 25 million pixels. Up to 5 per offering, `POST /api/offerings/{id}/image` (multipart field `image`), JPEG/PNG/WebP, max 5 MB. `OfferingImageService`.
 - Employee photo: one per employee, `POST /api/employees/{id}/photo` (multipart field `photo`), same limits; replaces and deletes the previous object. Stored as `users.photo_url`. `EmployeePhotoService`.
 
 ## Database
@@ -130,3 +132,7 @@ PostgreSQL, schema managed by Flyway (`src/main/resources/db/migration/`). `V1__
 | `employee_work_schedules` | Weekly hours per (company, employee) and day of week |
 | `schedule_blocks` | Employee unavailability; GiST exclusion constraint against overlaps |
 | `reservations` | Bookings with price snapshot, `version`, `reminder_sent`; GiST exclusion constraint against overlapping active bookings |
+
+## Strict request input
+
+Jackson rejects unknown JSON properties and fractional values for every integral property, including identifiers, PLN prices and durations. Date-time JSON/query input uses strict ISO local parsing. Failures return Problem Details (`MALFORMED_REQUEST` for JSON, `INVALID_PARAMETER` for query/path conversion).

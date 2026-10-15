@@ -69,6 +69,7 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
+| GET | `/api/offering-categories/public/company/{companyId}` | Public | Tenant-scoped public category names |
 | GET | `/api/offering-categories` | Authenticated | |
 | POST | `/api/offering-categories` | OWNER | |
 | DELETE | `/api/offering-categories/{id}` | OWNER | Offerings keep existing with `category_id = null` |
@@ -79,14 +80,14 @@ See [reservations](../reservations.md).
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| POST | `/api/reservations` | Authenticated | Books for the caller (`customerId` = authenticated session user); only slots availability would list; 201, or 200 for an identical active booking |
+| POST | `/api/reservations` | CUSTOMER | Books for the caller (`customerId` = authenticated session user); only slots availability would list; 201, or 200 for an identical active booking |
 | POST | `/api/reservations/staff` | OWNER, EMPLOYEE | Books for a client by phone; may create the user; 201 or 200 as above |
-| PATCH | `/api/reservations/{id}/cancel` | Authenticated | Owning customer only; before `startTime` |
+| PATCH | `/api/reservations/{id}/cancel` | CUSTOMER | Owning customer only; before `startTime` |
 | PATCH | `/api/reservations/{id}/cancel-by-staff` | OWNER, EMPLOYEE | Any active reservation of the company, also after start; 204 |
 | PATCH | `/api/reservations/{id}/complete` | OWNER, EMPLOYEE | |
 | PATCH | `/api/reservations/{id}/no-show` | OWNER, EMPLOYEE | From `startTime`; `COMPLETED` until `endTime + 24 h` |
 | DELETE | `/api/reservations/{id}` | OWNER | Hard delete |
-| GET | `/api/reservations/me` | Authenticated | Caller's reservations |
+| GET | `/api/reservations/me` | CUSTOMER | Caller's reservations |
 | GET | `/api/reservations/employee?start&end` | OWNER, EMPLOYEE | Caller's schedule at the authenticated session's company |
 | GET | `/api/reservations?employeeId&start&end` | OWNER, EMPLOYEE | EMPLOYEE only for self |
 
@@ -121,4 +122,6 @@ See [reservations](../reservations.md).
 
 ## Actuator
 
-Public: `/actuator/health/**`, `/actuator/info`, `/actuator/metrics/**`, `/actuator/prometheus`. The `dev` profile exposes more (`env`, `threaddump`, `loggers`, ...) but they still require a authenticated session.
+Only `/actuator/health` is public and returns aggregate status without details/components. Every other `/actuator/**` route is denied through the application HTTP interface, including metrics, Prometheus, info and readiness/liveness groups. Operator telemetry must use a separately secured deployment channel. Company staff and customers have no diagnostics permission.
+
+Generated OpenAPI marks public operations explicitly and describes `sessionAuth` (HttpOnly `SESSION` cookie) separately from `csrfToken` (`X-XSRF-TOKEN` header). Every unsafe operation requires CSRF, including anonymous login/OTP/logout.

@@ -17,6 +17,11 @@ class OfferingCategoryController(
     private val offeringCategoryService: OfferingCategoryService,
 ) {
 
+    /** Returns public category names only within the requested company. */
+    @GetMapping("/public/company/{companyId}")
+    fun getPublicCategories(@PathVariable companyId: Long): List<OfferingCategoryResponse> =
+        offeringCategoryService.getCategories(companyId).map { it.toOfferingCategoryResponse() }
+
     /** Returns all categories for the authenticated user's company. */
     @GetMapping
     fun getCategories(@AuthenticationPrincipal userDetails: CustomUserDetails): List<OfferingCategoryResponse> =

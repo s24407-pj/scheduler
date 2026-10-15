@@ -2,7 +2,6 @@ package pl.kacosmetology.scheduler.reservation
 
 import jakarta.validation.Valid
 import java.time.LocalDateTime
-import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
@@ -27,6 +26,7 @@ class ReservationController(
      * existing active reservation with 200 instead of failing as a conflict.
      */
     @PostMapping
+    @PreAuthorize("hasRole('CUSTOMER')")
     fun createReservation(
         @Valid @RequestBody request: CreateReservationRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
@@ -42,6 +42,7 @@ class ReservationController(
     }
 
     /** Cancels the customer's own reservation. Allowed only before the visit starts. */
+    @PreAuthorize("hasRole('CUSTOMER')")
     @PatchMapping("/{id}/cancel")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun cancelReservation(
@@ -90,6 +91,7 @@ class ReservationController(
     }
 
     /** Returns the authenticated customer's reservation history. */
+    @PreAuthorize("hasRole('CUSTOMER')")
     @GetMapping("/me")
     fun getMyReservations(@AuthenticationPrincipal userDetails: CustomUserDetails): List<ReservationResponse> {
         return reservationService.getCustomerReservations(userDetails.id).map { it.toResponse() }
@@ -103,8 +105,8 @@ class ReservationController(
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getEmployeeSchedule(
         @AuthenticationPrincipal userDetails: CustomUserDetails,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime,
+        @RequestParam start: LocalDateTime,
+        @RequestParam end: LocalDateTime,
     ): List<EmployeeReservationResponse> {
         return reservationService.getEmployeeSchedule(userDetails.requireCompanyId(), userDetails.id, start, end).map {
             it.toEmployeeResponse()
@@ -119,8 +121,8 @@ class ReservationController(
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getReservations(
         @RequestParam employeeId: Long,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime,
+        @RequestParam start: LocalDateTime,
+        @RequestParam end: LocalDateTime,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): List<DashboardReservationResponse> {
         val companyId = userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)

@@ -49,7 +49,7 @@ class OfferingService(
     /** Returns a single offering by ID or throws [IllegalArgumentException]. */
     @Transactional(readOnly = true)
     fun getOfferingById(id: Long): Offering {
-        return offeringRepository.findById(id).orElseThrow { IllegalArgumentException("Usługa o ID $id nie istnieje") }
+        return offeringRepository.findById(id).orElseThrow { NoSuchElementException("Usługa nie istnieje") }
     }
 
     /** Creates a new offering and evicts the company offerings cache. */
@@ -73,7 +73,7 @@ class OfferingService(
         val existing = getOfferingById(id)
 
         if (existing.companyId != companyId) {
-            throw IllegalStateException("Brak dostępu do tej usługi")
+            throw NoSuchElementException("Usługa nie istnieje")
         }
 
         existing.name = request.name
@@ -89,7 +89,7 @@ class OfferingService(
         val existing = getOfferingById(id)
 
         if (existing.companyId != companyId) {
-            throw IllegalStateException("Brak dostępu do tej usługi")
+            throw NoSuchElementException("Usługa nie istnieje")
         }
 
         existing.active = true
@@ -103,7 +103,7 @@ class OfferingService(
     @CacheEvict("companyServices", key = "#companyId")
     fun uploadImage(offeringId: Long, companyId: Long, file: MultipartFile): Offering {
         val offering = getOfferingById(offeringId)
-        if (offering.companyId != companyId) throw IllegalStateException("Brak dostępu do tej usługi")
+        if (offering.companyId != companyId) throw NoSuchElementException("Usługa nie istnieje")
         offeringImageService.upload(companyId, offeringId, file)
         return offering
     }
@@ -113,7 +113,7 @@ class OfferingService(
     @CacheEvict("companyServices", key = "#companyId")
     fun deleteImage(offeringId: Long, imageId: Long, companyId: Long): Offering {
         val offering = getOfferingById(offeringId)
-        if (offering.companyId != companyId) throw IllegalStateException("Brak dostępu do tej usługi")
+        if (offering.companyId != companyId) throw NoSuchElementException("Usługa nie istnieje")
         offeringImageService.delete(imageId, offeringId)
         return offering
     }
@@ -125,7 +125,7 @@ class OfferingService(
         val existing = getOfferingById(id)
 
         if (existing.companyId != companyId) {
-            throw IllegalStateException("Brak dostępu do tej usługi")
+            throw NoSuchElementException("Usługa nie istnieje")
         }
 
         existing.active = false

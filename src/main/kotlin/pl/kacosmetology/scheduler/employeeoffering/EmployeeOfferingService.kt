@@ -40,7 +40,7 @@ class EmployeeOfferingService(
         val offering =
             offeringRepository.findById(offeringId).orElseThrow { NoSuchElementException("Usługa nie istnieje") }
         if (offering.companyId != companyId) {
-            throw IllegalStateException("Usługa nie należy do tej firmy")
+            throw NoSuchElementException("Usługa nie istnieje")
         }
         assignmentRepository.findByEmployeeIdAndOfferingId(employeeId, offeringId)?.let {
             return it.toResponse()
@@ -61,9 +61,11 @@ class EmployeeOfferingService(
         if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
             throw NoSuchElementException("Pracownik nie należy do tej firmy")
         }
-        if (!assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, offeringId)) {
+        offeringRepository.findByIdAndCompanyId(offeringId, companyId)
+            ?: throw NoSuchElementException("Usługa nie istnieje")
+        if (!assignmentRepository.existsByCompanyIdAndEmployeeIdAndOfferingId(companyId, employeeId, offeringId)) {
             throw NoSuchElementException("Przypisanie nie istnieje")
         }
-        assignmentRepository.deleteByEmployeeIdAndOfferingId(employeeId, offeringId)
+        assignmentRepository.deleteByCompanyIdAndEmployeeIdAndOfferingId(companyId, employeeId, offeringId)
     }
 }

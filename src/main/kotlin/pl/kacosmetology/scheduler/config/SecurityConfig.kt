@@ -89,15 +89,10 @@ class SecurityConfig(
             .logout { it.disable() }
             .authorizeHttpRequests { auth ->
                 auth
-                    .requestMatchers(
-                        "/actuator/health",
-                        "/actuator/health/**",
-                        "/actuator/prometheus",
-                        "/actuator/metrics",
-                        "/actuator/metrics/**",
-                        "/actuator/info",
-                    )
+                    .requestMatchers("/actuator/health")
                     .permitAll()
+                    .requestMatchers("/actuator/**")
+                    .denyAll()
                     .requestMatchers(
                         "/api/auth/csrf",
                         "/api/auth/logout",
@@ -107,6 +102,8 @@ class SecurityConfig(
                     )
                     .permitAll()
                     .requestMatchers("/api/availability")
+                    .permitAll()
+                    .requestMatchers("/api/offering-categories/public/**")
                     .permitAll()
                     .requestMatchers("/api/offerings/public/**")
                     .permitAll()
