@@ -89,7 +89,7 @@ class AuthController(
         return ResponseEntity.noContent().build()
     }
 
-    /** Revokes every customer/staff session of this account across all employment scopes. */
+    /** Revokes all devices of this customer or company-owned staff account only. */
     @PostMapping("/logout-all")
     fun logoutAll(
         @AuthenticationPrincipal principal: CustomUserDetails,

@@ -16,6 +16,15 @@ data class CustomUserDetails(
     /** Returns the exact staff company scope or rejects an unscoped principal. */
     fun requireCompanyId(): Long = companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
 
+    /** Separates global customer accounts from each company's independent staff account. */
+    fun accountKey(): String =
+        when (role) {
+            "ROLE_CUSTOMER" -> "customer:$id"
+            "ROLE_OWNER",
+            "ROLE_EMPLOYEE" -> "staff:${requireNotNull(employmentId)}"
+            else -> error("Unsupported authentication realm")
+        }
+
     override fun getAuthorities() = listOf(SimpleGrantedAuthority(role))
 
     override fun getPassword(): String = ""

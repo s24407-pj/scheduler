@@ -6,13 +6,13 @@ import jakarta.servlet.http.HttpServletResponse
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.core.userdetails.UsernameNotFoundException
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler
-import org.springframework.session.FindByIndexNameSessionRepository
 import org.springframework.web.filter.OncePerRequestFilter
 
 /** Rejects stale identities before CSRF/authorization; never upgrades or switches a stored employment scope. */
 class SessionAuthorizationFilter(
     private val userDetailsService: CustomUserDetailsService,
     private val logoutHandler: SecurityContextLogoutHandler,
+    private val accountSessions: AccountSessionRegistry,
 ) : OncePerRequestFilter() {
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, chain: FilterChain) {
         val authentication = SecurityContextHolder.getContext().authentication
@@ -32,13 +32,11 @@ class SessionAuthorizationFilter(
                 } catch (_: UsernameNotFoundException) {
                     null
                 }
-            val indexedUser =
-                request.getSession(false)?.getAttribute(FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME)
             if (
                 current != principal ||
                     principal == null ||
                     authentication.authorities != principal.authorities ||
-                    indexedUser != principal.id.toString()
+                    !accountSessions.isAuthorized(principal) { request.getSession(false)?.getAttribute(it) }
             ) {
                 logoutHandler.logout(request, response, authentication)
             }

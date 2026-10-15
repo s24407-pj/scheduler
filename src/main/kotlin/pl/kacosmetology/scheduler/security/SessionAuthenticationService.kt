@@ -11,8 +11,6 @@ import org.springframework.security.web.context.SecurityContextRepository
 import org.springframework.security.web.csrf.CsrfLogoutHandler
 import org.springframework.security.web.csrf.CsrfTokenRepository
 import org.springframework.security.web.csrf.DeferredCsrfToken
-import org.springframework.session.FindByIndexNameSessionRepository
-import org.springframework.session.Session
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
 
@@ -21,7 +19,7 @@ import org.springframework.web.server.ResponseStatusException
 class SessionAuthenticationService(
     private val securityContextRepository: SecurityContextRepository,
     private val sessionAuthenticationStrategy: SessionAuthenticationStrategy,
-    private val sessionRepository: FindByIndexNameSessionRepository<out Session>,
+    private val accountSessions: AccountSessionRegistry,
     private val logoutHandler: SecurityContextLogoutHandler,
     private val csrfTokenRepository: CsrfTokenRepository,
 ) {
@@ -40,10 +38,9 @@ class SessionAuthenticationService(
         val context = SecurityContextHolder.createEmptyContext()
         context.authentication = authentication
         SecurityContextHolder.setContext(context)
-        // Stable account ID indexes all customer/staff employments, even if the phone number changes.
-        request
-            .getSession(true)
-            .setAttribute(FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME, principal.id.toString())
+        val session = request.getSession(true)
+        session.maxInactiveInterval = AccountSessionRegistry.SESSION_DURATION.seconds.toInt()
+        accountSessions.sessionAttributes(principal).forEach { (name, value) -> session.setAttribute(name, value) }
         securityContextRepository.saveContext(context, request, response)
     }
 
@@ -54,9 +51,9 @@ class SessionAuthenticationService(
         logoutHandler.logout(request, response, authentication)
     }
 
-    /** Deletes all indexed sessions for the account, across devices and employment scopes, then clears this browser. */
+    /** Revokes this customer or company-owned staff account across devices, then clears this browser. */
     fun logoutAll(principal: CustomUserDetails, request: HttpServletRequest, response: HttpServletResponse) {
-        sessionRepository.findByPrincipalName(principal.id.toString()).keys.forEach(sessionRepository::deleteById)
+        accountSessions.revokeAccount(principal.accountKey())
         logout(request, response)
     }
 

@@ -18,7 +18,7 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | POST | `/api/auth/logout` | Public, CSRF required | Revokes the session of the current browser; 204 |
 | GET | `/api/auth/csrf` | Public | Sets XSRF-TOKEN; returns CSRF token/header name |
 | GET | `/api/auth/me` | Authenticated | Safe account ID/username/authorities/company/employment scope |
-| POST | `/api/auth/logout-all` | Authenticated | Revokes every session of the caller; 204 |
+| POST | `/api/auth/logout-all` | Authenticated | Revokes all devices for the caller's customer or company staff account only; 204 |
 
 ## Availability — `AvailabilityController`
 

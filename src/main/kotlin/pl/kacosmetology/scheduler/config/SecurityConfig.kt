@@ -24,6 +24,7 @@ import org.springframework.security.web.savedrequest.NullRequestCache
 import org.springframework.session.web.http.CookieSerializer
 import org.springframework.session.web.http.DefaultCookieSerializer
 import org.springframework.web.servlet.HandlerExceptionResolver
+import pl.kacosmetology.scheduler.security.AccountSessionRegistry
 import pl.kacosmetology.scheduler.security.CustomUserDetailsService
 import pl.kacosmetology.scheduler.security.SessionAuthorizationFilter
 
@@ -33,6 +34,7 @@ import pl.kacosmetology.scheduler.security.SessionAuthorizationFilter
 @EnableMethodSecurity
 class SecurityConfig(
     private val userDetailsService: CustomUserDetailsService,
+    private val accountSessions: AccountSessionRegistry,
     @Value($$"${server.servlet.session.cookie.secure:false}") private val secureCookie: Boolean,
     @param:Qualifier("handlerExceptionResolver") private val exceptionResolver: HandlerExceptionResolver,
 ) {
@@ -128,7 +130,10 @@ class SecurityConfig(
             .sessionManagement { session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
             }
-            .addFilterBefore(SessionAuthorizationFilter(userDetailsService, logoutHandler()), CsrfFilter::class.java)
+            .addFilterBefore(
+                SessionAuthorizationFilter(userDetailsService, logoutHandler(), accountSessions),
+                CsrfFilter::class.java,
+            )
 
         return http.build()
     }

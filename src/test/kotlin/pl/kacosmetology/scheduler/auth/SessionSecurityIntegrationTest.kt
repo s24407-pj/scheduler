@@ -7,9 +7,14 @@ import io.mockk.just
 import jakarta.servlet.http.Cookie
 import java.io.ByteArrayOutputStream
 import java.io.ObjectOutputStream
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
 import java.util.Base64
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -39,6 +44,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.security.AccountSessionRegistry
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
@@ -64,6 +70,9 @@ class SessionSecurityIntegrationTest {
     @Autowired private lateinit var securityFilter: FilterChainProxy
     @MockkBean private lateinit var smsSender: SmsSender
     @MockkBean private lateinit var s3Client: S3Client
+    @MockkBean private lateinit var clock: Clock
+    @Autowired private lateinit var accountSessions: AccountSessionRegistry
+    private lateinit var loginTime: Instant
 
     private lateinit var staff: User
     private lateinit var owner: CompanyEmployee
@@ -72,6 +81,9 @@ class SessionSecurityIntegrationTest {
 
     @BeforeEach
     fun setup() {
+        loginTime = Instant.now()
+        every { clock.instant() } returns loginTime
+        every { clock.zone } returns ZoneId.of("Europe/Warsaw")
         redis.connectionFactory!!.connection.use { it.serverCommands().flushAll() }
         reservations.deleteAll()
         employments.deleteAll()
@@ -192,19 +204,107 @@ class SessionSecurityIntegrationTest {
     }
 
     @Test
-    fun `logout all covers devices staff employments and customer session for the same account`() {
+    fun `staff logout all isolates its company account from customer and other employment sessions`() {
         val first = login(owner.id!!)
-        val second = login(employee.id!!)
+        val secondDevice = login(owner.id!!)
+        val otherEmployment = login(employee.id!!)
         val customer = customer(staff.phoneNumber)
-        val otherAccount = customer("+48500777777")
-        assertEquals(3, sessions.findByPrincipalName(staff.id.toString()).size)
+        val otherCustomer = customer("+48500777777")
+        assertEquals(2, sessions.findByPrincipalName("staff:${owner.id}:0").size)
         assertEquals(204, post(first, "/api/auth/logout-all").response.status)
-        for (browser in listOf(first, second, customer)) {
-            assertNull(sessions.findById(id(browser.session!!)))
-            assertEquals(401, meStatus(browser))
+        for (browser in listOf(first, secondDevice)) assertRevoked(browser)
+        for (browser in listOf(otherEmployment, customer, otherCustomer)) assertEquals(200, meStatus(browser))
+        assertTrue(sessions.findByPrincipalName("staff:${owner.id}:0").isEmpty())
+    }
+
+    @Test
+    fun `customer logout all isolates customer account from staff and other customers`() {
+        val first = customer(staff.phoneNumber)
+        val second = customer(staff.phoneNumber)
+        val staffBrowser = login(owner.id!!)
+        val otherCustomer = customer("+48500777777")
+        assertEquals(204, post(first, "/api/auth/logout-all").response.status)
+        assertRevoked(first)
+        assertRevoked(second)
+        assertEquals(200, meStatus(staffBrowser))
+        assertEquals(200, meStatus(otherCustomer))
+    }
+
+    @Test
+    fun `customer activity cannot extend absolute deadline and exact 24 hours expires`() {
+        val browser = customer("+48500777777")
+        val sessionId = id(browser.session!!)
+        val original = sessions.findById(sessionId)!!
+        val deadline = original.getAttribute<Instant>(AccountSessionRegistry.CUSTOMER_DEADLINE_ATTRIBUTE)
+        assertEquals(loginTime.plus(Duration.ofHours(24)), deadline)
+        every { clock.instant() } returns loginTime.plus(Duration.ofHours(23))
+        assertEquals(200, meStatus(browser))
+        assertEquals(
+            deadline,
+            sessions.findById(sessionId)!!.getAttribute<Instant>(AccountSessionRegistry.CUSTOMER_DEADLINE_ATTRIBUTE),
+        )
+        every { clock.instant() } returns deadline!!.minusNanos(1)
+        assertEquals(200, meStatus(browser))
+        every { clock.instant() } returns deadline
+        assertRevoked(browser)
+    }
+
+    @Test
+    fun `staff activity refreshes idle expiry beyond 24 hours from login`() {
+        val browser = login(owner.id!!)
+        val sessionId = id(browser.session!!)
+        val session = sessions.findById(sessionId)!!
+        assertEquals(Duration.ofHours(24), session.maxInactiveInterval)
+        assertNull(session.getAttribute<Instant>(AccountSessionRegistry.CUSTOMER_DEADLINE_ATTRIBUTE))
+        val lastActivity = Instant.now().minus(Duration.ofHours(23))
+        session.lastAccessedTime = lastActivity
+        sessions.save(session)
+        every { clock.instant() } returns loginTime.plus(Duration.ofHours(48))
+        assertEquals(200, meStatus(browser))
+        assertTrue(sessions.findById(sessionId)!!.lastAccessedTime.isAfter(lastActivity))
+        val expired = sessions.findById(sessionId)!!
+        expired.lastAccessedTime = Instant.now().minus(Duration.ofHours(24)).minusSeconds(1)
+        sessions.save(expired)
+        assertRevoked(browser)
+    }
+
+    @Test
+    fun `login saved after logout all is rejected while new generation stays indexed`() {
+        val browser = login(owner.id!!)
+        val context =
+            sessions.findById(id(browser.session!!))!!.getAttribute<SecurityContext>(SPRING_SECURITY_CONTEXT_KEY)!!
+        val principal = context.authentication!!.principal as CustomUserDetails
+        val captured = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val pending =
+                executor.submit<Cookie> {
+                    val delayed = sessions.createSession()
+                    accountSessions.sessionAttributes(principal).forEach { (name, value) ->
+                        delayed.setAttribute(name, value)
+                    }
+                    delayed.setAttribute(SPRING_SECURITY_CONTEXT_KEY, context)
+                    captured.countDown()
+                    check(release.await(10, TimeUnit.SECONDS))
+                    sessions.save(delayed)
+                    Cookie("SESSION", Base64.getEncoder().encodeToString(delayed.id.toByteArray()))
+                }
+            assertTrue(captured.await(10, TimeUnit.SECONDS))
+            assertEquals(204, post(browser, "/api/auth/logout-all").response.status)
+            val fresh = login(owner.id!!)
+            release.countDown()
+            val delayed = pending.get(10, TimeUnit.SECONDS)
+            assertEquals(401, mvc.perform(get("/api/auth/me").cookie(delayed)).andReturn().response.status)
+            assertEquals(200, meStatus(fresh))
+            assertEquals(setOf(id(fresh.session!!)), sessions.findByPrincipalName("staff:${owner.id}:1").keys)
+            // Every login that survives the revocation remains tracked for the next logout-all.
+            assertEquals(204, post(fresh, "/api/auth/logout-all").response.status)
+            assertRevoked(fresh)
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
         }
-        assertEquals(200, meStatus(otherAccount))
-        assertTrue(sessions.findByPrincipalName(staff.id.toString()).isEmpty())
     }
 
     @Test
@@ -389,7 +489,7 @@ class SessionSecurityIntegrationTest {
         assertNull(auth.details)
         val principal = auth.principal as CustomUserDetails
         assertEquals("", principal.password)
-        assertEquals(staff.id.toString(), session.getAttribute<String>(PRINCIPAL_NAME_INDEX_NAME))
+        assertEquals("staff:${owner.id}:0", session.getAttribute<String>(PRINCIPAL_NAME_INDEX_NAME))
         val bytes =
             ByteArrayOutputStream()
                 .also { out -> ObjectOutputStream(out).use { it.writeObject(security) } }

@@ -93,6 +93,6 @@ class ProductionSessionCookieIntegrationTest {
         assertNull(expired.domain)
         assertTrue(requireNotNull(logout.getCookie("XSRF-TOKEN")).secure)
         assertEquals(0, expired.maxAge)
-        assertNull(sessions.findByPrincipalName(staff.id.toString()).values.firstOrNull())
+        assertNull(sessions.findById(String(java.util.Base64.getDecoder().decode(authenticated.value))))
     }
 }
