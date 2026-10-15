@@ -8,6 +8,8 @@ import org.springframework.stereotype.Repository
 /** JPA repository for [ScheduleBlock] entities. */
 @Repository
 interface ScheduleBlockRepository : JpaRepository<ScheduleBlock, Long> {
+    /** Loads only a block belonging to the authenticated tenant. */
+    fun findByIdAndCompanyId(id: Long, companyId: Long): ScheduleBlock?
 
     /**
      * Checks whether an employee has any schedule block in a company that overlaps the given time range. Uses the

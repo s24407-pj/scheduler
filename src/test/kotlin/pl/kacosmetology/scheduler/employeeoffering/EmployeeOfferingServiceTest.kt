@@ -7,10 +7,14 @@ import io.mockk.junit5.MockKExtension
 import io.mockk.verify
 import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
+import pl.kacosmetology.scheduler.company.Company
+import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 
@@ -23,6 +27,8 @@ class EmployeeOfferingServiceTest {
 
     @MockK private lateinit var offeringRepository: OfferingRepository
 
+    @MockK private lateinit var companyRepository: CompanyRepository
+
     @InjectMockKs private lateinit var service: EmployeeOfferingService
 
     private val companyId = 1L
@@ -31,6 +37,13 @@ class EmployeeOfferingServiceTest {
 
     private val mockOffering =
         Offering(id = offeringId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 60)
+
+    @BeforeEach
+    fun mockPolicyLocks() {
+        every { companyRepository.findByIdForUpdate(companyId) } returns Company(id = companyId, name = "Firma")
+        every { companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId) } returns
+            CompanyEmployee(companyId = companyId, userId = employeeId, role = "EMPLOYEE")
+    }
 
     @Test
     fun `assignOffering should save new assignment`() {

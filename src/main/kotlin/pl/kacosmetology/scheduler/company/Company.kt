@@ -15,9 +15,9 @@ import pl.kacosmetology.scheduler.config.ErrorCode
 @Table(name = "companies")
 class Company(
     id: Long? = null,
-    @Column(nullable = false) val name: String,
+    @Column(nullable = false) var name: String,
     @Column(name = "tax_id") val taxId: String? = null,
-    @Column(nullable = true) val address: String? = null,
+    @Column(nullable = true) var address: String? = null,
     @Column(name = "opening_time", nullable = false) var openingTime: LocalTime = LocalTime.of(9, 0),
     @Column(name = "closing_time", nullable = false) var closingTime: LocalTime = LocalTime.of(17, 0),
     @Column(name = "slot_interval_minutes", nullable = false) var slotIntervalMinutes: Int = 30,

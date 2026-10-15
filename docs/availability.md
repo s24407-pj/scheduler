@@ -1,60 +1,33 @@
 # Availability and scheduling
 
-How bookable slots are computed, and the data that feeds them. Code: `availability/`, `workschedule/`, `scheduleblock/`, `employeeoffering/`, `company/`.
+`GET /api/availability?employeeId={id}&serviceId={id}&date=YYYY-MM-DD` is public. Slots include `time`, effective `price`, `originalPrice`, and `personalConflict`. An authenticated customer receives the same otherwise-free salon slots with their own overlapping company appointments marked. Staff authentication does not supply a customer identity.
 
-## Slot calculation
+## Effective schedules and grid
 
-`GET /api/availability?employeeId={id}&serviceId={id}&date=YYYY-MM-DD` (public) returns `List<AvailableSlotResponse>`: `{ time: LocalTime, price: Int, originalPrice: Int }`.
+Each company employee has at most one continuous same-day weekly shift per weekday. No weekly schedule means no customer slots. Owners replace the week using `PUT /api/employees/{employeeId}/work-schedule`: only explicit `{"entries":[]}` clears it. Missing/null entries reject with 400 and preserve the saved schedule.
 
-`AvailabilityService.getAvailableSlots()`:
+Date overrides replace the whole weekly shift for that date. `PUT /api/employees/{employeeId}/schedule-overrides/{date}` accepts either `{"dayOff":true}` or `{"dayOff":false,"startTime":"12:15","endTime":"17:00"}`. A day off forbids times; a working override requires both times and end after start. Deleting the override restores the weekly schedule. Both staff roles can read overrides in an inclusive date range; only owners may write/delete them. Every operation is company scoped.
 
-1. Load the offering and its company. The offering must be active. The employee must be employed by that company and, if the employee has any offering assignments at that company, be assigned this offering (otherwise 400).
-2. Load the employee's work schedule entry at the offering's company for `date.dayOfWeek`. **No entry → empty list.**
-3. Walk from the schedule's `startTime` in steps of `companies.slot_interval_minutes`. A candidate slot is `[t, t + durationMinutes)`; it must end at or before the schedule's `endTime`. Steps 2–3 live in `BookableSlotPolicy`, which customer booking also uses, so a customer can book only a listed start time.
-4. Drop slots that overlap an active reservation or a schedule block of the employee at the same company (`EmployeeAvailabilityPolicy`, same rules as booking).
-5. Drop slots that do not start after `now + minBookingAdvanceMinutes`. This also removes past slots.
-6. `price` = catalog price with the last-minute discount applied if the slot starts within `lastMinuteDiscountHours` from now; `originalPrice` = catalog price.
+`BookableSlotPolicy.effectiveShift` resolves an override first, then the weekly shift. The grid begins at the effective shift start, every configured slot interval. The entire accepted duration must fit; ending exactly at shift end is valid. Company opening hours are informational. Invalid Warsaw DST gaps/overlaps and appointment intervals spanning a transition are excluded. The full shift's elapsed minutes are available as the allocation denominator; blocks never reduce it.
 
-Company `openingTime`/`closingTime` are **not** used for slot calculation; they are informational and exposed in the public profile. Working hours come only from employee work schedules.
+## Temporal boundaries
 
-## Work schedules
+All business dates/times use Europe/Warsaw even when the JVM or injected clock uses UTC. Zero notice requires a strictly future start. Positive notice is inclusive and measured in elapsed minutes. The maximum advance defaults to 90 Warsaw calendar days, including the entire final date. Availability is advisory; booking repeats authoritative checks under its policy locks.
 
-`PUT /api/employees/{employeeId}/work-schedule` (OWNER) replaces the weekly schedule; `GET` (OWNER, EMPLOYEE) reads it. One entry per day of week with `startTime` < `endTime`. A day without an entry is a day off. Schedules are per (company, employee): both endpoints read and replace only the authenticated session company's schedule, so an employee of two salons has an independent week at each. Changing a schedule does not affect existing bookings.
+## Qualification
 
-## Schedule blocks
+Employees have explicit `ALL_SERVICES` or `SPECIFIC_SERVICES` qualification. `ALL_SERVICES` allows every active company service. `SPECIFIC_SERVICES` allows only explicit assignments: an empty set means none. Disabled staff cannot receive new customer bookings and are absent from public eligibility. Qualification changes use owner-only `PATCH /api/employees/{employeeId}/offering-eligibility` with `{"mode":"SPECIFIC_SERVICES"}` or `{"mode":"ALL_SERVICES"}`. Assignment changes do not silently switch mode.
 
-Time ranges when an employee is unavailable (breaks, leave).
+Public employee lists, public employee services and availability use these same rules. Foreign or disabled employee targets return opaque 404 where an individual employee is requested.
 
-- `POST /api/schedule-blocks` (OWNER, EMPLOYEE). Employees create blocks for themselves; owners may pass `employeeId` for any employee of their company. `startTime` must be in the future.
-- A block may not overlap an active reservation or another block of the same employee in the same company (service check plus database exclusion constraint). Creation takes the same employment row lock as booking.
-- `DELETE /api/schedule-blocks/{id}`: owners delete any block in their company, employees only their own.
-- `GET /api/schedule-blocks/employee?start=&end=[&employeeId=]`: employees always get their own; owners may pass `employeeId`.
-- Blocks are scoped to one company: a block at salon A does not affect the same person at salon B.
+## Blocks and serialization
 
-## Offering assignments
+Employee blocks are separate stored intervals, with optional staff-visible reasons. Blocks may be ongoing or span multiple days, including a DST transition; each endpoint must identify an unambiguous Warsaw local time. A block cannot overlap an occupied reservation interval or another block. Owners manage all company employees' blocks; employees manage only their own. An explicit unauthorized target is rejected, never ignored. Both staff roles may read coworkers' intervals and reasons within the company.
 
-`POST|DELETE /api/employees/{employeeId}/offerings/{offeringId}` (OWNER). If an employee has **no** assignments at a company, they can perform every offering of that company (backward-compatible default). Once any assignment exists there, only assigned offerings of that company are bookable; assignments at another salon do not count. The same rule drives the public employee list, and `GET /api/employees/{employeeId}/offerings` lists only the authenticated session company's assignments.
+Policy mutations lock the company row before the employee row, matching booking allocation. This serializes weekly/date schedules, qualification/assignments and block changes against booking decisions. Existing appointments remain when a schedule or qualification changes. Employee overlap continues to use the shared employment lock and database exclusion constraint.
 
-## Company settings that affect booking
+## Owner settings and presentation
 
-`PUT /api/company/settings` (OWNER):
+Owner settings expose `minBookingAdvanceMinutes` (default 0), `maxBookingAdvanceDays` (default 90), `maxFutureCustomerBookings` (default 10), the slot interval, no-show threshold and last-minute discount settings. Reducing a booking limit preserves existing appointments. The company row lock protects changes against concurrent booking policy decisions.
 
-| Setting | Range | Default | Effect |
-| ------- | ----- | ------- | ------ |
-| `slotIntervalMinutes` | 5–240 | 30 | Step between candidate slot starts; customer bookings must be on this grid |
-| `minBookingAdvanceMinutes` | 0–10080 | 0 (off) | Hides and rejects customer bookings starting sooner; staff bypass |
-| `lastMinuteDiscountPercent` | 0–100 | 0 (off) | Discount for slots starting soon |
-| `lastMinuteDiscountHours` | 1–168 | 24 | Window for the discount |
-| `maxNoShows` | ≥ 0 | 3 | Auto-block threshold; 0 disables |
-| `openingTime`, `closingTime` | `closingTime` > `openingTime` | 09:00–17:00 | Informational only |
-
-## Public booking endpoints
-
-Unauthenticated, for customer booking pages:
-
-- `GET /api/company/public/{companyId}` → `CompanyPublicProfileResponse` (`id`, `name`, `openingTime`, `closingTime`, `lastMinuteDiscountPercent`, `lastMinuteDiscountHours`). Internal settings such as `maxNoShows` are not exposed.
-- `GET /api/employees/public/company/{companyId}?offeringId={id}` → `PublicEmployeeResponse` (`id` = user ID used by availability and reservation APIs, `firstName`, `lastName`, `photoUrl`) for employees eligible for the offering.
-- `GET /api/offerings/public/company/{companyId}` → active offerings of the salon (`OfferingResponse` with images).
-- `GET /api/offerings/public/company/{companyId}/employee/{employeeId}` → the active offerings that employee performs at that salon, for employee-first booking. It applies the same assignment rule as availability and booking: the offerings assigned at that company, or every active company offering when the employee has no assignments there.
-
-Unknown companies, and offerings that are inactive or belong to another company, return 404. The employee-offerings endpoint also returns 404 when the employee is not employed at the salon.
+`PUT /api/company/profile` lets the owner update only their company's public name/address. Public company responses include the current address. Public category names are exposed by `/api/offering-categories/public/company/{companyId}`. Catalog and category mutations remain owner-only.

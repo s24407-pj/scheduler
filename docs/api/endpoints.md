@@ -40,7 +40,8 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | GET | `/api/company/public/{companyId}` | Public | Public salon profile |
 | GET | `/api/company/employees` | Authenticated | Staff of the caller's company |
 | GET | `/api/company/settings` | Authenticated | Caller's company settings |
-| PUT | `/api/company/settings` | OWNER | |
+| PUT | `/api/company/settings` | OWNER | Includes notice/horizon/customer booking cap |
+| PUT | `/api/company/profile` | OWNER | Company-local public name/address |
 
 ## Employees — `CompanyEmployeeController`, `EmployeeController`, `WorkScheduleController`, `EmployeeOfferingController`
 
@@ -58,7 +59,11 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | DELETE | `/api/employees/{id}/photo` | OWNER | |
 | GET | `/api/employees/{employeeId}/work-schedule` | OWNER, EMPLOYEE | authenticated session company's schedule only |
 | PUT | `/api/employees/{employeeId}/work-schedule` | OWNER | Replaces whole week at the authenticated session company |
+| GET | `/api/employees/{employeeId}/schedule-overrides?start&end` | OWNER, EMPLOYEE | Inclusive date range at session company |
+| PUT | `/api/employees/{employeeId}/schedule-overrides/{date}` | OWNER | Replacement same-day shift or day off |
+| DELETE | `/api/employees/{employeeId}/schedule-overrides/{date}` | OWNER | Restore weekly schedule |
 | GET | `/api/employees/{employeeId}/offerings` | OWNER, EMPLOYEE | Assignments at the authenticated session company |
+| PATCH | `/api/employees/{employeeId}/offering-eligibility` | OWNER | Explicit ALL_SERVICES / SPECIFIC_SERVICES mode |
 | POST | `/api/employees/{employeeId}/offerings/{offeringId}` | OWNER | Idempotent |
 | DELETE | `/api/employees/{employeeId}/offerings/{offeringId}` | OWNER | |
 
@@ -67,7 +72,7 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
 | GET | `/api/offerings/public/company/{companyId}` | Public | Cached (`companyServices`) |
-| GET | `/api/offerings/public/company/{companyId}/employee/{employeeId}` | Public | Active offerings the employee performs at that salon: assigned ones, or all active company offerings if the employee has no assignments there; 404 if not employed there |
+| GET | `/api/offerings/public/company/{companyId}/employee/{employeeId}` | Public | Active offerings following explicit qualification; SPECIFIC_SERVICES with no assignments returns []; disabled/foreign employee is 404 |
 | GET | `/api/offerings` | Authenticated | |
 | GET | `/api/offerings/{id}` | Authenticated | |
 | POST | `/api/offerings` | OWNER | |
@@ -108,9 +113,9 @@ See [reservations](../reservations.md).
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| POST | `/api/schedule-blocks` | OWNER, EMPLOYEE | OWNER may set `employeeId` |
+| POST | `/api/schedule-blocks` | OWNER, EMPLOYEE | OWNER may target any company employee; EMPLOYEE only own, explicit unauthorized target rejected |
 | DELETE | `/api/schedule-blocks/{id}` | OWNER, EMPLOYEE | EMPLOYEE only own blocks |
-| GET | `/api/schedule-blocks/employee?start&end[&employeeId]` | OWNER, EMPLOYEE | `employeeId` honoured for OWNER only |
+| GET | `/api/schedule-blocks/employee?start&end[&employeeId]` | OWNER, EMPLOYEE | Either staff role may read coworkers’ intervals/reasons within company |
 
 ## Customers — `CustomerController`
 

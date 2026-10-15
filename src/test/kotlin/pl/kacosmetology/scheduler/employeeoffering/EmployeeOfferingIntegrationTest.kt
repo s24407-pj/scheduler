@@ -15,12 +15,14 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.patch
 import org.springframework.test.web.servlet.post
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.company.EmployeeEligibilityMode
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingImage
 import pl.kacosmetology.scheduler.offering.OfferingImageRepository
@@ -229,6 +231,11 @@ class EmployeeOfferingIntegrationTest {
 
     @Test
     fun `GET public employee offerings should return only assigned active offerings with images`() {
+        companyEmployeeRepository.save(
+            companyEmployeeRepository.findByCompanyIdAndUserId(companyId, employeeId)!!.apply {
+                eligibilityMode = EmployeeEligibilityMode.SPECIFIC_SERVICES
+            },
+        )
         offeringRepository.save(
             Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 60, price = 150),
         )
@@ -283,7 +290,12 @@ class EmployeeOfferingIntegrationTest {
     fun `GET public employee offerings should be scoped to the requested salon for multi-salon employee`() {
         val otherCompany = companyRepository.save(Company(name = "Drugi Salon"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = employeeId, role = "EMPLOYEE"),
+            CompanyEmployee(
+                companyId = otherCompany.id!!,
+                userId = employeeId,
+                role = "EMPLOYEE",
+                eligibilityMode = EmployeeEligibilityMode.SPECIFIC_SERVICES,
+            ),
         )
         val otherOffering =
             offeringRepository.save(
@@ -313,7 +325,12 @@ class EmployeeOfferingIntegrationTest {
     }
 
     @Test
-    fun `POST reservation should return 400 when employee has assignments but not for requested offering`() {
+    fun `POST reservation should return 409 when employee has assignments but not for requested offering`() {
+        companyEmployeeRepository.save(
+            companyEmployeeRepository.findByCompanyIdAndUserId(companyId, employeeId)!!.apply {
+                eligibilityMode = EmployeeEligibilityMode.SPECIFIC_SERVICES
+            },
+        )
         val otherOffering =
             offeringRepository.save(
                 Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 60, price = 150),
@@ -345,7 +362,7 @@ class EmployeeOfferingIntegrationTest {
                 content = objectMapper.writeValueAsString(body)
             }
             .andExpect {
-                status { isBadRequest() }
+                status { isConflict() }
             }
     }
 
@@ -353,7 +370,12 @@ class EmployeeOfferingIntegrationTest {
     fun `foreign offering assignment deletion cannot delete multi-salon employees assignment`() {
         val otherCompany = companyRepository.save(Company(name = "Inna firma"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = employeeId, role = "EMPLOYEE"),
+            CompanyEmployee(
+                companyId = otherCompany.id!!,
+                userId = employeeId,
+                role = "EMPLOYEE",
+                eligibilityMode = EmployeeEligibilityMode.SPECIFIC_SERVICES,
+            ),
         )
         val foreignOffering =
             offeringRepository.save(
@@ -492,6 +514,42 @@ class EmployeeOfferingIntegrationTest {
         mockMvc.get("/api/offering-categories/public/company/${foreignCompany.id!!}").andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(0) }
+        }
+    }
+
+    @Test
+    fun `explicit specific empty mode exposes no services and disabled employee disappears`() {
+        mockMvc
+            .patch("/api/employees/$employeeId/offering-eligibility") {
+                with(csrf())
+                cookie(ownerSession)
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"mode":"SPECIFIC_SERVICES"}"""
+            }
+            .andExpect { status { isNoContent() } }
+        mockMvc.get("/api/offerings/public/company/$companyId/employee/$employeeId").andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(0) }
+        }
+        mockMvc
+            .get("/api/employees/public/company/$companyId") { param("offeringId", offeringId.toString()) }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$[?(@.id == $employeeId)]") { doesNotExist() }
+            }
+        mockMvc
+            .patch("/api/employees/$employeeId/offering-eligibility") {
+                with(csrf())
+                cookie(employeeSession)
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"mode":"ALL_SERVICES"}"""
+            }
+            .andExpect { status { isForbidden() } }
+        val account = companyEmployeeRepository.findByCompanyIdAndUserId(companyId, employeeId)!!
+        account.enabled = false
+        companyEmployeeRepository.save(account)
+        mockMvc.get("/api/offerings/public/company/$companyId/employee/$employeeId").andExpect {
+            status { isNotFound() }
         }
     }
 }

@@ -133,7 +133,7 @@ class ScheduleBlockIntegrationTest {
     }
 
     @Test
-    fun `POST schedule-blocks should return 400 when startTime is in the past`() {
+    fun `POST schedule-blocks permits an ongoing block`() {
         val body =
             mapOf(
                 "startTime" to LocalDateTime.now().minusHours(1).toString(),
@@ -148,7 +148,7 @@ class ScheduleBlockIntegrationTest {
                 content = objectMapper.writeValueAsString(body)
             }
             .andExpect {
-                status { isBadRequest() }
+                status { isCreated() }
             }
     }
 
@@ -683,6 +683,70 @@ class ScheduleBlockIntegrationTest {
             }
             .andExpect {
                 status { isNotFound() }
+            }
+    }
+
+    @Test
+    fun `employee explicit coworker target is rejected and coworker block reasons are readable`() {
+        val other = userRepository.save(User(phoneNumber = "+48555444333", firstName = "Inny", lastName = "Pracownik"))
+        companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = other.id!!, role = "EMPLOYEE"))
+        val start = testDate.atTime(9, 0)
+        val end = testDate.atTime(10, 0)
+        mockMvc
+            .post("/api/schedule-blocks") {
+                with(csrf())
+                cookie(employeeSession)
+                contentType = MediaType.APPLICATION_JSON
+                content =
+                    objectMapper.writeValueAsString(
+                        mapOf("employeeId" to other.id!!, "startTime" to start.toString(), "endTime" to end.toString()),
+                    )
+            }
+            .andExpect { status { isForbidden() } }
+        assertEquals(0, scheduleBlockRepository.count())
+        scheduleBlockRepository.save(
+            ScheduleBlock(
+                companyId = companyId,
+                employeeId = other.id!!,
+                startTime = start,
+                endTime = end,
+                reason = "Urlop",
+            ),
+        )
+        mockMvc
+            .get("/api/schedule-blocks/employee") {
+                cookie(employeeSession)
+                param("employeeId", other.id!!.toString())
+                param("start", start.minusDays(1).toString())
+                param("end", end.plusDays(1).toString())
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$[0].reason") { value("Urlop") }
+                jsonPath("$.length()") { value(1) }
+            }
+    }
+
+    @Test
+    fun `multiday block may span DST while ambiguous endpoints are rejected`() {
+        mockMvc
+            .post("/api/schedule-blocks") {
+                with(csrf())
+                cookie(employeeSession)
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"startTime":"2030-03-30T12:00:00","endTime":"2030-04-01T12:00:00"}"""
+            }
+            .andExpect { status { isCreated() } }
+        mockMvc
+            .post("/api/schedule-blocks") {
+                with(csrf())
+                cookie(employeeSession)
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"startTime":"2030-10-27T02:15:00","endTime":"2030-10-27T04:00:00"}"""
+            }
+            .andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("INVALID_LOCAL_TIME") }
             }
     }
 }

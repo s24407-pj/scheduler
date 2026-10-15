@@ -1,8 +1,12 @@
 package pl.kacosmetology.scheduler.workschedule
 
+import java.time.LocalDate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.workschedule.dto.ScheduleOverrideRequest
+import pl.kacosmetology.scheduler.workschedule.dto.ScheduleOverrideResponse
 import pl.kacosmetology.scheduler.workschedule.dto.SetWeeklyScheduleRequest
 import pl.kacosmetology.scheduler.workschedule.dto.WorkScheduleEntryResponse
 import pl.kacosmetology.scheduler.workschedule.dto.toResponse
@@ -12,6 +16,8 @@ import pl.kacosmetology.scheduler.workschedule.dto.toResponse
 class WorkScheduleService(
     private val workScheduleRepository: EmployeeWorkScheduleRepository,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
+    private val companyRepository: CompanyRepository,
+    private val overrideRepository: EmployeeScheduleOverrideRepository,
 ) {
 
     /**
@@ -27,10 +33,10 @@ class WorkScheduleService(
     }
 
     /**
-     * Atomically replaces the employee's weekly schedule at [companyId]; schedules at other companies are untouched. An
-     * empty or null [SetWeeklyScheduleRequest.entries] list clears all entries. Throws [NoSuchElementException] if the
-     * employee does not belong to [companyId]. Throws [IllegalArgumentException] for duplicate days or invalid time
-     * ranges.
+     * Atomically replaces the employee's weekly schedule at [companyId]; schedules at other companies are untouched.
+     * Only an explicit empty [SetWeeklyScheduleRequest.entries] list clears all entries. Throws
+     * [NoSuchElementException] if the employee does not belong to [companyId]. Throws [IllegalArgumentException] for
+     * duplicate days or invalid time ranges.
      */
     @Transactional
     fun setSchedule(
@@ -38,11 +44,8 @@ class WorkScheduleService(
         employeeId: Long,
         request: SetWeeklyScheduleRequest,
     ): List<WorkScheduleEntryResponse> {
-        if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
-            throw NoSuchElementException("Pracownik nie należy do tej firmy")
-        }
-
-        val entries = request.entries ?: emptyList()
+        lockPolicies(companyId, employeeId)
+        val entries = requireNotNull(request.entries) { "Lista wpisów grafiku jest wymagana" }
 
         val days = entries.mapNotNull { it.dayOfWeek }
         if (days.size != days.toSet().size) {
@@ -76,5 +79,60 @@ class WorkScheduleService(
             )
 
         return saved.map { it.toResponse() }
+    }
+
+    /** Lists tenant-owned overrides for an employee within an inclusive date range. */
+    @Transactional(readOnly = true)
+    fun getOverrides(
+        companyId: Long,
+        employeeId: Long,
+        start: LocalDate,
+        end: LocalDate,
+    ): List<ScheduleOverrideResponse> {
+        require(!end.isBefore(start)) { "Koniec zakresu nie może poprzedzać początku" }
+        if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId))
+            throw NoSuchElementException("Pracownik nie istnieje")
+        return overrideRepository
+            .findAllByCompanyIdAndEmployeeIdAndScheduleDateBetweenOrderByScheduleDate(companyId, employeeId, start, end)
+            .map { it.toResponse() }
+    }
+
+    /** Sets a date's replacement shift or day off under the same policy lock as booking. */
+    @Transactional
+    fun setOverride(
+        companyId: Long,
+        employeeId: Long,
+        date: LocalDate,
+        request: ScheduleOverrideRequest,
+    ): ScheduleOverrideResponse {
+        lockPolicies(companyId, employeeId)
+        require(request.dayOff != null && request.isValidShift()) { "Nieprawidłowa zmiana" }
+        val override =
+            overrideRepository.findByCompanyIdAndEmployeeIdAndScheduleDate(companyId, employeeId, date)
+                ?: EmployeeScheduleOverride(
+                    companyId = companyId,
+                    employeeId = employeeId,
+                    scheduleDate = date,
+                    dayOff = request.dayOff,
+                )
+        override.dayOff = request.dayOff
+        override.startTime = request.startTime
+        override.endTime = request.endTime
+        return overrideRepository.save(override).toResponse()
+    }
+
+    /** Removes an override, restoring the weekly schedule's behavior for that date. */
+    @Transactional
+    fun deleteOverride(companyId: Long, employeeId: Long, date: LocalDate) {
+        lockPolicies(companyId, employeeId)
+        val override =
+            overrideRepository.findByCompanyIdAndEmployeeIdAndScheduleDate(companyId, employeeId, date) ?: return
+        overrideRepository.delete(override)
+    }
+
+    private fun lockPolicies(companyId: Long, employeeId: Long) {
+        companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
+        companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId)
+            ?: throw NoSuchElementException("Pracownik nie istnieje")
     }
 }

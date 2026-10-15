@@ -7,6 +7,7 @@ import pl.kacosmetology.scheduler.company.Company
 data class CompanyPublicProfileResponse(
     val id: Long,
     val name: String,
+    val address: String?,
     val openingTime: LocalTime,
     val closingTime: LocalTime,
     val lastMinuteDiscountPercent: Int,
@@ -18,6 +19,7 @@ fun Company.toPublicProfileResponse() =
     CompanyPublicProfileResponse(
         id = requireNotNull(id) { "Persisted company must have an ID" },
         name = name,
+        address = address,
         openingTime = openingTime,
         closingTime = closingTime,
         lastMinuteDiscountPercent = lastMinuteDiscountPercent,

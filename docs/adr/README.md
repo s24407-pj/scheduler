@@ -23,3 +23,5 @@ To add one, copy the structure of an existing ADR, use the next number, and add 
 | [0011](./0011-spring-session-redis.md) | Spring Security sessions backed by Redis | Accepted — implemented |
 | [0012](./0012-separate-account-realms.md) | Separate customer and company staff realms | Accepted — implemented |
 | [0013](./0013-commercial-quotes.md) | Durable commercial quotes without capacity holds | Accepted — implemented |
+| [0014](./0014-effective-schedules-and-explicit-qualification.md) | Effective schedules and explicit qualification | Accepted — implemented |
+| [0016](./0016-reservation-contract-and-durable-submissions.md) | Reservation contract and durable submissions | Accepted |

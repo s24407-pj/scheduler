@@ -3,6 +3,8 @@ package pl.kacosmetology.scheduler.employeeoffering
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.company.EmployeeEligibilityMode
 import pl.kacosmetology.scheduler.employeeoffering.dto.EmployeeOfferingAssignmentResponse
 import pl.kacosmetology.scheduler.employeeoffering.dto.toResponse
 import pl.kacosmetology.scheduler.offering.OfferingRepository
@@ -13,6 +15,7 @@ class EmployeeOfferingService(
     private val assignmentRepository: EmployeeOfferingAssignmentRepository,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
     private val offeringRepository: OfferingRepository,
+    private val companyRepository: CompanyRepository,
 ) {
 
     /**
@@ -34,6 +37,7 @@ class EmployeeOfferingService(
      */
     @Transactional
     fun assignOffering(companyId: Long, employeeId: Long, offeringId: Long): EmployeeOfferingAssignmentResponse {
+        lockPolicy(companyId, employeeId)
         if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
             throw NoSuchElementException("Pracownik nie należy do tej firmy")
         }
@@ -58,6 +62,7 @@ class EmployeeOfferingService(
      */
     @Transactional
     fun removeAssignment(companyId: Long, employeeId: Long, offeringId: Long) {
+        lockPolicy(companyId, employeeId)
         if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
             throw NoSuchElementException("Pracownik nie należy do tej firmy")
         }
@@ -67,5 +72,18 @@ class EmployeeOfferingService(
             throw NoSuchElementException("Przypisanie nie istnieje")
         }
         assignmentRepository.deleteByCompanyIdAndEmployeeIdAndOfferingId(companyId, employeeId, offeringId)
+    }
+
+    /** Changes explicit qualifications atomically with respect to all company booking decisions. */
+    @Transactional
+    fun setEligibility(companyId: Long, employeeId: Long, mode: EmployeeEligibilityMode) {
+        val employee = lockPolicy(companyId, employeeId)
+        employee.eligibilityMode = mode
+    }
+
+    private fun lockPolicy(companyId: Long, employeeId: Long): pl.kacosmetology.scheduler.company.CompanyEmployee {
+        companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
+        return companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId)
+            ?: throw NoSuchElementException("Pracownik nie istnieje")
     }
 }

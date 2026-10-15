@@ -6,6 +6,7 @@ import pl.kacosmetology.scheduler.company.dto.CompanyEmployeeResponse
 import pl.kacosmetology.scheduler.company.dto.CompanyPublicProfileResponse
 import pl.kacosmetology.scheduler.company.dto.CompanySettingsResponse
 import pl.kacosmetology.scheduler.company.dto.PublicEmployeeResponse
+import pl.kacosmetology.scheduler.company.dto.UpdateCompanyProfileRequest
 import pl.kacosmetology.scheduler.company.dto.UpdateCompanySettingsRequest
 import pl.kacosmetology.scheduler.company.dto.toPublicProfileResponse
 import pl.kacosmetology.scheduler.company.dto.toSettingsResponse
@@ -89,7 +90,8 @@ class CompanyService(
      */
     @Transactional
     fun updateSettings(companyId: Long, request: UpdateCompanySettingsRequest): CompanySettingsResponse {
-        val company = companyRepository.findById(companyId).orElseThrow { NoSuchElementException("Firma nie istnieje") }
+        val company =
+            companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
 
         val openingTime = requireNotNull(request.openingTime) { "Godzina otwarcia jest wymagana" }
         val closingTime = requireNotNull(request.closingTime) { "Godzina zamknięcia jest wymagana" }
@@ -104,6 +106,18 @@ class CompanyService(
         company.lastMinuteDiscountPercent = request.lastMinuteDiscountPercent
         company.lastMinuteDiscountHours = request.lastMinuteDiscountHours
         company.minBookingAdvanceMinutes = request.minBookingAdvanceMinutes
+        company.maxBookingAdvanceDays = request.maxBookingAdvanceDays
+        company.maxFutureCustomerBookings = request.maxFutureCustomerBookings
         return company.toSettingsResponse()
+    }
+
+    /** Updates only the authenticated owner's company-local public presentation. */
+    @Transactional
+    fun updateProfile(companyId: Long, request: UpdateCompanyProfileRequest): CompanyPublicProfileResponse {
+        val company =
+            companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
+        company.name = request.name.trim()
+        company.address = request.address?.trim()?.takeIf { it.isNotEmpty() }
+        return company.toPublicProfileResponse()
     }
 }

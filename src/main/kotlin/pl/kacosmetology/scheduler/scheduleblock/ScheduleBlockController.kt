@@ -21,7 +21,7 @@ class ScheduleBlockController(
 
     /**
      * Creates a non-overlapping schedule block for an employee of the authenticated company. OWNER may specify a target
-     * employee via [CreateScheduleBlockRequest.employeeId]; EMPLOYEE always creates for themselves (session identity).
+     * employee via [CreateScheduleBlockRequest.employeeId]; EMPLOYEE may target only themselves.
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -34,7 +34,10 @@ class ScheduleBlockController(
         val companyId =
             userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
         val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
-        val targetEmployeeId = if (isOwner && request.employeeId != null) request.employeeId else requesterId
+        if (!isOwner && request.employeeId != null && request.employeeId != requesterId) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Możesz tworzyć tylko własne blokady")
+        }
+        val targetEmployeeId = request.employeeId ?: requesterId
 
         return scheduleBlockService
             .createBlock(
@@ -65,8 +68,8 @@ class ScheduleBlockController(
     }
 
     /**
-     * Returns schedule blocks within a time range. OWNER may supply [employeeId] to query another employee's blocks
-     * within their company. EMPLOYEE always receives only their own blocks (the param is ignored).
+     * Returns schedule blocks within a time range. Every staff member may supply [employeeId] to read a colleague's
+     * intervals and reasons within their company.
      */
     @GetMapping("/employee")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
@@ -79,8 +82,7 @@ class ScheduleBlockController(
         val requesterId = userDetails.id
         val companyId =
             userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
-        val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
-        val targetId = if (isOwner && employeeId != null) employeeId else requesterId
+        val targetId = employeeId ?: requesterId
         return scheduleBlockService.getEmployeeBlocks(companyId, targetId, start, end).map { it.toResponse() }
     }
 }

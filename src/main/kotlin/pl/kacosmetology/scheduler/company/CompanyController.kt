@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*
 import pl.kacosmetology.scheduler.company.dto.CompanyEmployeeResponse
 import pl.kacosmetology.scheduler.company.dto.CompanyPublicProfileResponse
 import pl.kacosmetology.scheduler.company.dto.CompanySettingsResponse
+import pl.kacosmetology.scheduler.company.dto.UpdateCompanyProfileRequest
 import pl.kacosmetology.scheduler.company.dto.UpdateCompanySettingsRequest
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
@@ -42,4 +43,12 @@ class CompanyController(
         @Valid @RequestBody request: UpdateCompanySettingsRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): CompanySettingsResponse = companyService.updateSettings(userDetails.requireCompanyId(), request)
+
+    /** Updates the owner's company-local public name and address. */
+    @PutMapping("/profile")
+    @PreAuthorize("hasRole('OWNER')")
+    fun updateProfile(
+        @Valid @RequestBody request: UpdateCompanyProfileRequest,
+        @AuthenticationPrincipal principal: CustomUserDetails,
+    ): CompanyPublicProfileResponse = companyService.updateProfile(principal.requireCompanyId(), request)
 }

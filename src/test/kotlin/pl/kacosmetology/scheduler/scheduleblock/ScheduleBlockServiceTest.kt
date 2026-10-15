@@ -7,17 +7,19 @@ import io.mockk.junit5.MockKExtension
 import io.mockk.verify
 import io.mockk.verifyOrder
 import java.time.LocalDateTime
-import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityConflict
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityConflictSource
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
+import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.ErrorCode
 
@@ -30,6 +32,8 @@ class ScheduleBlockServiceTest {
 
     @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
+    @MockK private lateinit var companyRepository: CompanyRepository
+
     @InjectMockKs private lateinit var scheduleBlockService: ScheduleBlockService
 
     private val employeeId = 10L
@@ -41,6 +45,15 @@ class ScheduleBlockServiceTest {
         every {
             companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId)
         } returns CompanyEmployee(companyId = companyId, userId = employeeId, role = "EMPLOYEE")
+    }
+
+    @BeforeEach
+    fun mockPolicyLocks() {
+        every { companyRepository.findByIdForUpdate(companyId) } returns Company(id = companyId, name = "Firma")
+        every { companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, any()) } answers
+            {
+                CompanyEmployee(companyId = companyId, userId = secondArg(), role = "EMPLOYEE")
+            }
     }
 
     @Test
@@ -181,7 +194,7 @@ class ScheduleBlockServiceTest {
                 startTime = startTime,
                 endTime = endTime,
             )
-        every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
+        every { scheduleBlockRepository.findByIdAndCompanyId(blockId, companyId) } returns block
         every { scheduleBlockRepository.delete(block) } returns Unit
 
         // WHEN
@@ -195,7 +208,7 @@ class ScheduleBlockServiceTest {
     fun `deleteBlock should throw when block does not exist`() {
         // GIVEN
         val blockId = 999L
-        every { scheduleBlockRepository.findById(blockId) } returns Optional.empty()
+        every { scheduleBlockRepository.findByIdAndCompanyId(blockId, companyId) } returns null
 
         // WHEN & THEN
         val exception =
@@ -221,7 +234,7 @@ class ScheduleBlockServiceTest {
                 startTime = startTime,
                 endTime = endTime,
             )
-        every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
+        every { scheduleBlockRepository.findByIdAndCompanyId(block.id!!, companyId) } returns null
 
         val exception =
             assertThrows<ApiException> {
@@ -251,7 +264,7 @@ class ScheduleBlockServiceTest {
                 startTime = startTime,
                 endTime = endTime,
             )
-        every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
+        every { scheduleBlockRepository.findByIdAndCompanyId(blockId, companyId) } returns block
 
         // WHEN & THEN
         val exception =
@@ -281,7 +294,7 @@ class ScheduleBlockServiceTest {
                 startTime = startTime,
                 endTime = endTime,
             )
-        every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
+        every { scheduleBlockRepository.findByIdAndCompanyId(blockId, companyId) } returns block
         every { scheduleBlockRepository.delete(block) } returns Unit
 
         // WHEN
@@ -304,7 +317,7 @@ class ScheduleBlockServiceTest {
                 startTime = startTime,
                 endTime = endTime,
             )
-        every { scheduleBlockRepository.findById(blockId) } returns Optional.of(block)
+        every { scheduleBlockRepository.findByIdAndCompanyId(block.id!!, companyId) } returns null
 
         // WHEN & THEN
         val exception =

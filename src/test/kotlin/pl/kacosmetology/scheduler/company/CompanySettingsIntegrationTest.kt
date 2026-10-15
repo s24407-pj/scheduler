@@ -390,4 +390,81 @@ class CompanySettingsIntegrationTest {
                 status { isBadRequest() }
             }
     }
+
+    @Test
+    fun `owner controls booking horizon and customer cap with Polish validation`() {
+        mockMvc
+            .put("/api/company/settings") {
+                with(csrf())
+                cookie(ownerSession)
+                contentType = MediaType.APPLICATION_JSON
+                content =
+                    """{"openingTime":"09:00","closingTime":"17:00","slotIntervalMinutes":30,"maxBookingAdvanceDays":120,"maxFutureCustomerBookings":5}"""
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.maxBookingAdvanceDays") { value(120) }
+                jsonPath("$.maxFutureCustomerBookings") { value(5) }
+            }
+        mockMvc
+            .put("/api/company/settings") {
+                with(csrf())
+                cookie(ownerSession)
+                contentType = MediaType.APPLICATION_JSON
+                content =
+                    """{"openingTime":"09:00","closingTime":"17:00","slotIntervalMinutes":30,"maxBookingAdvanceDays":-1,"maxFutureCustomerBookings":-1}"""
+            }
+            .andExpect {
+                status { isBadRequest() }
+                jsonPath("$.errors.maxBookingAdvanceDays") {
+                    value("Maksymalny horyzont rezerwacji nie może być ujemny")
+                }
+                jsonPath("$.errors.maxFutureCustomerBookings") {
+                    value("Limit przyszłych rezerwacji nie może być ujemny")
+                }
+            }
+    }
+
+    @Test
+    fun `owner edits only local public profile and employee cannot edit it`() {
+        val foreign = companyRepository.save(Company(name = "Inna firma", address = "Inny adres"))
+        mockMvc
+            .put("/api/company/profile") {
+                with(csrf())
+                cookie(ownerSession)
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"name":" Nowa nazwa ","address":" Warszawa 1 "}"""
+            }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.name") { value("Nowa nazwa") }
+                jsonPath("$.address") { value("Warszawa 1") }
+            }
+        mockMvc.get("/api/company/public/$companyId").andExpect {
+            status { isOk() }
+            jsonPath("$.name") { value("Nowa nazwa") }
+            jsonPath("$.address") { value("Warszawa 1") }
+        }
+        mockMvc.get("/api/company/public/${foreign.id!!}").andExpect {
+            status { isOk() }
+            jsonPath("$.name") { value("Inna firma") }
+            jsonPath("$.address") { value("Inny adres") }
+        }
+        mockMvc
+            .put("/api/company/profile") {
+                with(csrf())
+                cookie(employeeSession)
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"name":"Obca zmiana"}"""
+            }
+            .andExpect { status { isForbidden() } }
+        mockMvc
+            .put("/api/company/profile") {
+                with(csrf())
+                cookie(ownerSession)
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"name":" "}"""
+            }
+            .andExpect { status { isBadRequest() } }
+    }
 }

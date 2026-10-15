@@ -1,9 +1,12 @@
 package pl.kacosmetology.scheduler.employeeoffering
 
+import jakarta.validation.Valid
+import jakarta.validation.constraints.NotNull
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
+import pl.kacosmetology.scheduler.company.EmployeeEligibilityMode
 import pl.kacosmetology.scheduler.employeeoffering.dto.EmployeeOfferingAssignmentResponse
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
@@ -46,4 +49,19 @@ class EmployeeOfferingController(
         @PathVariable offeringId: Long,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) = employeeOfferingService.removeAssignment(userDetails.requireCompanyId(), employeeId, offeringId)
+
+    /** Selects explicit all-service or specific-service qualification; only the owner manages it. */
+    @PatchMapping("/api/employees/{employeeId}/offering-eligibility")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('OWNER')")
+    fun setEligibility(
+        @PathVariable employeeId: Long,
+        @Valid @RequestBody request: EmployeeEligibilityRequest,
+        @AuthenticationPrincipal principal: CustomUserDetails,
+    ) = employeeOfferingService.setEligibility(principal.requireCompanyId(), employeeId, requireNotNull(request.mode))
 }
+
+/** An explicit qualification mode; an empty specific-service assignment set permits no services. */
+data class EmployeeEligibilityRequest(
+    @field:NotNull(message = "Tryb kwalifikacji jest wymagany") val mode: EmployeeEligibilityMode?,
+)

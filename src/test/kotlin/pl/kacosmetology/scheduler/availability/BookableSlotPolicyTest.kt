@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import pl.kacosmetology.scheduler.workschedule.EmployeeScheduleOverride
+import pl.kacosmetology.scheduler.workschedule.EmployeeScheduleOverrideRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 
@@ -19,6 +21,8 @@ import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 class BookableSlotPolicyTest {
 
     @MockK private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
+
+    @MockK private lateinit var overrideRepository: EmployeeScheduleOverrideRepository
 
     @InjectMockKs private lateinit var policy: BookableSlotPolicy
 
@@ -28,6 +32,7 @@ class BookableSlotPolicyTest {
 
     @BeforeEach
     fun setup() {
+        every { overrideRepository.findByCompanyIdAndEmployeeIdAndScheduleDate(any(), any(), any()) } returns null
         every {
             workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(companyId, employeeId, date.dayOfWeek)
         } returns
@@ -68,5 +73,52 @@ class BookableSlotPolicyTest {
         assertFalse(policy.isOnGrid(companyId, employeeId, date.atTime(10, 30), 60, 30), "ends after 11:00")
         assertFalse(policy.isOnGrid(companyId, employeeId, date.atTime(9, 0, 30), 60, 30), "seconds off grid")
         assertFalse(policy.isOnGrid(2L, employeeId, date.atTime(9, 0), 60, 30), "no schedule at company 2")
+    }
+
+    @Test
+    fun `replacement starts a new grid while day off removes weekly slots`() {
+        every { overrideRepository.findByCompanyIdAndEmployeeIdAndScheduleDate(companyId, employeeId, date) } returns
+            EmployeeScheduleOverride(
+                companyId = companyId,
+                employeeId = employeeId,
+                scheduleDate = date,
+                dayOff = false,
+                startTime = LocalTime.of(12, 15),
+                endTime = LocalTime.of(14, 15),
+            )
+        assertEquals(
+            listOf(date.atTime(12, 15), date.atTime(12, 45), date.atTime(13, 15)),
+            policy.slotStarts(companyId, employeeId, date, 60, 30),
+        )
+        assertEquals(120, policy.effectiveShift(companyId, employeeId, date)!!.durationMinutes)
+        every { overrideRepository.findByCompanyIdAndEmployeeIdAndScheduleDate(companyId, employeeId, date) } returns
+            EmployeeScheduleOverride(companyId = companyId, employeeId = employeeId, scheduleDate = date, dayOff = true)
+        assertTrue(policy.slotStarts(companyId, employeeId, date, 60, 30).isEmpty())
+    }
+
+    @Test
+    fun `DST gaps overlaps and transition spanning appointments are excluded from grids`() {
+        listOf(LocalDate.of(2030, 3, 31), LocalDate.of(2030, 10, 27)).forEach { transitionDate ->
+            every {
+                workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(
+                    companyId,
+                    employeeId,
+                    transitionDate.dayOfWeek,
+                )
+            } returns
+                EmployeeWorkSchedule(
+                    companyId = companyId,
+                    employeeId = employeeId,
+                    dayOfWeek = transitionDate.dayOfWeek,
+                    startTime = LocalTime.MIDNIGHT,
+                    endTime = LocalTime.of(5, 0),
+                )
+            val slots = policy.slotStarts(companyId, employeeId, transitionDate, 30, 30)
+            assertFalse(slots.any { it.hour == 2 })
+            assertFalse(policy.isOnGrid(companyId, employeeId, transitionDate.atTime(1, 30), 120, 30))
+            assertTrue(slots.any { it.hour == 4 })
+        }
+        assertEquals(240, policy.effectiveShift(companyId, employeeId, LocalDate.of(2030, 3, 31))!!.durationMinutes)
+        assertEquals(360, policy.effectiveShift(companyId, employeeId, LocalDate.of(2030, 10, 27))!!.durationMinutes)
     }
 }

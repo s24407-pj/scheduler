@@ -15,7 +15,10 @@ Policy and rationale: [ADR-0003](./adr/0003-single-time-zone.md).
 ## Daylight saving
 
 - A booking whose `startTime` falls in the skipped hour (last Sunday of March, 02:00–02:59) is rejected with 400 `INVALID_LOCAL_TIME`.
-- The repeated hour in October is not distinguished; business hours are assumed never to include 02:00–03:00.
+- Repeated-hour endpoints in October are rejected, as are appointment intervals spanning a DST transition. Date-specific availability omits these candidates.
+- Employee blocks may span a transition over multiple days; their local endpoints must each be unambiguous.
+- Notice and shift-minute allocation use elapsed time. Booking horizon uses Warsaw calendar dates, including the whole final date.
+- Availability derives business time from `clock.instant()` in `BUSINESS_ZONE`, independently of the JVM/default clock zone.
 
 ## Testing
 
