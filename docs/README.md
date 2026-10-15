@@ -7,6 +7,7 @@
 | [deployment.md](./deployment.md) | deploy to the VPS (Dokploy + Cloudflare): client IP, origin lockdown, production compose |
 | [architecture.md](./architecture.md) | need the module map, auth, authorization, notifications, caching, storage, or schema overview |
 | [reservations.md](./reservations.md) | touch booking, cancellation, status changes, pricing, or concurrency |
+| [pricing.md](./pricing.md) | touch whole-złoty rounding, elapsed discount windows or durable commercial quotes |
 | [availability.md](./availability.md) | touch slot calculation, work schedules, schedule blocks, offering assignments, or company settings |
 | [time-handling.md](./time-handling.md) | work with dates, times, "now", or scheduled jobs |
 | [api/endpoints.md](./api/endpoints.md) | need the list of endpoints and who can call them |

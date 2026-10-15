@@ -1,8 +1,14 @@
 package pl.kacosmetology.scheduler.company
 
 import jakarta.persistence.*
+import java.math.BigDecimal
+import java.math.RoundingMode
+import java.time.Instant
 import java.time.LocalDateTime
 import java.time.LocalTime
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
+import pl.kacosmetology.scheduler.config.ErrorCode
 
 /** Represents a salon/company. Defines business hours and the slot interval used for availability calculation. */
 @Entity
@@ -41,17 +47,24 @@ class Company(
         protected set
 }
 
-/**
- * Returns the effective price in whole złoty for a slot, applying the last-minute discount (rounded down) if the slot
- * starts within [lastMinuteDiscountHours] of [now]. If [lastMinuteDiscountPercent] is 0, the base price is returned
- * unchanged.
- */
-fun Company.effectivePrice(
-    basePrice: Int,
-    slotStart: LocalDateTime,
-    now: LocalDateTime,
-): Int {
+/** Applies an inclusive elapsed-time discount window and rounds whole złoty to nearest, ties to even. */
+fun Company.effectivePrice(basePrice: Int, slotStart: LocalDateTime, now: Instant): Int {
     if (lastMinuteDiscountPercent <= 0) return basePrice
-    val cutoff = now.plusHours(lastMinuteDiscountHours.toLong())
-    return if (slotStart.isBefore(cutoff)) basePrice * (100 - lastMinuteDiscountPercent) / 100 else basePrice
+    val offsets = BUSINESS_ZONE.rules.getValidOffsets(slotStart)
+    if (offsets.size != 1)
+        throw ApiException(ErrorCode.INVALID_LOCAL_TIME, "Termin jest niejednoznaczny lub nie istnieje")
+    val start = slotStart.toInstant(offsets.single())
+    if (start.isBefore(now) || start.isAfter(now.plusSeconds(lastMinuteDiscountHours.toLong() * 3600))) return basePrice
+    return BigDecimal.valueOf(basePrice.toLong())
+        .multiply(BigDecimal.valueOf((100 - lastMinuteDiscountPercent).toLong()))
+        .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_EVEN)
+        .intValueExact()
+}
+
+/** Compatibility overload for callers already holding an unambiguous Warsaw local business time. */
+fun Company.effectivePrice(basePrice: Int, slotStart: LocalDateTime, now: LocalDateTime): Int {
+    val offsets = BUSINESS_ZONE.rules.getValidOffsets(now)
+    if (offsets.size != 1)
+        throw ApiException(ErrorCode.INVALID_LOCAL_TIME, "Czas jest niejednoznaczny lub nie istnieje")
+    return effectivePrice(basePrice, slotStart, now.toInstant(offsets.single()))
 }

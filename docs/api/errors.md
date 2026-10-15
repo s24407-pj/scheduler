@@ -60,6 +60,7 @@ Codes are defined in `config/ApiException.kt` (`ErrorCode`); each code has a fix
 | `INVALID_STATUS_TRANSITION` | 409 | Reservation status does not allow the action (for example cancelling a completed visit) |
 | `CONCURRENT_MODIFICATION` | 409 | `@Version` conflict; retry with fresh data |
 | `DATA_CONFLICT` | 409 | Other database constraint violation (for example a duplicate unique value) |
+| `QUOTE_RECONFIRMATION_REQUIRED` | 409 | Expired quote differs from active service name, effective price or duration, or service is inactive |
 | `CONFLICT` | 409 | Uncoded state conflict (fallback) |
 | `RATE_LIMITED` | 429 | OTP or login rate limit exceeded |
 | `INTERNAL_ERROR` | 500 | Unexpected failure; logged at ERROR, details hidden |

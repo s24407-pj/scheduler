@@ -74,7 +74,7 @@ Decision record: [ADR-0006](./adr/0006-booking-idempotency.md). There are no pay
 
 ## Pricing
 
-Whole złoty, integer ([ADR-0008](./adr/0008-whole-zloty-pricing.md)). `reservations.price` is a snapshot at booking time: catalog price, minus the company's last-minute discount if `startTime` falls within `lastMinuteDiscountHours` from now, rounded down. An idempotent replay returns the original snapshot.
+Whole złoty, integer ([ADR-0008](./adr/0008-whole-zloty-pricing.md)). `reservations.price` is a snapshot at booking time: customer price applies the last-minute discount within an inclusive elapsed-time window and rounds nearest with ties to even. Staff manual booking defaults to regular price. Optional [quotes](./pricing.md) protect accepted service name, price and duration for ten elapsed minutes; a valid quote survives catalog deactivation and commercial changes. An idempotent replay returns current reservation details with its saved commercial agreement.
 
 ## Side effects
 

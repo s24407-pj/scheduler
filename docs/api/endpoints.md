@@ -8,6 +8,12 @@ All unsafe methods require `X-XSRF-TOKEN` and its cookie, including public auth 
 
 Times and dates: see [time handling](../time-handling.md). Errors: see [errors](./errors.md).
 
+## Quotes — `QuoteController`
+
+| Method | Path | Access | Notes |
+| ------ | ---- | ------ | ----- |
+| POST | `/api/quotes` | CUSTOMER | Creates durable ten-minute commercial quote; 201; no slot hold; CSRF required |
+
 ## Auth — `AuthController`
 
 | Method | Path | Access | Notes |
