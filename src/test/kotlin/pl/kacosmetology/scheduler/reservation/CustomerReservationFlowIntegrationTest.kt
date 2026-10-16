@@ -277,6 +277,57 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
         )
     }
 
+    @Test
+    fun `successful submission replay after completion ignores changed current rules without another allocation`() {
+        shift()
+        val key = "completed-replay"
+        val created = book(key = key)
+        assertEquals(201, created.response.status)
+        val id = id(created)
+        setLocalNow(future)
+        assertEquals(204, action(id, "complete").response.status)
+        jdbc.update("UPDATE company_employees SET enabled=false WHERE id=?", salon.staff)
+        jdbc.update("UPDATE offerings SET active=false WHERE id=?", salon.service)
+        val replay = book(key = key)
+        assertEquals(200, replay.response.status, replay.response.contentAsString)
+        assertEquals(id, id(replay))
+        assertEquals("COMPLETED", tree(replay)["status"].stringValue())
+        assertEquals(tree(created)["createdAt"], tree(replay)["createdAt"])
+        assertEquals(1L, count("reservations"))
+        assertEquals(2L, count("reservation_audit"))
+        assertEquals(0L, count("notification_deliveries"))
+    }
+
+    @Test
+    fun `submission locked longer than five seconds returns explicit in progress then succeeds after release`() {
+        val key = "locked-submission"
+        assertEquals(409, book(key = key).response.status)
+        shift()
+        val held = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val lock = pool.submit {
+                org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult {
+                    jdbc.queryForMap("SELECT * FROM booking_submissions WHERE submission_key=? FOR UPDATE", key)
+                    held.countDown()
+                    check(release.await(15, TimeUnit.SECONDS))
+                }
+            }
+            assertTrue(held.await(10, TimeUnit.SECONDS))
+            val busy = book(key = key)
+            assertEquals(409, busy.response.status, busy.response.contentAsString)
+            assertEquals("IDEMPOTENCY_IN_PROGRESS", tree(busy)["code"].stringValue())
+            assertEquals(0L, count("reservations"))
+            release.countDown()
+            lock.get(10, TimeUnit.SECONDS)
+            assertEquals(201, book(key = key).response.status)
+        } finally {
+            release.countDown()
+            pool.shutdownNow()
+        }
+    }
+
     private fun race(
         calls: List<() -> org.springframework.test.web.servlet.MvcResult>,
     ): List<org.springframework.test.web.servlet.MvcResult> {

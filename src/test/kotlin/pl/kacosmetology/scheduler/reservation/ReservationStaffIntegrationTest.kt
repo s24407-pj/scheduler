@@ -233,4 +233,14 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
             ),
         )
     }
+
+    @Test
+    fun `same textual submission key is independent across customer and staff realms`() {
+        shift()
+        val key = "shared-key"
+        assertEquals(201, book(key = key).response.status)
+        assertEquals(201, manual(manualBody(future.plusHours(1)), key).response.status)
+        assertEquals(2L, count("reservations"))
+        assertEquals(2L, count("booking_submissions"))
+    }
 }

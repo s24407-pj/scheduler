@@ -321,7 +321,7 @@ class ReservationServiceTest {
 
     @Test
     fun `no op edit creates no new audit event or notification`() {
-        service.editReservation(50, 1, 0, EditReservationRequest(), true)
+        service.editReservation(50, 1, 0, EditReservationRequest(notifyCustomer = true), true)
         verify(exactly = 0) {
             audit.capture()
             reservations.saveAndFlush(any())
