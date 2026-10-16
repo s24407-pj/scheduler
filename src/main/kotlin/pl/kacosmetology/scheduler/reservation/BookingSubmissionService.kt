@@ -1,7 +1,9 @@
 package pl.kacosmetology.scheduler.reservation
 
 import java.security.MessageDigest
+import java.sql.SQLException
 import org.springframework.dao.CannotAcquireLockException
+import org.springframework.dao.DataAccessException
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -52,7 +54,8 @@ class BookingSubmissionService(
                         "Ten klucz został już powiązany z innym żądaniem",
                     )
             }
-        } catch (_: CannotAcquireLockException) {
+        } catch (failure: DataAccessException) {
+            if (!isLockTimeout(failure)) throw failure
             throw ApiException(ErrorCode.IDEMPOTENCY_IN_PROGRESS, "Poprzednie żądanie nadal jest przetwarzane")
         }
     }
@@ -117,11 +120,18 @@ class BookingSubmissionService(
                     }
                 },
             )
-        } catch (_: CannotAcquireLockException) {
+        } catch (failure: DataAccessException) {
+            if (!isLockTimeout(failure)) throw failure
             throw ApiException(
                 ErrorCode.IDEMPOTENCY_IN_PROGRESS,
                 "Poprzednie żądanie nadal jest przetwarzane; ponów próbę",
             )
         }
     }
+
+    private fun isLockTimeout(failure: DataAccessException): Boolean =
+        failure is CannotAcquireLockException ||
+            generateSequence<Throwable>(failure) { it.cause }
+                .filterIsInstance<SQLException>()
+                .any { it.sqlState == "55P03" }
 }

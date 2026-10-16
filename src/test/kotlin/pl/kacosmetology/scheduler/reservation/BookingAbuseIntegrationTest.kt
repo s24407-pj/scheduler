@@ -19,6 +19,26 @@ class BookingAbuseIntegrationTest : ReservationContractTestSupport() {
     }
 
     @Test
+    fun `rate limited first attempt still binds its original payload`() {
+        val cookie = customerCookie()
+        repeat(10) { assertEquals(409, request(cookie).response.status) }
+        val key = "first-attempt-limited"
+        assertEquals(429, request(cookie, key = key).response.status)
+        assertEquals(
+            1L,
+            jdbc.queryForObject(
+                "SELECT count(*) FROM booking_submissions WHERE submission_key=?",
+                Long::class.java,
+                key,
+            ),
+        )
+        val changed = request(cookie, body = customerBody(future.plusHours(1)), key = key)
+        assertEquals(409, changed.response.status)
+        assertEquals("IDEMPOTENCY_CONFLICT", tree(changed)["code"].stringValue())
+        assertEquals(0L, count("reservations"))
+    }
+
+    @Test
     fun `staff failed validation counts toward account limit`() {
         val cookie = staffCookie()
         repeat(10) {
@@ -38,13 +58,18 @@ class BookingAbuseIntegrationTest : ReservationContractTestSupport() {
         assertTrue(limited.response.getHeader("Retry-After")!!.toLong() > 0)
     }
 
-    private fun request(cookie: Cookie, path: String = "/api/reservations", body: Any = customerBody()) =
+    private fun request(
+        cookie: Cookie,
+        path: String = "/api/reservations",
+        body: Any = customerBody(),
+        key: String = "retry-limit",
+    ) =
         mvc.perform(
                 post(path)
                     .servletPath(path)
                     .cookie(cookie)
                     .with(csrf())
-                    .header("Idempotency-Key", "retry-limit")
+                    .header("Idempotency-Key", key)
                     .contentType("application/json")
                     .content(json.writeValueAsString(body)),
             )

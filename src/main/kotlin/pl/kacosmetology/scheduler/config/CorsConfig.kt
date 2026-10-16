@@ -26,6 +26,7 @@ class CorsConfig(
             .allowedOrigins(*origins.toTypedArray())
             .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             .allowedHeaders("*")
+            .exposedHeaders("ETag", "Retry-After", "X-Request-Id")
             .allowCredentials(true)
     }
 }

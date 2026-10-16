@@ -99,6 +99,33 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
     }
 
     @Test
+    fun `customer origin restoration rechecks current schedule while preserving cancelled agreement`() {
+        shift()
+        val created = book()
+        assertEquals(201, created.response.status)
+        val id = id(created)
+        assertEquals(204, action(id, "cancel-by-staff", body = mapOf("reason" to "Zmiana planu")).response.status)
+        jdbc.update("DELETE FROM employee_work_schedules WHERE company_id=?", salon.company)
+        assertEquals(409, action(id, "restore").response.status)
+        assertEquals("CANCELLED", state(id))
+        assertEquals(101, jdbc.queryForObject("SELECT price FROM reservations WHERE id=?", Int::class.java, id))
+        shift()
+        assertEquals(204, action(id, "restore").response.status)
+    }
+
+    @Test
+    fun `reducing customer booking cap preserves existing visits and allows staff intervention`() {
+        shift()
+        assertEquals(201, book().response.status)
+        assertEquals(201, book(customerBody(future.plusHours(1))).response.status)
+        jdbc.update("UPDATE companies SET max_future_customer_bookings=1 WHERE id=?", salon.company)
+        assertEquals(2L, count("reservations"))
+        assertEquals(409, book(customerBody(future.plusHours(2))).response.status)
+        assertEquals(201, manual(manualBody(future.plusHours(2))).response.status)
+        assertEquals(3, jdbc.queryForObject("SELECT count(*) FROM reservations WHERE status='BOOKED'", Int::class.java))
+    }
+
+    @Test
     fun `staff cancellation requires private reason and customer explanation is separate`() {
         val id = reservation()
         assertEquals(400, action(id, "cancel-by-staff").response.status)

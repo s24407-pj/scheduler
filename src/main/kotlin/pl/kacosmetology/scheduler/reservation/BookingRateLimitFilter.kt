@@ -45,8 +45,9 @@ class BookingRateLimitFilter(
             val user = account?.let {
                 limits.check("rate:booking:account:${it.accountKey()}", 10, Duration.ofMinutes(1))
             }
-            if (!ip.allowed || user?.allowed == false)
-                throw RateLimitExceededException(
+            val limitExceeded = !ip.allowed || user?.allowed == false
+            val limitFailure =
+                RateLimitExceededException(
                     retryAfterSeconds = maxOf(ip.retryAfterSeconds, user?.retryAfterSeconds ?: 0),
                 )
             val key = request.getHeader("Idempotency-Key")
@@ -62,12 +63,16 @@ class BookingRateLimitFilter(
                                 .readValue<Any>(bytes)
                         mapper.writeValueAsString(canonical(value))
                     } catch (_: RuntimeException) {
-                        bytes.toString(Charsets.UTF_8)
+                        "!invalid-json:" + java.util.Base64.getEncoder().encodeToString(bytes)
                     }
                 submissions.bindPayload(account.accountKey(), key, payload)
                 request.setAttribute(BOOKING_PAYLOAD_ATTRIBUTE, payload)
+                if (limitExceeded) throw limitFailure
                 chain.doFilter(CachedBookingRequest(request, bytes), response)
-            } else chain.doFilter(request, response)
+            } else {
+                if (limitExceeded) throw limitFailure
+                chain.doFilter(request, response)
+            }
         } catch (failure: Exception) {
             errors.resolveException(request, response, null, failure)
         }

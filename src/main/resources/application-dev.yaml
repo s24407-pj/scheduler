@@ -27,5 +27,5 @@ management:
         include: health,info,metrics,prometheus,hikaricp,caches,env,threaddump,loggers
   endpoint:
     health:
-      show-details: always
+      show-details: never
 
