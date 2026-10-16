@@ -91,7 +91,10 @@ class QuotePersistenceIntegrationTest {
         )
         assertEquals(
             0L,
-            jdbc.queryForObject("SELECT count(*) FROM users WHERE phone_number='+48880000001'", Long::class.java),
+            jdbc.queryForObject(
+                "SELECT count(*) FROM company_employees WHERE contact_phone='+48880000001'",
+                Long::class.java,
+            ),
         )
     }
 

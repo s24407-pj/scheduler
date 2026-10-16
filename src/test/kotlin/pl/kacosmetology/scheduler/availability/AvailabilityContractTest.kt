@@ -117,4 +117,22 @@ class AvailabilityContractTest {
         assertFalse(public.any { it.personalConflict })
         verify(exactly = 0) { reservations.existsCustomerOverlapping(2, any(), any(), any(), any()) }
     }
+
+    @Test
+    fun `current overlapping Warsaw hour does not make future slot pricing ambiguous`() {
+        company.lastMinuteDiscountPercent = 10
+        val overlapClock = Clock.fixed(Instant.parse("2026-10-25T00:30:00Z"), ZoneOffset.UTC)
+        val overlapService =
+            AvailabilityService(
+                offerings,
+                companies,
+                assignments,
+                employees,
+                conflicts,
+                policy,
+                overlapClock,
+                reservations,
+            )
+        assertEquals(90, overlapService.getAvailableSlots(7, 3, LocalDate.of(2026, 10, 25)).first().price)
+    }
 }

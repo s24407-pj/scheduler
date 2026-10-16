@@ -9,6 +9,14 @@ class DatabaseCleanupListener : AbstractTestExecutionListener() {
     override fun getOrder(): Int = 2500
 
     override fun beforeTestMethod(testContext: TestContext) {
+        testContext.applicationContext
+            .getBeansOfType(org.springframework.data.redis.core.StringRedisTemplate::class.java)
+            .values
+            .firstOrNull()
+            ?.connectionFactory
+            ?.connection
+            ?.use { it.serverCommands().flushAll() }
+
         val jdbc =
             testContext.applicationContext.getBeansOfType(JdbcTemplate::class.java).values.firstOrNull() ?: return
         val tables =

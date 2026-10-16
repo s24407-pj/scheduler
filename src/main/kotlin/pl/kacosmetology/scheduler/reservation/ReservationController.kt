@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.reservation
 
+import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import java.time.LocalDateTime
 import org.springframework.http.HttpStatus
@@ -23,10 +24,16 @@ class ReservationController(
     fun createReservation(
         @Valid @RequestBody request: CreateReservationRequest,
         @RequestHeader("Idempotency-Key") key: String,
+        httpRequest: HttpServletRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): ResponseEntity<ReservationResponse> =
         submissions
-            .execute(userDetails.accountKey(), key, request) {
+            .execute(
+                userDetails.accountKey(),
+                key,
+                request,
+                httpRequest.getAttribute(BOOKING_PAYLOAD_ATTRIBUTE) as? String,
+            ) {
                 reservationService.createReservation(
                     userDetails.id,
                     request.employeeId,
@@ -46,10 +53,16 @@ class ReservationController(
     fun createReservationByStaff(
         @Valid @RequestBody request: StaffCreateReservationRequest,
         @RequestHeader("Idempotency-Key") key: String,
+        httpRequest: HttpServletRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): ResponseEntity<ReservationResponse> =
         submissions
-            .execute(userDetails.accountKey(), key, request) {
+            .execute(
+                userDetails.accountKey(),
+                key,
+                request,
+                httpRequest.getAttribute(BOOKING_PAYLOAD_ATTRIBUTE) as? String,
+            ) {
                 reservationService.createReservationByStaff(
                     requireNotNull(request.employeeId),
                     requireNotNull(request.serviceId),

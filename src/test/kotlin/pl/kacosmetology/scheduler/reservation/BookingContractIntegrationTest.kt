@@ -263,4 +263,15 @@ class BookingContractIntegrationTest {
                 .status,
         )
     }
+
+    @Test
+    fun `invalid DTO and unknown field submissions remain bound to their original payload`() {
+        fixtures.shift(salon, start)
+        val key = UUID.randomUUID().toString()
+        assertEquals(400, book(key, payload() + mapOf("employeeId" to -1)).response.status)
+        assertEquals(409, book(key).response.status)
+        val other = UUID.randomUUID().toString()
+        assertEquals(400, book(other, payload() + mapOf("unknown" to true)).response.status)
+        assertEquals(409, book(other).response.status)
+    }
 }

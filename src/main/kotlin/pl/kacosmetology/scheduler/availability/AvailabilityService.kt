@@ -100,7 +100,7 @@ class AvailabilityService(
             .map { start ->
                 AvailableSlotResponse(
                     start.toLocalTime(),
-                    company.effectivePrice(offering.price, start, now),
+                    company.effectivePrice(offering.price, start, nowInstant),
                     offering.price,
                     customerId != null &&
                         reservationRepository.existsCustomerOverlapping(

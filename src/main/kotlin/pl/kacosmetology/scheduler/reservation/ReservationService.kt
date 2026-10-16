@@ -354,12 +354,14 @@ class ReservationService(
         employeeId: Long,
         start: LocalDateTime,
         end: LocalDateTime,
-    ): List<DashboardReservationResponse> =
-        reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end).map {
+    ): List<DashboardReservationResponse> {
+        if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) missingReservation()
+        return reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end).map {
             reservation ->
             val profile = companyCustomers.findByCompanyIdAndUserId(companyId, reservation.customerId)
             reservation.toDashboardResponse(profile?.firstName ?: "", profile?.lastName ?: "")
         }
+    }
 
     /** Reads a company employee calendar without archived rows. */
     @Transactional(readOnly = true)
@@ -512,6 +514,17 @@ class ReservationService(
                     offeringRepository.findByIdAndCompanyId(reservation.serviceId, companyId) ?: missingReservation()
                 if (!offering.active) conflict(ErrorCode.OFFERING_UNAVAILABLE, "Usługa jest nieaktywna")
                 checkEmployee(companyId, reservation.employeeId, reservation.serviceId)
+                if (
+                    reservation.creationSource != "STAFF" &&
+                        !bookableSlotPolicy.isOnGrid(
+                            companyId,
+                            reservation.employeeId,
+                            reservation.startTime,
+                            reservation.agreedDurationMinutes,
+                            companyRepository.findById(companyId).orElseThrow().slotIntervalMinutes,
+                        )
+                )
+                    slotUnavailable()
                 checkBlocked(companyId, reservation.customerId, reservation.startTime, now)
                 checkEmployeeConflict(
                     companyId,
@@ -525,7 +538,20 @@ class ReservationService(
                 checkCustomerConflict(companyId, reservation.customerId, reservation.startTime, reservation.endTime, id)
             }
         }
+        if (original == ReservationStatus.NO_SHOW && target == ReservationStatus.COMPLETED) {
+            checkEmployeeConflict(
+                companyId,
+                reservation.employeeId,
+                reservation.startTime,
+                reservation.endTime,
+                id,
+                request.overrideEmployeeBlock,
+                owner,
+            )
+            checkCustomerConflict(companyId, reservation.customerId, reservation.startTime, reservation.endTime, id)
+        }
         audit.capture()
+        reservation.outcomeExplanation = request.reason
         reservation.status = target
         reservationRepository.saveAndFlush(reservation)
         if (target == ReservationStatus.NO_SHOW) applyPenalty(reservation)
@@ -707,7 +733,7 @@ class ReservationService(
 
     private fun applyPenalty(reservation: Reservation) {
         jdbc.update(
-            "INSERT INTO no_show_penalties(reservation_id,company_id,customer_id,appointment_date) VALUES(?,?,?,?) ON CONFLICT(reservation_id) DO UPDATE SET active=true",
+            "INSERT INTO no_show_penalties(reservation_id,company_id,customer_id,appointment_date) VALUES(?,?,?,?) ON CONFLICT(reservation_id) DO UPDATE SET active=true,appointment_date=EXCLUDED.appointment_date",
             reservation.id,
             reservation.companyId,
             reservation.customerId,

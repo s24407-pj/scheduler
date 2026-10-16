@@ -24,12 +24,54 @@ class BookingSubmissionService(
             propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
         }
 
+    /** Binds even malformed/invalid DTO submissions before MVC validation can reject them. */
+    fun bindPayload(accountKey: String, key: String, payload: String) {
+        if (key.isBlank() || key.length > 200)
+            throw ApiException(ErrorCode.BAD_REQUEST, "Nieprawidłowy Idempotency-Key")
+        val hash = fingerprint(payload)
+        try {
+            independent.executeWithoutResult {
+                jdbc.execute("SET LOCAL lock_timeout = '5s'")
+                jdbc.update(
+                    "INSERT INTO booking_submissions(account_key,submission_key,request_hash,request_payload) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
+                    accountKey,
+                    key,
+                    hash,
+                    payload,
+                )
+                val original =
+                    jdbc.queryForObject(
+                        "SELECT request_hash FROM booking_submissions WHERE account_key=? AND submission_key=?",
+                        String::class.java,
+                        accountKey,
+                        key,
+                    )
+                if (original != hash)
+                    throw ApiException(
+                        ErrorCode.IDEMPOTENCY_CONFLICT,
+                        "Ten klucz został już powiązany z innym żądaniem",
+                    )
+            }
+        } catch (_: CannotAcquireLockException) {
+            throw ApiException(ErrorCode.IDEMPOTENCY_IN_PROGRESS, "Poprzednie żądanie nadal jest przetwarzane")
+        }
+    }
+
+    private fun fingerprint(payload: String): String =
+        MessageDigest.getInstance("SHA-256").digest(payload.toByteArray()).joinToString("") { "%02x".format(it) }
+
     /** Serializes identical submissions for at most five seconds and replays the current reservation forever. */
-    fun execute(accountKey: String, key: String, request: Any, create: () -> BookingResult): BookingResult {
+    fun execute(
+        accountKey: String,
+        key: String,
+        request: Any,
+        boundPayload: String? = null,
+        create: () -> BookingResult,
+    ): BookingResult {
         if (key.isBlank() || key.length > 200) {
             throw ApiException(ErrorCode.BAD_REQUEST, "Idempotency-Key musi zawierać od 1 do 200 znaków")
         }
-        val payload = mapper.writeValueAsString(request)
+        val payload = boundPayload ?: mapper.writeValueAsString(request)
         val hash =
             MessageDigest.getInstance("SHA-256").digest(payload.toByteArray()).joinToString("") { "%02x".format(it) }
         try {
@@ -52,6 +94,7 @@ class BookingSubmissionService(
                             accountKey,
                             key,
                         )
+                    jdbc.execute("SET LOCAL lock_timeout = '0'")
                     if (submission["request_hash"] != hash) {
                         throw ApiException(
                             ErrorCode.IDEMPOTENCY_CONFLICT,
