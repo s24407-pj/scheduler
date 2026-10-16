@@ -190,6 +190,20 @@ class OtpDeliveryIntegrationTest {
     }
 
     @Test
+    fun `expired in flight send becomes ambiguous and scrubs secret without a restart or resend`() {
+        queue(phone)
+        jdbc.update("UPDATE otp_deliveries SET state='SENDING',attempts=1")
+        clock.set(now.plusSeconds(301))
+        deliveries.dispatchDue()
+        assertEquals("AMBIGUOUS", state())
+        assertScrubbed()
+        assertEquals(0, provider.calls.get())
+        assertEquals(1, jdbc.queryForObject("SELECT attempts FROM otp_deliveries", Int::class.java))
+        deliveries.dispatchDue()
+        assertEquals(0, provider.calls.get())
+    }
+
+    @Test
     fun `duplicate issuance callback keeps one durable delivery identity and one provider attempt`() {
         val code = store.issueCode(phone)
         val event = OtpIssuedEvent(phone, code)

@@ -105,11 +105,12 @@ class OtpDeliveryRepository(private val jdbc: JdbcTemplate) {
 
     /** Unknown in-flight sends become ambiguous; old secrets are scrubbed even when their retry time is later. */
     fun recoverAndExpire(now: Instant, restart: Boolean) {
-        if (restart)
-            jdbc.update(
-                "UPDATE otp_deliveries SET state='AMBIGUOUS',code=NULL,updated_at=? WHERE state='SENDING'",
-                Timestamp.from(now),
-            )
+        jdbc.update(
+            "UPDATE otp_deliveries SET state='AMBIGUOUS',code=NULL,updated_at=? WHERE state='SENDING' AND (? OR expires_at<=?)",
+            Timestamp.from(now),
+            restart,
+            Timestamp.from(now),
+        )
         jdbc.update(
             "UPDATE otp_deliveries SET state='DISCARDED',code=NULL,updated_at=? WHERE state IN ('PENDING','TEMPORARY_FAILURE') AND expires_at<=?",
             Timestamp.from(now),
