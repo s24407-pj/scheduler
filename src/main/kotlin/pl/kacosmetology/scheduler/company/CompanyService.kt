@@ -80,6 +80,7 @@ class CompanyService(
                 ce.loginEmail,
                 ce.contactPhone,
                 ce.enabled,
+                ce.eligibilityMode,
             )
         }
     }

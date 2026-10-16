@@ -131,6 +131,7 @@ class CompanyServiceTest {
         assertEquals("OWNER", result.find { it.userId == 10L }?.role)
         assertEquals("Bartek", result.find { it.userId == 11L }?.firstName)
         assertEquals("EMPLOYEE", result.find { it.userId == 11L }?.role)
+        assertEquals(EmployeeEligibilityMode.ALL_SERVICES, result.find { it.userId == 11L }?.eligibilityMode)
     }
 
     @Test

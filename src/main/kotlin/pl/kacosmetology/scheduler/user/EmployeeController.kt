@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.user
 
+import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
@@ -14,7 +15,7 @@ import pl.kacosmetology.scheduler.user.dto.toStaffProfile
 @PreAuthorize("hasRole('OWNER')")
 class EmployeeController(private val employeePhotoService: EmployeePhotoService) {
     /** Uploads validated bytes to one company employee's profile. */
-    @PostMapping("/{id}/photo")
+    @PostMapping("/{id}/photo", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun uploadPhoto(
         @PathVariable id: Long,
         @RequestParam("photo") file: MultipartFile,
