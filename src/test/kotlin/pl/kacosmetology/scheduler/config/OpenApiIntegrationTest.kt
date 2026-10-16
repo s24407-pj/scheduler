@@ -85,6 +85,16 @@ class OpenApiIntegrationTest {
         val time = api["components"]["schemas"]["CreateReservationRequest"]["properties"]["startTime"]
         assertEquals("local-date-time", time["format"].asString())
         assertNotNull(time["pattern"])
+        assertNotNull(api["components"]["schemas"]["CompanyEmployeeResponse"]["properties"]["eligibilityMode"])
+        for ((path, field) in
+            listOf(
+                "/api/employees/{id}/photo" to "photo",
+                "/api/offerings/{id}/image" to "image",
+            )) {
+            val multipart = api["paths"][path]["post"]["requestBody"]["content"]["multipart/form-data"]
+            assertNotNull(multipart)
+            assertEquals("binary", multipart["schema"]["properties"][field]["format"].asString())
+        }
         java.nio.file.Files.createDirectories(java.nio.file.Path.of("build/generated"))
         java.nio.file.Files.writeString(java.nio.file.Path.of("build/generated/openapi.json"), response.contentAsString)
     }

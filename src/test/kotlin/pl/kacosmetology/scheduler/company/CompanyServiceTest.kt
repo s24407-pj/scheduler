@@ -120,6 +120,7 @@ class CompanyServiceTest {
                 role = "EMPLOYEE",
                 firstName = "Bartek",
                 lastName = "Nowak",
+                eligibilityMode = EmployeeEligibilityMode.SPECIFIC_SERVICES,
             )
 
         every { companyEmployeeRepository.findAllByCompanyId(companyId) } returns listOf(ce1, ce2)
@@ -131,6 +132,7 @@ class CompanyServiceTest {
         assertEquals("OWNER", result.find { it.userId == 10L }?.role)
         assertEquals("Bartek", result.find { it.userId == 11L }?.firstName)
         assertEquals("EMPLOYEE", result.find { it.userId == 11L }?.role)
+        assertEquals(EmployeeEligibilityMode.SPECIFIC_SERVICES, result.find { it.userId == 11L }?.eligibilityMode)
     }
 
     @Test

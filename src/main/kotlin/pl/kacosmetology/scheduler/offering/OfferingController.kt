@@ -131,7 +131,7 @@ class OfferingController(
      * Uploads an image for the offering (multipart field `image`). Max 5 images per offering; max 5 MB per file;
      * allowed types: JPEG, PNG, WebP. Requires OWNER role.
      */
-    @PostMapping("/{id}/image")
+    @PostMapping("/{id}/image", consumes = [org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE])
     @PreAuthorize("hasAnyRole('OWNER')")
     fun uploadImage(
         @PathVariable id: Long,

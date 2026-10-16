@@ -48,14 +48,14 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
 | GET | `/api/employees/public/company/{companyId}?offeringId` | Public | Employees eligible for the offering |
-| GET | `/api/employees` | OWNER, EMPLOYEE | |
+| GET | `/api/employees` | OWNER, EMPLOYEE | Includes current ALL_SERVICES / SPECIFIC_SERVICES eligibility mode; `userId` is the identifier used by employee subresources |
 | POST | `/api/employees` | OWNER | Creates EMPLOYEE account plus initial setup token; 201 |
 | PUT | `/api/employees/{id}` | OWNER | Company-local names, login email, optional contact phone |
 | PUT | `/api/employees/{id}/enabled` | OWNER | Revokes access/links when disabled; returns preserved future booking warnings |
 | POST | `/api/employees/{id}/password-link` | OWNER | Replaces one-use 24h setup/recovery token |
 | GET | `/api/staff/me` | OWNER, EMPLOYEE | Current company-local staff profile |
 | POST | `/api/staff/password` | OWNER, EMPLOYEE | Current password required; revokes all account sessions; 204 |
-| POST | `/api/employees/{id}/photo` | OWNER | Multipart field `photo` |
+| POST | `/api/employees/{id}/photo` | OWNER | `multipart/form-data` field `photo` |
 | DELETE | `/api/employees/{id}/photo` | OWNER | |
 | GET | `/api/employees/{employeeId}/work-schedule` | OWNER, EMPLOYEE | authenticated session company's schedule only |
 | PUT | `/api/employees/{employeeId}/work-schedule` | OWNER | Replaces whole week at the authenticated session company |
@@ -79,7 +79,7 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | PUT | `/api/offerings/{id}` | OWNER | |
 | PATCH | `/api/offerings/{id}/activate` | OWNER | Reactivates |
 | DELETE | `/api/offerings/{id}` | OWNER | Soft delete (sets inactive) |
-| POST | `/api/offerings/{id}/image` | OWNER | Multipart field `image`; max 5 per offering |
+| POST | `/api/offerings/{id}/image` | OWNER | `multipart/form-data` field `image`; max 5 per offering |
 | DELETE | `/api/offerings/{id}/image/{imageId}` | OWNER | |
 | PATCH | `/api/offerings/{offeringId}/category` | OWNER | |
 
