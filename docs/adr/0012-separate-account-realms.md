@@ -16,4 +16,4 @@ Company-local photos never update a customer account or another employment. Afte
 
 ## Migration
 
-V3 preserves legacy data as archives while introducing phone-only customer accounts and local profiles/credentials. It does not infer company relationships from arbitrary notes or copy staff email as customer contact information. Phone canonicalization collisions stop migration for operator reconciliation rather than silently merging accounts. V5 adds durable staff credential versions and hash-only one-use links. Existing staff sessions require login again because their usernames/versions no longer match the current account.
+The pre-production schema is consolidated into `V1__init_schema.sql` with explicit user authorization. It directly creates phone-only customer accounts, local profiles and credentials, durable credential versions and hash-only one-use links. No legacy archive or upgrade path is claimed. Existing development databases must be recreated explicitly before using this fresh baseline; application startup never resets them. Staff login email must never be imported as customer contact information, and matching phone/email must never merge the realms.

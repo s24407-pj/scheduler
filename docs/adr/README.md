@@ -12,7 +12,7 @@ To add one, copy the structure of an existing ADR, use the next number, and add 
 | --- | ----- | ------ |
 | [0001](./0001-double-booking-prevention.md) | Double-booking prevention | Superseded by 0016 |
 | [0002](./0002-reservation-lifecycle-and-cancellation.md) | Reservation lifecycle and cancellation | Superseded by 0016 |
-| [0003](./0003-single-time-zone.md) | Single business time zone (Europe/Warsaw) | Accepted |
+| [0003](./0003-single-time-zone.md) | Single business time zone (Europe/Warsaw) | Superseded by 0016 |
 | [0004](./0004-error-contract-problem-detail.md) | Error contract based on ProblemDetail | Accepted |
 | [0005](./0005-generated-openapi-spec.md) | Generated OpenAPI specification | Accepted |
 | [0006](./0006-booking-idempotency.md) | Booking idempotency | Superseded by 0016 |

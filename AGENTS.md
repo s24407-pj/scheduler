@@ -81,13 +81,13 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 - **CSRF/cookies:** require CSRF on all unsafe requests, including public login/OTP and logout. SPA clients fetch `/api/auth/csrf`, send `X-XSRF-TOKEN` with cookies, and refresh after login/logout. `SESSION` is HttpOnly, host-only, Path=/, SameSite=Lax, Secure in prod. CORS must use explicit origins with credentials.
 - **Tests:** feature fixtures use real Redis sessions (`TestSessions`) and explicit `csrf()` request processors; session boundary tests use actual cookies/CSRF/login. Never globally bypass CSRF.
 - **Client IP:** use `request.remoteAddr` for rate limiting; never parse `X-Forwarded-For` by hand (Tomcat applies it only for `TRUSTED_PROXIES`).
-- **Double booking:** any code that creates reservations or schedule blocks must take the `company_employees` row lock (`findByCompanyIdAndUserIdForUpdate`) before checking overlap. `@Version` does not prevent double booking.
+- **Double booking:** lock the company row before the company employee row for booking, blocks and policy changes. PostgreSQL exclusions protect both employee and company/customer occupied intervals; completed visits retain the full interval. `@Version` protects edits, not allocation.
 - **Per-company employee time:** reservations, schedule blocks, work schedules, and offering assignments are scoped to (company, employee). Never query them by `employeeId` alone; a person employed by two salons has an independent calendar at each.
 - **Reservation status:** `BOOKED` is automatic booking. There is no PENDING/CONFIRMED workflow. BOOKED and COMPLETED retain their occupied intervals.
 - **Time:** API date-times are Europe/Warsaw local time without offset. Get "now" from the injected `Clock` bean (`LocalDateTime.now(clock)`); never call `now()` without it or hardcode `ZoneId.of(...)`.
 - **Errors:** throw `ApiException(ErrorCode.X, "<Polish detail>")` for business errors; responses are ProblemDetail with a stable `code`. Another company's resource is 404, not 403/409. Add new codes to `ErrorCode` and `docs/api/errors.md`.
 - **Money:** prices are `Int` whole złoty. No grosze, no decimals.
-- **Side effects:** SMS is sent after commit via `@TransactionalEventListener`; failures are logged and never propagate. `NotificationService` itself throws on failure so callers (listener, reminder job) can log it and skip flagging the reminder as sent.
+- **Side effects:** persist notification/OTP intent before commit; claim delivery in a committed transaction before calling the provider after commit. Classify ACCEPTED, DEFINITE_TEMPORARY_FAILURE and AMBIGUOUS. Never blindly retry ambiguous sends; provider failures cannot roll back booking. A sent flag is not sufficient.
 - **Logging:** never log OTP codes, passwords, tokens, or raw constraint-violation messages (they contain row values). `ConsoleSmsSender` logs OTPs and is therefore disabled in `prod`. Log lines carry the MDC `requestId` from `RequestIdFilter`; prod logs are ECS JSON.
 - **Deployment:** single instance; scheduled jobs have no distributed lock.
 
