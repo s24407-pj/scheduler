@@ -44,7 +44,7 @@ dependencies {
     implementation("tools.jackson.module:jackson-module-kotlin")
 
     // ImageIO decoder verifies actual WebP payloads as well as standard JPEG/PNG.
-    implementation("com.twelvemonkeys.imageio:imageio-webp:3.12.0")
+    implementation("com.twelvemonkeys.imageio:imageio-webp:3.15.3")
 
     // AWS SDK (for Cloudflare R2 — S3-compatible)
     implementation(libs.aws.s3)
