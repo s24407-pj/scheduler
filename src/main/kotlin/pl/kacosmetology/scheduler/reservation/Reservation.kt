@@ -4,6 +4,7 @@ import jakarta.persistence.*
 import java.time.LocalDateTime
 
 /** Lifecycle states supported by a reservation. */
+@io.swagger.v3.oas.annotations.media.Schema(enumAsRef = true)
 enum class ReservationStatus {
     BOOKED,
     CANCELLED,

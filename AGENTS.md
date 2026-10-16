@@ -51,7 +51,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 ├── company/ # Company entity, settings, public booking profile
 ├── config/ # Security, CORS, Redis, R2, RestExceptionHandler, DataInitializer (dev seed)
 ├── employeeoffering/ # Which offerings an employee performs
-├── notification/ # SMS notifications, hourly reminder and auto-complete jobs
+├── notification/ # SMS notifications, durable delivery, 09:00 reminders and audited completion jobs
 ├── offering/ # Offering catalog, categories, images
 ├── reservation/ # Booking lifecycle
 ├── scheduleblock/ # Employee time blocks (breaks, unavailability)
@@ -83,7 +83,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 - **Client IP:** use `request.remoteAddr` for rate limiting; never parse `X-Forwarded-For` by hand (Tomcat applies it only for `TRUSTED_PROXIES`).
 - **Double booking:** any code that creates reservations or schedule blocks must take the `company_employees` row lock (`findByCompanyIdAndUserIdForUpdate`) before checking overlap. `@Version` does not prevent double booking.
 - **Per-company employee time:** reservations, schedule blocks, work schedules, and offering assignments are scoped to (company, employee). Never query them by `employeeId` alone; a person employed by two salons has an independent calendar at each.
-- **Reservation status:** `PENDING` means booked; `CONFIRMED` is unused. Active = not `CANCELLED`/`NO_SHOW`.
+- **Reservation status:** `BOOKED` is automatic booking. There is no PENDING/CONFIRMED workflow. BOOKED and COMPLETED retain their occupied intervals.
 - **Time:** API date-times are Europe/Warsaw local time without offset. Get "now" from the injected `Clock` bean (`LocalDateTime.now(clock)`); never call `now()` without it or hardcode `ZoneId.of(...)`.
 - **Errors:** throw `ApiException(ErrorCode.X, "<Polish detail>")` for business errors; responses are ProblemDetail with a stable `code`. Another company's resource is 404, not 403/409. Add new codes to `ErrorCode` and `docs/api/errors.md`.
 - **Money:** prices are `Int` whole złoty. No grosze, no decimals.
@@ -109,3 +109,7 @@ When adding or modifying backend functionality, always:
 - Never modify existing Flyway migration files.
 - Reference existing files with `@` instead of copying large code blocks.
 - Do not build against **Proposed** ADRs without the user's agreement.
+
+## Revised contract invariants
+
+Customer accounts are global phone-only; staff credentials and presentation are company-owned. CUSTOMER sessions expire absolutely after 24h; STAFF sessions expire after 24h inactivity. Booking submissions require permanent account-scoped Idempotency-Key binding, including failed validation, and lifecycle/edit writes require revision preconditions. Company then employment locking serializes booking and policy mutations; database exclusions protect both employee and company-local customer overlaps. All actual appointment mutations retain durable audit and versions. No permanent appointment deletion. Notifications use durable provider-result state and after-commit delivery. Tests run with JVM UTC while business time remains Warsaw. The pre-production schema was consolidated into V1 with explicit user authorization; future applied migrations remain immutable.

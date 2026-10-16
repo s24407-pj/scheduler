@@ -98,16 +98,19 @@ See [reservations](../reservations.md).
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| POST | `/api/reservations` | CUSTOMER | Books for the caller (`customerId` = authenticated session user); only slots availability would list; 201, or 200 for an identical active booking |
-| POST | `/api/reservations/staff` | OWNER, EMPLOYEE | Books for a client by phone; may create the user; 201 or 200 as above |
-| PATCH | `/api/reservations/{id}/cancel` | CUSTOMER | Owning customer only; before `startTime` |
-| PATCH | `/api/reservations/{id}/cancel-by-staff` | OWNER, EMPLOYEE | Any active reservation of the company, also after start; 204 |
-| PATCH | `/api/reservations/{id}/complete` | OWNER, EMPLOYEE | |
-| PATCH | `/api/reservations/{id}/no-show` | OWNER, EMPLOYEE | From `startTime`; `COMPLETED` until `endTime + 24 h` |
-| DELETE | `/api/reservations/{id}` | OWNER | Hard delete |
-| GET | `/api/reservations/me` | CUSTOMER | Caller's reservations |
-| GET | `/api/reservations/employee?start&end` | OWNER, EMPLOYEE | Caller's schedule at the authenticated session's company |
-| GET | `/api/reservations?employeeId&start&end` | OWNER, EMPLOYEE | EMPLOYEE only for self |
+| POST | `/api/reservations` | CUSTOMER | Required Idempotency-Key; optional employee means atomic any-employee allocation; first local profile requires names; 201 or current replay 200 |
+| POST | `/api/reservations/staff` | OWNER, EMPLOYEE | Required Idempotency-Key; manual regular-price booking, explicit duration/price/block override and SMS opt-in |
+| PUT | `/api/reservations/{id}` | OWNER, EMPLOYEE | Direct edit, required If-Match; preserves ID/creation time/customer |
+| PATCH | `/api/reservations/{id}/cancel` | CUSTOMER | Required If-Match; own booking strictly before start; optional reason |
+| PATCH | `/api/reservations/{id}/cancel-by-staff` | OWNER, EMPLOYEE | Required If-Match and private reason; optional separate customer explanation |
+| PATCH | `/api/reservations/{id}/complete` | OWNER, EMPLOYEE | Required If-Match; from scheduled start; supports no-show correction |
+| PATCH | `/api/reservations/{id}/no-show` | OWNER, EMPLOYEE | Required If-Match; from start; employee deadline end +24 elapsed hours; owner unlimited |
+| PATCH | `/api/reservations/{id}/restore` | OWNER, EMPLOYEE | Required If-Match; cancelled future/ongoing or mistaken ongoing no-show; current hard rules |
+| PATCH | `/api/reservations/{id}/archive` | OWNER | Required If-Match; only CANCELLED; no permanent deletion |
+| PATCH | `/api/reservations/{id}/unarchive` | OWNER | Required If-Match; required before restoration |
+| GET | `/api/reservations/me` | CUSTOMER | Own unarchived history; no private staff reasons |
+| GET | `/api/reservations/employee?start&end` | OWNER, EMPLOYEE | Caller's company-local schedule |
+| GET | `/api/reservations?employeeId&start&end` | OWNER, EMPLOYEE | Either staff role may read a company employee calendar; foreign/nonexistent target 404 |
 
 ## Schedule blocks — `ScheduleBlockController`
 
@@ -127,7 +130,7 @@ See [reservations](../reservations.md).
 | PUT | `/api/customers/{id}/profile` | OWNER, EMPLOYEE | Updates local names and optional contact email |
 | GET | `/api/customers/{id}/visits` | OWNER, EMPLOYEE | Company-scoped visit history, existing relationship required |
 | PATCH | `/api/customers/{id}/block` | OWNER | |
-| PATCH | `/api/customers/{id}/unblock` | OWNER | Resets no-show count |
+| PATCH | `/api/customers/{id}/unblock` | OWNER | Preserves penalty history; clears manual/automatic block, never restores appointments |
 
 ## Users — `UserController`
 

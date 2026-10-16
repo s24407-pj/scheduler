@@ -741,15 +741,22 @@ class ReservationService(
         )
         val count = noShowCount(reservation.companyId, reservation.customerId)
         val threshold = companyRepository.findById(reservation.companyId).orElseThrow().maxNoShows
+        val today = LocalDate.ofInstant(clock.instant(), BUSINESS_ZONE)
+        val appointmentDate = reservation.startTime.toLocalDate()
+        val shouldBlock =
+            threshold > 0 &&
+                count >= threshold &&
+                !appointmentDate.isBefore(today.minusYears(1)) &&
+                !appointmentDate.isAfter(today)
         jdbc.update(
             "INSERT INTO company_customer_blocks(company_id,customer_id,no_show_count,blocked,automatic_blocked) VALUES(?,?,?,?,?) ON CONFLICT(company_id,customer_id) DO UPDATE SET no_show_count=EXCLUDED.no_show_count,automatic_blocked=company_customer_blocks.automatic_blocked OR EXCLUDED.automatic_blocked,blocked=company_customer_blocks.manual_blocked OR company_customer_blocks.automatic_blocked OR EXCLUDED.automatic_blocked",
             reservation.companyId,
             reservation.customerId,
             count,
-            threshold > 0 && count >= threshold,
-            threshold > 0 && count >= threshold,
+            shouldBlock,
+            shouldBlock,
         )
-        if (threshold > 0 && count >= threshold) cancelFutureForBlock(reservation.companyId, reservation.customerId)
+        if (shouldBlock) cancelFutureForBlock(reservation.companyId, reservation.customerId)
     }
 
     private fun removePenalty(reservation: Reservation) {

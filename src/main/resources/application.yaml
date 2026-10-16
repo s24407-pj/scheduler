@@ -34,7 +34,9 @@ spring:
     properties:
       hibernate:
         jdbc:
-          time_zone: Europe/Warsaw
+          time_zone: UTC
+        type:
+          java_time_use_direct_jdbc: true
 
   flyway:
     enabled: true

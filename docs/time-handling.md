@@ -6,11 +6,11 @@ Policy and rationale: [ADR-0003](./adr/0003-single-time-zone.md).
 
 - **One business time zone: `Europe/Warsaw`.** All salons are assumed to be in it. The constant is `BUSINESS_ZONE` in `config/TimeConfig.kt`.
 - **API date-times reject `Z` and every numeric offset**, both in JSON bodies and query parameters. Strict parsing never discards zone data. **API date-times have no offset** and mean Warsaw wall-clock time: ISO-8601 local format such as `2026-10-12T14:30:00`. Dates are `2026-10-12`. Responses also omit the offset.
-- **Storage:** `TIMESTAMP WITH TIME ZONE` columns; entities use `LocalDateTime`. Hibernate converts using `hibernate.jdbc.time_zone: Europe/Warsaw`, so stored instants are correct.
+- **Storage:** `TIMESTAMP WITH TIME ZONE` columns; entities use `LocalDateTime`. `BusinessDateTimeConverter` explicitly maps them to/from `OffsetDateTime` in Warsaw. This avoids relying on JVM/JDBC default-zone conversion.
 - **"Now"** comes from the injected `java.time.Clock` bean: `LocalDateTime.now(clock)`. Do not call `now()` without a clock or `ZoneId.of(...)` in business code.
-- **JVM default zone** is set to `BUSINESS_ZONE` in `SchedulerApplication.main`, and the Gradle test task sets `user.timezone=Europe/Warsaw`, so `@Future` validation behaves the same everywhere. Cron jobs declare `zone = BUSINESS_ZONE_ID`.
-- **Durations** are wall-clock: `endTime = startTime.plusMinutes(durationMinutes)`.
-- **Weekly schedules** use `DayOfWeek` and `LocalTime`; date-specific exceptions are schedule blocks.
+- **JVM default zone** is set to `BUSINESS_ZONE` in `SchedulerApplication.main`, while the entire Gradle test task uses `user.timezone=UTC` to verify business-zone independence. Booking temporal validation uses the injected clock after locks, rather than JVM-dependent `@Future`. Cron jobs declare `zone = BUSINESS_ZONE_ID`.
+- Appointment end is start plus agreed minutes; unique endpoints and transition-spanning rejection ensure actual elapsed duration agrees. Relative notice/discount/quote/correction deadlines use instants; horizon and annual penalties use Warsaw calendar dates.
+- **Weekly schedules** use `DayOfWeek` and `LocalTime`; date-specific replacement shifts/days off override the week. Employee blocks are separate intervals.
 
 ## Daylight saving
 
@@ -24,3 +24,5 @@ Policy and rationale: [ADR-0003](./adr/0003-single-time-zone.md).
 
 - Unit tests mock or fix the `Clock` (`Clock.fixed(instant, BUSINESS_ZONE)`) to make "now" deterministic. See `AvailabilityServiceTest` and `NotificationSchedulerTest`.
 - Integration tests use the real clock; compute times relative to `LocalDateTime.now(BUSINESS_ZONE)`.
+
+JSON/query timestamps support at most microsecond precision, matching PostgreSQL; finer values are rejected. All appointment endpoints reject gaps and overlaps, not merely missing DST times.

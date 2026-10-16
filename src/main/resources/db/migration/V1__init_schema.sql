@@ -668,3 +668,19 @@ ALTER TABLE ONLY public.staff_password_links
 
 ALTER TABLE ONLY public.employee_work_schedules
     ADD CONSTRAINT weekly_staff_membership FOREIGN KEY (company_id, employee_id) REFERENCES public.company_employees(company_id, user_id);
+
+-- OTP delivery is durable without creating an unverified customer identity or salon profile.
+CREATE TABLE public.otp_deliveries (
+    id uuid PRIMARY KEY,
+    phone_number varchar(20) NOT NULL,
+    code varchar(6),
+    state varchar(30) NOT NULL DEFAULT 'PENDING'
+        CHECK (state IN ('PENDING','SENDING','ACCEPTED','TEMPORARY_FAILURE','AMBIGUOUS','DISCARDED')),
+    attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    created_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL,
+    next_attempt_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL
+);
+CREATE INDEX otp_deliveries_due ON public.otp_deliveries(next_attempt_at)
+    WHERE state IN ('PENDING','TEMPORARY_FAILURE');

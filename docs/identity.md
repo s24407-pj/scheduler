@@ -16,4 +16,5 @@ Authenticated staff use `POST /api/staff/password` with `currentPassword` and `n
 
 Employee photo bytes are decoded and validated before upload. Each company writes its own photo reference. Existing objects are deleted only after commit and only when no other staff profile still references them, including legacy shared photos. Rollback compensates a newly uploaded object. Cleanup failures may leave an unreferenced object for operator cleanup; they cannot leave a committed database reference pointing to a deliberately deleted object.
 
-The legacy `users` table is retained as a migration archive and is never consulted by runtime authentication or profile reads. Migration copies a customer realm account only when a non-staff legacy identity or a booking establishes it. Legacy company/customer attachments without booking evidence are archived. Legacy staff login email is never copied as customer contact email. Independent company staff profiles initially receive the legacy presentation; subsequent changes are company-local.
+
+The consolidated pre-production V1 baseline creates only the independent current realms. It does not retain a legacy users table or infer staff/customer identity relationships from matching phone/email.

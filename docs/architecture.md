@@ -11,7 +11,7 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 ├── company/           # Company entity, settings, public booking profile, public employee list
 ├── config/            # Security, CORS, Redis + cache, R2 client, error handler, dev seed
 ├── employeeoffering/  # Which offerings an employee performs
-├── notification/      # SMS confirmation/cancellation/reminders, hourly scheduled jobs
+├── notification/      # SMS confirmation/cancellation/reminders, durable delivery and Warsaw reminder runs
 ├── offering/          # Offering catalog, categories, images (R2)
 ├── reservation/       # Booking lifecycle
 ├── scheduleblock/     # Employee time blocks (breaks, unavailability)
@@ -70,12 +70,12 @@ Staff login keeps the same error message for unknown email, SMS-only accounts an
 | OTP requests per client IP | `rate:otp-request:<ip>` | 10 per rolling 15 min | Fixed contract |
 | OTP failed attempts per code | stored with `otp:<phone>` | 3 | Fixed contract |
 | OTP verification per client IP | `rate:otp-verify:<ip>` | 10 per rolling 5 min | Fixed contract |
-| Global daily OTP SMS cap | `otp:global-daily` | Operator-defined, positive in prod | `OTP_GLOBAL_DAILY_SMS_CAP` |
+| Global daily SMS cap | `otp:global-daily` | Operator-defined, positive in prod | `OTP_GLOBAL_DAILY_SMS_CAP` |
 | Staff login per client IP | `rate:login:<ip>` | 10 per 1 min | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` |
 
 OTP codes contain exactly six digits and expire after five minutes. Lua scripts enforce limits using Redis server time, atomically issue replacements, preserve expiry after failures and consume a correct code only once. A replacement differs from the preceding code, invalidates it, and receives a new expiry and attempt allowance. The phone limit counts accepted issuances only; every issuance request, including cooldown denials, counts against the IP limit. IP verification requests count regardless of outcome. No browser bot challenge is required.
 
-The global daily cap uses UTC calendar days from Redis time and counts accepted issuances conservatively before dispatch. Failed or rolled-back dispatches do not refund capacity. Production refuses to start unless `OTP_GLOBAL_DAILY_SMS_CAP` is positive. Request limits and accepted-issuance accounting fail closed if Redis is unavailable. Development dispatch logs never include codes; inspect the local Redis `otp:<canonical-phone>` key for manual testing.
+The global daily cap uses UTC calendar days from Redis time and counts accepted OTP issuances and notification send reservations conservatively before dispatch. Failed or rolled-back dispatches do not refund capacity. Production refuses to start unless `OTP_GLOBAL_DAILY_SMS_CAP` is positive. Request limits and accepted-issuance accounting fail closed if Redis is unavailable. Development dispatch logs never include codes; inspect the local Redis `otp:<canonical-phone>` key for manual testing.
 
 Client IP is `request.remoteAddr`. With `server.forward-headers-strategy: native`, Tomcat replaces it with the `X-Forwarded-For` client only when the direct peer matches the `TRUSTED_PROXIES` regex; the default (empty) trusts no proxy, so a client-supplied header cannot bypass the limits. Behind a reverse proxy, set `TRUSTED_PROXIES` to the proxy's address, otherwise every client shares the proxy's limit. For Dokploy behind Cloudflare, see [deployment.md](./deployment.md#client-ip-for-rate-limiting). Exceeding a limit returns 429 with `Retry-After`.
 
@@ -84,22 +84,18 @@ Client IP is `request.remoteAddr`. With `server.forward-headers-strategy: native
 - Method security: `@PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")` or `hasRole('OWNER')`. Endpoints without `@PreAuthorize` require a valid authenticated session. Public paths are listed in `SecurityConfig` (see [endpoints](./api/endpoints.md)).
 - Customer booking/history/cancellation routes require `ROLE_CUSTOMER`; a staff session does not qualify as a customer session.
 - Actuator exposes only aggregate public `/actuator/health`; every other actuator route is denied to application principals.
-- Every staff operation is scoped to the session principal's `companyId`. Services verify that the target resource (reservation, offering, employee, block) belongs to that company. The status code for a mismatch is currently inconsistent; see [API errors](./api/errors.md).
+- Every staff operation is scoped to the session principal's `companyId`. Services verify that the target resource (reservation, offering, employee, block) belongs to that company. Foreign and nonexistent resource lookups return opaque 404.
 - Database-level isolation exists for schedule blocks: a composite foreign key `(company_id, employee_id)` → `company_employees (company_id, user_id)`.
 
 ## Customer blocking and no-shows
 
-Block state is **per company** in `company_customer_blocks` (`no_show_count`, `blocked`).
-
-- Marking a reservation `NO_SHOW` increments `no_show_count`. When it reaches `companies.max_no_shows` (and that is above 0), the customer is blocked at that company.
-- A blocked customer gets 400 when booking an offering of that company. The check is in `ReservationService.createReservation()`, so it also applies to staff bookings made for that customer.
-- Owners block and unblock manually with `PATCH /api/customers/{id}/block|unblock`. Unblocking resets `no_show_count` to 0.
+Blocks and durable no-show penalties are company-local. Manual and automatic provenance are separate. The inclusive rolling Warsaw calendar-year count ages without clearing an existing block. Correcting a mistaken counted no-show can remove its automatic block below threshold while preserving a manual block. Owner unblock preserves history and gives reprieve until another counted no-show. Threshold zero disables new automatic blocks; setting changes are not retroactive. Blocking cancels future BOOKED visits, preserves ongoing visits, and prevents both customer and staff future creation without affecting authentication. See [reservations](./reservations.md).
 
 ## Notifications and scheduled jobs
 
 - Customer booking sends no confirmation SMS/email. Staff create/edit/restore/cancel SMS is explicit opt-in, default off; actual edits invalidate obsolete pending messages even when opting out. Blocking produces a mandatory filtered summary.
 - Transactional events persist delivery intent **before commit**. Provider calls run **after commit** using durable state. `SENDING` is committed before each attempt; restart converts an unknown in-flight outcome to `AMBIGUOUS`, never blindly retried. Provider failure cannot roll back a booking.
-- Reminders run at 09:00 Warsaw on the previous calendar day, with a 09:05 deadline and uninterrupted in-memory run token. Durable audit excludes post-cutoff creations/date moves; unique reservation/date identity prevents same-date repeats. Missed reminder runs are not recovered after restart.
+- Reminders run at 09:00 Warsaw on the previous calendar day, with a 09:05 deadline and uninterrupted in-memory run token. Durable audit excludes post-cutoff creations/start-time moves; unique reservation/date identity prevents same-date repeats. Missed reminder runs are not recovered after restart.
 - Reservation completion has a separate audited job that catches up after restart. Jobs assume one instance ([ADR-0007](./adr/0007-single-instance-deployment.md)).
 - See [complete delivery rules](./notifications.md) and [ADR-0015](./adr/0015-durable-notification-delivery.md). A sent boolean does not establish crash-safe delivery. Production requires a real SMS adapter; the development console adapter is disabled in prod.
 
@@ -122,17 +118,20 @@ PostgreSQL, schema managed by Flyway (`src/main/resources/db/migration/`). `V1__
 | ----- | ------- |
 | `companies` | Salons; settings: hours, `slot_interval_minutes`, `max_no_shows`, `last_minute_discount_percent`, `last_minute_discount_hours`, `min_booking_advance_minutes` |
 | `customer_accounts` | Global phone-only customer authentication identity |
-| `users` | Legacy migration archive; never consulted by runtime identity/profile reads |
 | `company_employees` | Company-owned staff credentials, local presentation/photo, role, enabled state, eligibility and auth version; booking lock target |
 | `staff_password_links` | One-use hash-only setup/recovery token per staff account, 24h expiry |
 | `company_customers` | Company-local names, optional contact email and staff-only notes |
-| `company_customer_blocks` | Per-company no-show count and block flag |
+| `company_customer_blocks`, `no_show_penalties` | Manual/automatic block provenance and durable rolling-year penalty events |
 | `offerings`, `offering_categories`, `offering_images` | Catalog |
 | `employee_offerings` | Which offerings an employee performs |
-| `employee_work_schedules` | Weekly hours per (company, employee) and day of week |
+| `employee_work_schedules`, `employee_schedule_overrides` | Weekly shift plus date replacements/days off |
 | `schedule_blocks` | Employee unavailability; GiST exclusion constraint against overlaps |
-| `reservations` | Bookings with price snapshot, `version`, `reminder_sent`; GiST exclusion constraint against overlapping active bookings |
+| `reservations`, `reservation_audit`, `reservation_commands` | Accepted commercial snapshots, revisions, durable mutation history and stale-command protection; employee/customer GiST exclusions |
+| `booking_submissions`, `booking_quotes` | Permanent account-scoped request identity and expiring commercial guarantees |
+| `notification_deliveries`, `notification_delivery_reservations` | Durable SMS attempts, provider uncertainty, retry deadlines and summary membership |
 
 ## Strict request input
 
 Jackson rejects unknown JSON properties and fractional values for every integral property, including identifiers, PLN prices and durations. Date-time JSON/query input uses strict ISO local parsing. Failures return Problem Details (`MALFORMED_REQUEST` for JSON, `INVALID_PARAMETER` for query/path conversion).
+
+The baseline was consolidated with explicit pre-production authorization on 2026-10-15. Existing developer databases must be recreated before using this baseline; the application never resets a database automatically. No legacy global user/profile table is part of the new schema.

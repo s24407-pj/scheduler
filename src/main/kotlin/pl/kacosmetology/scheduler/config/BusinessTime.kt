@@ -13,8 +13,8 @@ fun validateBusinessInterval(start: LocalDateTime, end: LocalDateTime) {
     }
     val startInstant = start.toInstant(startOffsets.single())
     val endInstant = end.toInstant(endOffsets.single())
-    val transition = rules.nextTransition(startInstant.minusNanos(1))
-    if (transition != null && !transition.instant.isBefore(startInstant) && !transition.instant.isAfter(endInstant)) {
+    val transition = rules.nextTransition(startInstant)
+    if (transition != null && transition.instant.isAfter(startInstant) && !transition.instant.isAfter(endInstant)) {
         throw ApiException(ErrorCode.INVALID_LOCAL_TIME, "Wizyta nie może obejmować zmiany czasu")
     }
 }

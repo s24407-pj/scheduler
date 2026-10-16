@@ -1,6 +1,6 @@
 # ADR-0010: Cancellation window and no-show correction
 
-**Status:** Accepted — implemented. Supersedes the customer cancellation cutoff and the no-show rule of [ADR-0002](./0002-reservation-lifecycle-and-cancellation.md).
+**Status:** Superseded by [ADR-0016](./0016-reservation-contract-and-durable-submissions.md). Historical context below; current behavior is in [reservations](../reservations.md).
 
 ## Context
 

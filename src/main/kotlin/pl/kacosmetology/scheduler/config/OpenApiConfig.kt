@@ -13,13 +13,27 @@ import io.swagger.v3.oas.models.media.StringSchema
 import io.swagger.v3.oas.models.responses.ApiResponse
 import io.swagger.v3.oas.models.security.SecurityRequirement
 import io.swagger.v3.oas.models.security.SecurityScheme
+import java.time.LocalDateTime
 import org.springdoc.core.customizers.OpenApiCustomizer
+import org.springdoc.core.utils.SpringDocUtils
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 /** OpenAPI metadata for springdoc. The spec and Swagger UI are enabled only in the `dev` profile. */
 @Configuration
 class OpenApiConfig {
+    init {
+        SpringDocUtils.getConfig()
+            .replaceWithSchema(
+                LocalDateTime::class.java,
+                StringSchema()
+                    .format("local-date-time")
+                    .pattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,6})?)?$")
+                    .description(
+                        "Europe/Warsaw local date-time without Z or offset; unique DST endpoints, at most microsecond precision",
+                    ),
+            )
+    }
 
     /** API info and the session cookie scheme, so Swagger UI can send authenticated requests. */
     @Bean

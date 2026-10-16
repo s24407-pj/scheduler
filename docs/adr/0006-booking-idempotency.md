@@ -1,6 +1,6 @@
 # ADR-0006: Booking idempotency
 
-**Status:** Accepted — implemented
+**Status:** Superseded by [ADR-0016](./0016-reservation-contract-and-durable-submissions.md). Historical context below; current behavior is in [reservations](../reservations.md).
 
 ## Context
 

@@ -84,7 +84,7 @@ class CustomerController(
         @AuthenticationPrincipal principal: CustomUserDetails,
     ) = customerService.updateProfile(id, principal.requireCompanyId(), request)
 
-    /** Unblocks a customer and resets their no-show counter. Requires OWNER role. */
+    /** Unblocks a customer without resetting durable no-show history. Requires OWNER role. */
     @PatchMapping("/{id}/unblock")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('OWNER')")
