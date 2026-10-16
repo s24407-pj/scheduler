@@ -1,319 +1,293 @@
 package pl.kacosmetology.scheduler.reservation
 
-import com.ninjasquad.springmockk.MockkBean
-import jakarta.servlet.http.Cookie
-import java.time.LocalDateTime
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-import org.springframework.context.annotation.Import
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
-import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.patch
-import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import pl.kacosmetology.scheduler.company.Company
-import pl.kacosmetology.scheduler.company.CompanyEmployee
-import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
-import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
-import pl.kacosmetology.scheduler.offering.Offering
-import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.security.TestSessions
-import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
-import software.amazon.awssdk.services.s3.S3Client
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 
-@SpringBootTest
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration::class)
-class ReservationNoShowIntegrationTest {
+/** No-show events use Warsaw appointment dates and independent manual/automatic block provenance. */
+class ReservationNoShowIntegrationTest : ReservationContractTestSupport() {
+    private fun customerStatus() =
+        mvc.perform(get("/api/customers/${salon.customer}").cookie(staffCookie())).andReturn()
 
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var testSessions: TestSessions
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var serviceRepository: OfferingRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
-    @Autowired private lateinit var companyCustomerBlockRepository: CompanyCustomerBlockRepository
+    private fun ownerBlock(operation: String) =
+        mvc.perform(patch("/api/customers/${salon.customer}/$operation").cookie(staffCookie()).with(csrf())).andReturn()
 
-    @MockkBean private lateinit var s3Client: S3Client
+    private fun flag(id: Long, column: String) =
+        jdbc.queryForObject(
+            "SELECT $column FROM company_customer_blocks WHERE company_id=? AND customer_id=?",
+            Boolean::class.java,
+            salon.company,
+            id,
+        )!!
 
-    private lateinit var employee: User
-    private lateinit var customer: User
-    private var companyId: Long = 0
-    private lateinit var employeeSession: Cookie
-    private lateinit var customerSession: Cookie
-
-    @BeforeEach
-    fun setup() {
-        reservationRepository.deleteAll()
-        companyCustomerBlockRepository.deleteAll()
-        serviceRepository.deleteAll()
-        companyEmployeeRepository.deleteAll()
-        userRepository.deleteAll()
-        companyRepository.deleteAll()
-
-        val company = companyRepository.save(Company(name = "Test Salon", maxNoShows = 3))
-        companyId = company.id!!
-
-        employee =
-            userRepository.save(User(phoneNumber = "+48700111001", firstName = "Pracownik", lastName = "Testowy"))
-        val employment =
-            companyEmployeeRepository.save(
-                CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
-            )
-
-        customer = userRepository.save(User(phoneNumber = "+48600222001", firstName = "Klient", lastName = "Testowy"))
-
-        employeeSession = testSessions.staff(employee, employment)
-        customerSession = testSessions.customer(customer)
+    @Test
+    fun `employee no show deadline and correction are inclusive at 24 elapsed hours owner remains unlimited`() {
+        val employee = newEmployee()
+        val cookie = staffCookie(employee.second)
+        val id = reservation(localNow.minusHours(24).minusMinutes(30), "COMPLETED")
+        assertEquals(204, action(id, "no-show", cookie = cookie).response.status)
+        assertEquals(204, action(id, "complete", cookie = cookie).response.status)
+        setNow(initialNow.plusNanos(1))
+        assertEquals(409, action(id, "no-show", cookie = cookie).response.status)
+        assertEquals(204, action(id, "no-show").response.status)
+        assertEquals(409, action(id, "complete", cookie = cookie).response.status)
+        assertEquals(204, action(id, "complete").response.status)
     }
 
-    private fun saveReservation(
-        status: ReservationStatus = ReservationStatus.BOOKED,
-        startTime: LocalDateTime = LocalDateTime.now(BUSINESS_ZONE).minusHours(2),
-    ): Reservation {
-        val service =
-            serviceRepository.save(
-                Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 50),
-            )
-        return reservationRepository.save(
-            Reservation(
-                companyId = companyId,
-                customerId = customer.id!!,
-                employeeId = employee.id!!,
-                serviceId = service.id!!,
-                price = 50,
-                startTime = startTime,
-                endTime = startTime.plusMinutes(30),
-                status = status,
-            ),
+    @Test
+    fun `no show begins at scheduled start and customer or foreign staff cannot act`() {
+        val id = reservation()
+        assertEquals(409, action(id, "no-show").response.status)
+        assertEquals(403, action(id, "no-show", cookie = customerCookie()).response.status)
+        val foreign = fixtures.salon()
+        assertEquals(404, action(id, "no-show", cookie = staffCookie(foreign.staff)).response.status)
+        setLocalNow(future)
+        assertEquals(204, action(id, "no-show").response.status)
+    }
+
+    @Test
+    fun `completed original occupied interval stays protected against overlapping manual booking`() {
+        val id = reservation(localNow.minusMinutes(5))
+        assertEquals(204, action(id, "complete").response.status)
+        assertEquals(409, manual(manualBody(localNow)).response.status)
+        assertEquals(409, edit(id, mapOf("durationMinutes" to 1)).response.status)
+        assertEquals(
+            30,
+            jdbc.queryForObject("SELECT agreed_duration_minutes FROM reservations WHERE id=?", Int::class.java, id),
         )
     }
 
     @Test
-    fun `PATCH no-show as employee should return 204 and mark reservation`() {
-        val reservation = saveReservation()
-
-        mockMvc
-            .patch("/api/reservations/${reservation.id!!}/no-show") {
-                with(csrf())
-                cookie(employeeSession)
-            }
-            .andExpect {
-                status { isNoContent() }
-            }
-
-        val updated = reservationRepository.findById(reservation.id!!).get()
-        assertEquals(ReservationStatus.NO_SHOW, updated.status)
-
-        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!)!!
-        assertEquals(1, block.noShowCount)
+    fun `repeated no show is side effect free and old action conflicts after correction`() {
+        val id = reservation(localNow.minusMinutes(5))
+        assertEquals(204, action(id, "no-show", 0).response.status)
+        val audits = count("reservation_audit")
+        assertEquals(204, action(id, "no-show", 0).response.status)
+        assertEquals(1L, count("no_show_penalties"))
+        assertEquals(audits, count("reservation_audit"))
+        assertEquals(204, action(id, "complete").response.status)
+        assertEquals(409, action(id, "no-show", 0).response.status)
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM no_show_penalties WHERE active", Int::class.java))
     }
 
     @Test
-    fun `PATCH no-show as customer should return 403`() {
-        val reservation = saveReservation()
-
-        mockMvc
-            .patch("/api/reservations/${reservation.id!!}/no-show") {
-                with(csrf())
-                cookie(customerSession)
-            }
-            .andExpect {
-                status { isForbidden() }
-            }
+    fun `correcting counted no show removes automatic block below threshold`() {
+        jdbc.update("UPDATE companies SET max_no_shows=1 WHERE id=?", salon.company)
+        val id = reservation(localNow.minusHours(1))
+        assertEquals(204, action(id, "no-show").response.status)
+        assertTrue(flag(salon.customer, "automatic_blocked"))
+        assertTrue(flag(salon.customer, "blocked"))
+        assertEquals(204, action(id, "complete").response.status)
+        assertFalse(flag(salon.customer, "automatic_blocked"))
+        assertFalse(flag(salon.customer, "blocked"))
+        assertEquals(0, tree(customerStatus())["noShowCount"].intValue())
     }
 
     @Test
-    fun `PATCH no-show on reservation completed more than 24 hours ago should return 409`() {
-        val reservation = saveReservation(ReservationStatus.COMPLETED, LocalDateTime.now(BUSINESS_ZONE).minusHours(25))
-
-        mockMvc
-            .patch("/api/reservations/${reservation.id!!}/no-show") {
-                with(csrf())
-                cookie(employeeSession)
-            }
-            .andExpect {
-                status { isConflict() }
-                jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
-            }
-
-        assertEquals(ReservationStatus.COMPLETED, reservationRepository.findById(reservation.id!!).get().status)
+    fun `correcting no show never removes manual block or affects customer authentication`() {
+        jdbc.update("UPDATE companies SET max_no_shows=1 WHERE id=?", salon.company)
+        val id = reservation(localNow.minusHours(1))
+        assertEquals(204, action(id, "no-show").response.status)
+        assertEquals(204, ownerBlock("block").response.status)
+        assertEquals(204, action(id, "cancel-by-staff", body = mapOf("reason" to "Błędna nieobecność")).response.status)
+        assertTrue(flag(salon.customer, "manual_blocked"))
+        assertTrue(flag(salon.customer, "blocked"))
+        assertEquals(200, mvc.perform(get("/api/auth/me").cookie(customerCookie())).andReturn().response.status)
+        assertEquals(0, tree(customerStatus())["noShowCount"].intValue())
     }
 
     @Test
-    fun `PATCH no-show should correct a reservation completed within the last 24 hours`() {
-        val reservation = saveReservation(ReservationStatus.COMPLETED)
-
-        mockMvc
-            .patch("/api/reservations/${reservation.id!!}/no-show") {
-                with(csrf())
-                cookie(employeeSession)
-            }
-            .andExpect {
-                status { isNoContent() }
-            }
-
-        assertEquals(ReservationStatus.NO_SHOW, reservationRepository.findById(reservation.id!!).get().status)
-        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!)!!
-        assertEquals(1, block.noShowCount)
+    fun `owner unblock preserves count and next counted no show blocks again`() {
+        jdbc.update("UPDATE companies SET max_no_shows=1 WHERE id=?", salon.company)
+        val first = reservation(localNow.minusHours(3))
+        assertEquals(204, action(first, "no-show").response.status)
+        assertEquals(204, ownerBlock("unblock").response.status)
+        assertFalse(flag(salon.customer, "blocked"))
+        assertEquals(1, tree(customerStatus())["noShowCount"].intValue())
+        val next = reservation(localNow.minusHours(1))
+        assertEquals(204, action(next, "no-show").response.status)
+        assertTrue(flag(salon.customer, "blocked"))
+        assertEquals(2, tree(customerStatus())["noShowCount"].intValue())
     }
 
     @Test
-    fun `PATCH no-show before the visit starts should return 409`() {
-        val reservation = saveReservation(startTime = LocalDateTime.now(BUSINESS_ZONE).plusHours(1))
-
-        mockMvc
-            .patch("/api/reservations/${reservation.id!!}/no-show") {
-                with(csrf())
-                cookie(employeeSession)
-            }
-            .andExpect {
-                status { isConflict() }
-                jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
-            }
-
-        assertEquals(ReservationStatus.BOOKED, reservationRepository.findById(reservation.id!!).get().status)
-        assertEquals(null, companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!))
+    fun `rolling calendar year includes anniversary date and excludes preceding date`() {
+        val boundary = reservation(localNow.minusYears(1).withHour(9))
+        val outside = reservation(localNow.minusYears(1).minusDays(1).withHour(9))
+        assertEquals(204, action(boundary, "no-show").response.status)
+        assertEquals(204, action(outside, "no-show").response.status)
+        assertEquals(2L, count("no_show_penalties"))
+        assertEquals(1, tree(customerStatus())["noShowCount"].intValue())
     }
 
     @Test
-    fun `PATCH no-show on cancelled reservation should return 409`() {
-        val reservation = saveReservation(ReservationStatus.CANCELLED)
-
-        mockMvc
-            .patch("/api/reservations/${reservation.id!!}/no-show") {
-                with(csrf())
-                cookie(employeeSession)
-            }
-            .andExpect {
-                status { isConflict() }
-            }
+    fun `aging out decreases current count but never automatically clears persisted block`() {
+        jdbc.update("UPDATE companies SET max_no_shows=1 WHERE id=?", salon.company)
+        val boundary = reservation(localNow.minusYears(1).withHour(9))
+        assertEquals(204, action(boundary, "no-show").response.status)
+        assertTrue(flag(salon.customer, "blocked"))
+        setLocalNow(localNow.plusDays(1))
+        val status = tree(customerStatus())
+        assertEquals(0, status["noShowCount"].intValue())
+        assertTrue(status["blocked"].booleanValue())
     }
 
     @Test
-    fun `PATCH no-show by staff from different company should return 404`() {
-        val reservation = saveReservation()
-
-        // Staff from a different company
-        val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
-        val otherOwner = userRepository.save(User(phoneNumber = "+48900000099", firstName = "Obcy", lastName = "Owner"))
-        val otherEmployment =
-            companyEmployeeRepository.save(
-                CompanyEmployee(
-                    companyId = otherCompany.id!!,
-                    userId = otherOwner.id!!,
-                    role = "OWNER",
-                ),
-            )
-        val otherSession = testSessions.staff(otherOwner, otherEmployment)
-
-        mockMvc
-            .patch("/api/reservations/${reservation.id!!}/no-show") {
-                with(csrf())
-                cookie(otherSession)
-            }
-            .andExpect {
-                status { isNotFound() }
-            }
-
-        // Reservation status must be unchanged
-        val unchanged = reservationRepository.findById(reservation.id!!).get()
-        assertEquals(ReservationStatus.BOOKED, unchanged.status)
+    fun `zero threshold disables automatic blocking and changes never retroactively alter blocks`() {
+        jdbc.update("UPDATE companies SET max_no_shows=0 WHERE id=?", salon.company)
+        val id = reservation(localNow.minusHours(3))
+        assertEquals(204, action(id, "no-show").response.status)
+        assertFalse(flag(salon.customer, "blocked"))
+        jdbc.update("UPDATE companies SET max_no_shows=1 WHERE id=?", salon.company)
+        assertFalse(tree(customerStatus())["blocked"].booleanValue())
+        val next = reservation(localNow.minusHours(1))
+        assertEquals(204, action(next, "no-show").response.status)
+        assertTrue(flag(salon.customer, "blocked"))
+        jdbc.update("UPDATE companies SET max_no_shows=0 WHERE id=?", salon.company)
+        assertTrue(tree(customerStatus())["blocked"].booleanValue())
     }
 
     @Test
-    fun `PATCH complete by staff from different company should return 404`() {
-        val reservation = saveReservation()
-
-        val otherCompany = companyRepository.save(Company(name = "Inny Salon B"))
-        val otherOwner =
-            userRepository.save(User(phoneNumber = "+48900000098", firstName = "Obcy2", lastName = "Owner2"))
-        val otherEmployment =
-            companyEmployeeRepository.save(
-                CompanyEmployee(
-                    companyId = otherCompany.id!!,
-                    userId = otherOwner.id!!,
-                    role = "OWNER",
-                ),
-            )
-        val otherSession = testSessions.staff(otherOwner, otherEmployment)
-
-        mockMvc
-            .patch("/api/reservations/${reservation.id!!}/complete") {
-                with(csrf())
-                cookie(otherSession)
-            }
-            .andExpect {
-                status { isNotFound() }
-            }
-
-        val unchanged = reservationRepository.findById(reservation.id!!).get()
-        assertEquals(ReservationStatus.BOOKED, unchanged.status)
+    fun `block cancels only future booked visits preserves ongoing and is independent of other salon`() {
+        val ongoing = reservation(localNow.minusMinutes(5))
+        val futureId = reservation()
+        val other = fixtures.salon()
+        val independent = fixtures.reservation(other, future, customer = salon.customer)
+        assertEquals(204, ownerBlock("block").response.status)
+        assertEquals("BOOKED", state(ongoing))
+        assertEquals("CANCELLED", state(futureId))
+        assertEquals("BOOKED", state(independent))
+        assertEquals(409, manual(manualBody(future.plusHours(1))).response.status)
+        assertEquals(200, edit(ongoing, mapOf("price" to 88)).response.status)
+        assertEquals(409, edit(ongoing, mapOf("startTime" to future.plusHours(2).toString())).response.status)
+        assertEquals(204, ownerBlock("unblock").response.status)
+        assertEquals("CANCELLED", state(futureId))
     }
 
     @Test
-    fun `PATCH no-show three times should auto-block the customer`() {
-        repeat(3) {
-            val r = saveReservation()
-            mockMvc
-                .patch("/api/reservations/${r.id!!}/no-show") {
-                    with(csrf())
-                    cookie(employeeSession)
-                }
-                .andExpect { status { isNoContent() } }
-        }
-
-        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!)!!
-        assertEquals(3, block.noShowCount)
-        assertTrue(block.blocked)
+    fun `ongoing no show reopen applies current hard conflicts and removes penalty only on success`() {
+        shift()
+        val id = reservation(localNow)
+        assertEquals(204, action(id, "no-show").response.status)
+        val replacement = reservation(localNow, customer = newCustomer())
+        assertEquals(409, action(id, "restore").response.status)
+        assertEquals("NO_SHOW", state(id))
+        assertEquals("BOOKED", state(replacement))
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM no_show_penalties WHERE active", Int::class.java))
+        assertEquals(
+            204,
+            action(replacement, "cancel-by-staff", body = mapOf("reason" to "Korekta terminu")).response.status,
+        )
+        assertEquals(204, action(id, "restore").response.status)
+        assertEquals("BOOKED", state(id))
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM no_show_penalties WHERE active", Int::class.java))
     }
 
     @Test
-    fun `concurrent PATCH no-show requests should preserve every increment and auto-block`() {
-        val requestCount = 8
-        val firstStart = LocalDateTime.now(BUSINESS_ZONE).minusDays(1)
-        val reservations =
-            List(requestCount) { index ->
-                saveReservation(startTime = firstStart.plusMinutes(index * 30L))
-            }
-        val ready = CountDownLatch(requestCount)
-        val start = CountDownLatch(1)
-        val executor = Executors.newFixedThreadPool(requestCount)
+    fun `elapsed employee deadline across autumn DST is not a wall clock day`() {
+        val employee = newEmployee()
+        val cookie = staffCookie(employee.second)
+        val start = java.time.LocalDateTime.parse("2030-10-26T12:00:00")
+        val id = reservation(start, "COMPLETED")
+        setLocalNow(java.time.LocalDateTime.parse("2030-10-27T11:30:00"))
+        assertEquals(204, action(id, "no-show", cookie = cookie).response.status)
+        setLocalNow(java.time.LocalDateTime.parse("2030-10-27T12:00:00"))
+        assertEquals(409, action(id, "complete", cookie = cookie).response.status)
+        assertEquals(204, action(id, "complete").response.status)
+    }
 
+    @Test
+    fun `no show to completed correction checks both replacement bookings and current blocks`() {
+        val id = reservation(localNow)
+        assertEquals(204, action(id, "no-show").response.status)
+        val replacement = reservation(localNow, customer = newCustomer())
+        assertEquals(409, action(id, "complete").response.status)
+        assertEquals(204, action(replacement, "cancel-by-staff", body = mapOf("reason" to "Korekta")).response.status)
+        block(start = localNow, end = localNow.plusMinutes(30))
+        assertEquals(409, action(id, "complete").response.status)
+        assertEquals("NO_SHOW", state(id))
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM no_show_penalties WHERE active", Int::class.java))
+    }
+
+    @Test
+    fun `recount after corrected and moved visit uses new appointment date`() {
+        shift()
+        shift(date = future.plusDays(1))
+        val id = reservation()
+        setLocalNow(future)
+        assertEquals(204, action(id, "no-show").response.status)
+        assertEquals(204, action(id, "restore").response.status)
+        assertEquals(200, edit(id, mapOf("startTime" to future.plusDays(1).toString())).response.status)
+        setLocalNow(future.plusDays(1))
+        assertEquals(204, action(id, "no-show").response.status)
+        assertEquals(
+            future.plusDays(1).toLocalDate(),
+            jdbc.queryForObject(
+                "SELECT appointment_date FROM no_show_penalties WHERE reservation_id=?",
+                java.time.LocalDate::class.java,
+                id,
+            ),
+        )
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM no_show_penalties WHERE active", Int::class.java))
+    }
+
+    @Test
+    fun `uncounted ancient no show cannot revoke owner reprieve`() {
+        jdbc.update("UPDATE companies SET max_no_shows=1 WHERE id=?", salon.company)
+        val counted = reservation(localNow.minusHours(3))
+        assertEquals(204, action(counted, "no-show").response.status)
+        assertEquals(204, ownerBlock("unblock").response.status)
+        val ancient = reservation(localNow.minusYears(2), "COMPLETED")
+        assertEquals(204, action(ancient, "no-show").response.status)
+        assertFalse(flag(salon.customer, "blocked"))
+        assertEquals(1, tree(customerStatus())["noShowCount"].intValue())
+        val next = reservation(localNow.minusHours(1))
+        assertEquals(204, action(next, "no-show").response.status)
+        assertTrue(flag(salon.customer, "blocked"))
+    }
+
+    @Test
+    fun `employees cannot manually block or unblock customers`() {
+        profile()
+        val employee = newEmployee()
+        for (operation in listOf("block", "unblock")) assertEquals(
+            403,
+            mvc.perform(
+                    patch("/api/customers/${salon.customer}/$operation")
+                        .cookie(staffCookie(employee.second))
+                        .with(csrf()),
+                )
+                .andReturn()
+                .response
+                .status,
+        )
+    }
+
+    @Test
+    fun `simultaneous outcome changes preserve all penalties and automatic threshold blocking`() {
+        val ids = (1..3).map { reservation(localNow.minusHours(it.toLong())) }
+        val cookie = staffCookie()
+        val pool = Executors.newFixedThreadPool(3)
+        val go = CountDownLatch(1)
         try {
-            val requests = reservations.map { reservation ->
-                executor.submit {
-                    ready.countDown()
-                    start.await()
-                    mockMvc
-                        .patch("/api/reservations/${reservation.id!!}/no-show") {
-                            with(csrf())
-                            cookie(employeeSession)
-                        }
-                        .andExpect { status { isNoContent() } }
+            val results = ids.map { id ->
+                pool.submit<Int> {
+                    check(go.await(10, TimeUnit.SECONDS))
+                    action(id, "no-show", 0, cookie = cookie).response.status
                 }
             }
-
-            assertTrue(ready.await(10, TimeUnit.SECONDS))
-            start.countDown()
-            requests.forEach { it.get(20, TimeUnit.SECONDS) }
+            go.countDown()
+            assertEquals(listOf(204, 204, 204), results.map { it.get(20, TimeUnit.SECONDS) })
+            assertEquals(3L, count("no_show_penalties"))
+            assertEquals(3, tree(customerStatus())["noShowCount"].intValue())
+            assertTrue(flag(salon.customer, "blocked"))
         } finally {
-            executor.shutdownNow()
+            go.countDown()
+            pool.shutdownNow()
         }
-
-        val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customer.id!!)!!
-        assertEquals(requestCount, block.noShowCount)
-        assertTrue(block.blocked)
     }
 }

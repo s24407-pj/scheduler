@@ -1,411 +1,236 @@
 package pl.kacosmetology.scheduler.reservation
 
-import com.ninjasquad.springmockk.MockkBean
-import jakarta.servlet.http.Cookie
-import java.time.LocalDateTime
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-import org.springframework.context.annotation.Import
-import org.springframework.http.MediaType
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
-import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.patch
-import org.springframework.test.web.servlet.post
-import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import pl.kacosmetology.scheduler.company.Company
-import pl.kacosmetology.scheduler.company.CompanyEmployee
-import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
-import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
-import pl.kacosmetology.scheduler.offering.Offering
-import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
-import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
-import pl.kacosmetology.scheduler.security.TestSessions
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
-import software.amazon.awssdk.services.s3.S3Client
-import tools.jackson.databind.ObjectMapper
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 
-@SpringBootTest
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration::class)
-class ReservationStaffIntegrationTest {
+/** Manual booking, editing and lifecycle writes preserve history and require explicit revisions. */
+class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
+    @Test
+    fun `manual booking bypasses grid schedules notice horizon and discounts at regular price`() {
+        jdbc.update(
+            "UPDATE companies SET min_booking_advance_minutes=1440,max_booking_advance_days=1,last_minute_discount_percent=50,last_minute_discount_hours=24 WHERE id=?",
+            salon.company,
+        )
+        val created = manual(manualBody(localNow.minusMinutes(5)))
+        assertEquals(201, created.response.status, created.response.contentAsString)
+        assertEquals(101, tree(created)["price"].intValue())
+        assertEquals("BOOKED", tree(created)["status"].stringValue())
+        assertEquals(0L, count("notification_deliveries"))
+        val far = manual(manualBody(future.plusDays(120)))
+        assertEquals(201, far.response.status, far.response.contentAsString)
+    }
 
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var objectMapper: ObjectMapper
-    @Autowired private lateinit var testSessions: TestSessions
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var serviceRepository: OfferingRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
-    @Autowired private lateinit var scheduleBlockRepository: ScheduleBlockRepository
+    @Test
+    fun `both staff roles may book with explicit price and duration overrides`() {
+        val employee = newEmployee()
+        val created =
+            manual(manualBody() + mapOf("price" to 77, "durationMinutes" to 45), cookie = staffCookie(employee.second))
+        assertEquals(201, created.response.status, created.response.contentAsString)
+        assertEquals(77, tree(created)["price"].intValue())
+        assertEquals(45, tree(created)["durationMinutes"].intValue())
+    }
 
-    @MockkBean private lateinit var s3Client: S3Client
+    @Test
+    fun `manual first visit creates only phone account and company profile atomically`() {
+        val created = manual(manualBody(phone = "+48500100200"))
+        assertEquals(201, created.response.status, created.response.contentAsString)
+        assertEquals(2L, count("customer_accounts"))
+        assertEquals(1L, count("company_customers"))
+        assertEquals(
+            400,
+            manual(manualBody(future.plusHours(1), phone = "+48500100201") - "customerFirstName").response.status,
+        )
+        assertEquals(2L, count("customer_accounts"))
+        assertEquals(1L, count("company_customers"))
+    }
 
-    private lateinit var employee: User
-    private var companyId: Long = 0
-    private var serviceId: Long = 0
-    private lateinit var staffSession: Cookie
-    private val reservationTime: LocalDateTime =
-        LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
+    @Test
+    fun `manual posting requires idempotency key and same key replays current row`() {
+        val body = manualBody()
+        val key = "manual-replay"
+        assertEquals(400, postJson("/api/reservations/staff", body, staffCookie()).response.status)
+        val first = manual(body, key)
+        assertEquals(201, first.response.status)
+        assertEquals(200, manual(body, key).response.status)
+        assertEquals(409, manual(body + mapOf("price" to 12), key).response.status)
+        assertEquals(1L, count("reservations"))
+    }
 
-    @BeforeEach
-    fun setup() {
-        reservationRepository.deleteAll()
-        scheduleBlockRepository.deleteAll()
-        serviceRepository.deleteAll()
-        companyEmployeeRepository.deleteAll()
-        userRepository.deleteAll()
-        companyRepository.deleteAll()
+    @Test
+    fun `foreign service or employee remains opaque and inactive service is rejected`() {
+        val other = fixtures.salon()
+        assertEquals(404, manual(manualBody(service = other.service)).response.status)
+        assertEquals(404, manual(manualBody(employee = other.employee)).response.status)
+        jdbc.update("UPDATE offerings SET active=false WHERE id=?", salon.service)
+        assertEquals(409, manual().response.status)
+    }
 
-        val company = companyRepository.save(Company(name = "Salon Integracyjny"))
-        companyId = company.id!!
+    @Test
+    fun `only owner may explicitly override an employee block and block stays stored`() {
+        block()
+        assertEquals(409, manual().response.status)
+        val employee = newEmployee()
+        assertEquals(
+            403,
+            manual(manualBody() + mapOf("overrideEmployeeBlock" to true), cookie = staffCookie(employee.second))
+                .response
+                .status,
+        )
+        assertEquals(201, manual(manualBody() + mapOf("overrideEmployeeBlock" to true)).response.status)
+        assertEquals(1L, count("schedule_blocks"))
+    }
 
-        employee = userRepository.save(User(phoneNumber = "+48700111222", firstName = "Styl", lastName = "Pracownik"))
-        val employment =
-            companyEmployeeRepository.save(
-                CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
-            )
+    @Test
+    fun `manual booking keeps hard employee and company customer conflicts`() {
+        reservation()
+        assertEquals(409, manual().response.status)
+        val other = newEmployee().first
+        assertEquals(409, manual(manualBody(employee = other)).response.status)
+        assertEquals(1L, count("reservations"))
+    }
 
+    @Test
+    fun `manual staff booking is exempt from customer created cap`() {
+        jdbc.update("UPDATE companies SET max_future_customer_bookings=1 WHERE id=?", salon.company)
+        reservation()
+        assertEquals(201, manual(manualBody(future.plusHours(1))).response.status)
+    }
+
+    @Test
+    fun `staff cancellation requires private reason and customer explanation is separate`() {
+        val id = reservation()
+        assertEquals(400, action(id, "cancel-by-staff").response.status)
+        assertEquals(
+            204,
+            action(
+                    id,
+                    "cancel-by-staff",
+                    body = mapOf("reason" to "Wewnętrzny powód", "customerExplanation" to "Przepraszamy"),
+                )
+                .response
+                .status,
+        )
+        val customer = mvc.perform(get("/api/reservations/me").cookie(customerCookie())).andReturn()
+        assertFalse(customer.response.contentAsString.contains("Wewnętrzny powód"))
+        assertEquals(
+            "Wewnętrzny powód",
+            jdbc.queryForObject(
+                "SELECT internal_cancellation_reason FROM reservations WHERE id=?",
+                String::class.java,
+                id,
+            ),
+        )
+    }
+
+    @Test
+    fun `staff may cancel completed historical appointment without late limit`() {
+        val id = reservation(future.minusYears(2), "COMPLETED")
+        assertEquals(204, action(id, "cancel-by-staff", body = mapOf("reason" to "Korekta")).response.status)
+        assertEquals("CANCELLED", state(id))
+    }
+
+    @Test
+    fun `direct edit preserves id creation time and same service commercial agreement`() {
+        val id = reservation()
+        val created =
+            jdbc.queryForObject("SELECT created_at::text FROM reservations WHERE id=?", String::class.java, id)
+        jdbc.update(
+            "UPDATE offerings SET name='Renamed',price=999,duration_minutes=90,active=false WHERE id=?",
+            salon.service,
+        )
+        val edited = edit(id, mapOf("startTime" to future.plusHours(1).toString()))
+        assertEquals(200, edited.response.status, edited.response.contentAsString)
+        assertEquals(id, id(edited))
+        assertEquals(101, tree(edited)["price"].intValue())
+        assertEquals(30, tree(edited)["durationMinutes"].intValue())
+        assertEquals("Strzyżenie", tree(edited)["serviceName"].stringValue())
+        assertEquals(
+            created,
+            jdbc.queryForObject("SELECT created_at::text FROM reservations WHERE id=?", String::class.java, id),
+        )
+        assertEquals(1L, version(id))
+    }
+
+    @Test
+    fun `service change uses current regular name price and duration and customer cannot change`() {
+        val id = reservation()
         val service =
-            serviceRepository.save(
-                Offering(companyId = companyId, name = "Koloryzacja", durationMinutes = 90, price = 300),
-            )
-        serviceId = service.id!!
-
-        staffSession = testSessions.staff(employee, employment)
+            jdbc.queryForObject(
+                "INSERT INTO offerings(company_id,name,duration_minutes,price) VALUES(?,'New service',45,222) RETURNING id",
+                Long::class.java,
+                salon.company,
+            )!!
+        val result = edit(id, mapOf("serviceId" to service))
+        assertEquals(200, result.response.status, result.response.contentAsString)
+        assertEquals(222, tree(result)["price"].intValue())
+        assertEquals(45, tree(result)["durationMinutes"].intValue())
+        assertEquals("New service", tree(result)["serviceName"].stringValue())
+        assertEquals(400, edit(id, mapOf("customerId" to newCustomer())).response.status)
     }
 
     @Test
-    fun `POST reservations-staff should create reservation for existing client`() {
-        // GIVEN - Klient już istnieje w bazie
-        val existingClient =
-            userRepository.save(
-                User(phoneNumber = "+48555444333", firstName = "Istniejący", lastName = "Klient"),
-            )
-
-        val body =
-            mapOf(
-                "employeeId" to employee.id!!,
-                "serviceId" to serviceId,
-                "startTime" to reservationTime.toString(),
-                "customerPhone" to existingClient.phoneNumber,
-            )
-
-        // WHEN & THEN
-        mockMvc
-            .post("/api/reservations/staff") {
-                with(csrf())
-                cookie(staffSession)
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(body)
-            }
-            .andExpect {
-                status { isCreated() }
-                jsonPath("$.serviceId") { value(serviceId) }
-                jsonPath("$.price") { value(300) }
-            }
-
-        val reservations = reservationRepository.findAll()
-        assertEquals(1, reservations.size)
-        assertEquals(existingClient.id!!, reservations.first().customerId)
+    fun `stale revisions no changes and terminal current end prevent invalid edits`() {
+        val id = reservation()
+        assertEquals(409, edit(id, mapOf("price" to 80), revision = 99).response.status)
+        assertEquals(200, edit(id, emptyMap<String, String>()).response.status)
+        assertEquals(0L, version(id))
+        assertEquals(1L, count("reservation_audit"))
+        setLocalNow(future.plusMinutes(30))
+        assertEquals(409, edit(id, mapOf("startTime" to future.plusHours(1).toString())).response.status)
     }
 
     @Test
-    fun `POST reservations-staff should return existing reservation with 200 when request is repeated`() {
-        val body =
-            mapOf(
-                "employeeId" to employee.id!!,
-                "serviceId" to serviceId,
-                "startTime" to reservationTime.toString(),
-                "customerPhone" to "+48555444999",
-                "customerFirstName" to "Powtórny",
-                "customerLastName" to "Klient",
-            )
-
-        val firstId =
-            mockMvc
-                .post("/api/reservations/staff") {
-                    with(csrf())
-                    cookie(staffSession)
-                    contentType = MediaType.APPLICATION_JSON
-                    content = objectMapper.writeValueAsString(body)
-                }
-                .andExpect {
-                    status { isCreated() }
-                }
-                .andReturn()
-                .let { objectMapper.readTree(it.response.contentAsString).get("id").asLong() }
-
-        mockMvc
-            .post("/api/reservations/staff") {
-                with(csrf())
-                cookie(staffSession)
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(body)
-            }
-            .andExpect {
-                status { isOk() }
-                jsonPath("$.id") { value(firstId) }
-            }
-
-        assertEquals(1, reservationRepository.findAll().size)
-    }
-
-    @Test
-    fun `POST reservations-staff should create new client and reservation when phone is unknown`() {
-        val newClientPhone = "+48666777888"
-
-        val body =
-            mapOf(
-                "employeeId" to employee.id!!,
-                "serviceId" to serviceId,
-                "startTime" to reservationTime.toString(),
-                "customerPhone" to newClientPhone,
-                "customerFirstName" to "Nowy",
-                "customerLastName" to "Klient",
-            )
-
-        mockMvc
-            .post("/api/reservations/staff") {
-                with(csrf())
-                cookie(staffSession)
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(body)
-            }
-            .andExpect {
-                status { isCreated() }
-            }
-
-        // Sprawdzamy, że nowy klient pojawił się w bazie
-        val newClient = userRepository.findByPhoneNumber(newClientPhone)
-        assertNotNull(newClient, "Nowy klient powinien zostać zapisany w bazie")
-        assertEquals("Nowy", newClient!!.firstName)
-
-        val reservations = reservationRepository.findAll()
-        assertEquals(1, reservations.size)
-        assertEquals(newClient.id!!, reservations.first().customerId)
-    }
-
-    @Test
-    fun `POST reservations-staff should return 400 when new client phone but no name provided`() {
-        val unknownPhone = "+48100200300"
-
-        val body =
-            mapOf(
-                "employeeId" to employee.id!!,
-                "serviceId" to serviceId,
-                "startTime" to reservationTime.toString(),
-                "customerPhone" to unknownPhone,
-                // Brak imienia i nazwiska dla nowego klienta!
-            )
-
-        mockMvc
-            .post("/api/reservations/staff") {
-                with(csrf())
-                cookie(staffSession)
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(body)
-            }
-            .andExpect {
-                status { isBadRequest() }
-            }
-
-        // Upewniamy się, że żadna rezerwacja ani użytkownik nie zostali zapisani
-        assertEquals(0, reservationRepository.findAll().size)
-        val userInDb = userRepository.findByPhoneNumber(unknownPhone)
-        assertEquals(null, userInDb)
-    }
-
-    @Test
-    fun `POST reservations-staff should return 400 when service belongs to another company`() {
-        val otherCompany = companyRepository.save(Company(name = "Obcy Salon"))
-        val otherEmployee =
-            userRepository.save(
-                User(phoneNumber = "+48777111222", firstName = "Obcy", lastName = "Pracownik"),
-            )
-        companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE"),
+    fun `archive preserves database identity and requires unarchive before restore`() {
+        shift()
+        val id = reservation()
+        assertEquals(
+            405,
+            mvc.perform(delete("/api/reservations/$id").cookie(staffCookie()).with(csrf())).andReturn().response.status,
         )
-        val otherService =
-            serviceRepository.save(
-                Offering(companyId = otherCompany.id!!, name = "Obca usługa", durationMinutes = 30, price = 90),
-            )
-        val unknownPhone = "+48123999888"
-
-        val body =
-            mapOf(
-                "employeeId" to otherEmployee.id!!,
-                "serviceId" to otherService.id!!,
-                "startTime" to reservationTime.toString(),
-                "customerPhone" to unknownPhone,
-                "customerFirstName" to "Nowy",
-                "customerLastName" to "Klient",
-            )
-
-        mockMvc
-            .post("/api/reservations/staff") {
-                with(csrf())
-                cookie(staffSession)
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(body)
-            }
-            .andExpect {
-                status { isBadRequest() }
-            }
-
-        assertEquals(0, reservationRepository.findAll().size)
-        assertEquals(null, userRepository.findByPhoneNumber(unknownPhone))
+        assertEquals(409, action(id, "archive").response.status)
+        assertEquals(204, action(id, "cancel-by-staff", body = mapOf("reason" to "Archiwum")).response.status)
+        val employee = newEmployee()
+        assertEquals(403, action(id, "archive", cookie = staffCookie(employee.second)).response.status)
+        assertEquals(204, action(id, "archive").response.status)
+        assertEquals(1L, count("reservations"))
+        assertEquals(409, action(id, "restore").response.status)
+        assertEquals(204, action(id, "unarchive").response.status)
+        assertEquals(204, action(id, "restore").response.status)
+        assertEquals("BOOKED", state(id))
     }
 
     @Test
-    fun `POST reservations-staff should return 401 without session`() {
-        val body =
-            mapOf(
-                "employeeId" to employee.id!!,
-                "serviceId" to serviceId,
-                "startTime" to reservationTime.toString(),
-                "customerPhone" to "+48000000000",
-            )
-
-        mockMvc
-            .post("/api/reservations/staff") {
-                with(csrf())
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(body)
-            }
-            .andExpect {
-                status { isUnauthorized() }
-                jsonPath("$.code") { value("UNAUTHORIZED") }
-            }
+    fun `repeated completion has no extra audit and stale command after reversal conflicts`() {
+        val id = reservation(localNow.minusMinutes(5))
+        assertEquals(204, action(id, "complete", 0).response.status)
+        val audits = count("reservation_audit")
+        assertEquals(204, action(id, "complete", 0).response.status)
+        assertEquals(audits, count("reservation_audit"))
+        assertEquals(204, action(id, "no-show").response.status)
+        assertEquals(204, action(id, "complete").response.status)
+        assertEquals(409, action(id, "complete", 0).response.status)
     }
 
     @Test
-    fun `POST reservations-staff should return 409 when requested time overlaps schedule block`() {
-        val existingClient =
-            userRepository.save(
-                User(phoneNumber = "+48555000111", firstName = "Istniejący", lastName = "Klient"),
-            )
-        scheduleBlockRepository.save(
-            ScheduleBlock(
-                companyId = companyId,
-                employeeId = employee.id!!,
-                startTime = reservationTime,
-                endTime = reservationTime.plusHours(1),
+    fun `writes require If Match and outcome explanations are durably audited`() {
+        val id = reservation(localNow)
+        val missing =
+            mvc.perform(patch("/api/reservations/$id/complete").cookie(staffCookie()).with(csrf())).andReturn()
+        assertEquals(400, missing.response.status)
+        assertEquals(204, action(id, "complete", body = mapOf("reason" to "Zakończono wcześniej")).response.status)
+        assertEquals(
+            "Zakończono wcześniej",
+            jdbc.queryForObject("SELECT outcome_explanation FROM reservations WHERE id=?", String::class.java, id),
+        )
+        assertEquals(
+            "Zakończono wcześniej",
+            jdbc.queryForObject(
+                "SELECT after_state->>'outcome_explanation' FROM reservation_audit WHERE reservation_id=? ORDER BY id DESC LIMIT 1",
+                String::class.java,
+                id,
             ),
         )
-        val body =
-            mapOf(
-                "employeeId" to employee.id!!,
-                "serviceId" to serviceId,
-                "startTime" to reservationTime.plusMinutes(30).toString(),
-                "customerPhone" to existingClient.phoneNumber,
-            )
-
-        mockMvc
-            .post("/api/reservations/staff") {
-                with(csrf())
-                cookie(staffSession)
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(body)
-            }
-            .andExpect {
-                status { isConflict() }
-            }
-
-        assertEquals(0, reservationRepository.findAll().size)
-    }
-
-    private fun saveReservation(startTime: LocalDateTime): Reservation {
-        val client = userRepository.save(User(phoneNumber = "+48555123123", firstName = "Anul", lastName = "Klient"))
-        return reservationRepository.save(
-            Reservation(
-                companyId = companyId,
-                customerId = client.id!!,
-                employeeId = employee.id!!,
-                serviceId = serviceId,
-                price = 300,
-                startTime = startTime,
-                endTime = startTime.plusMinutes(90),
-            ),
-        )
-    }
-
-    @Test
-    fun `PATCH cancel-by-staff should cancel a reservation that already started`() {
-        val reservation = saveReservation(LocalDateTime.now(BUSINESS_ZONE).minusMinutes(30))
-
-        mockMvc
-            .patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
-                with(csrf())
-                cookie(staffSession)
-            }
-            .andExpect {
-                status { isNoContent() }
-            }
-
-        assertEquals(ReservationStatus.CANCELLED, reservationRepository.findById(reservation.id!!).get().status)
-    }
-
-    @Test
-    fun `PATCH cancel-by-staff should return 404 for another company's staff`() {
-        val reservation = saveReservation(reservationTime)
-        val otherCompany = companyRepository.save(Company(name = "Obcy Salon Anulowanie"))
-        val otherOwner = userRepository.save(User(phoneNumber = "+48777000999", firstName = "Obcy", lastName = "Owner"))
-        val otherEmployment =
-            companyEmployeeRepository.save(
-                CompanyEmployee(companyId = otherCompany.id!!, userId = otherOwner.id!!, role = "OWNER"),
-            )
-
-        mockMvc
-            .patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
-                with(csrf())
-                cookie(testSessions.staff(otherOwner, otherEmployment))
-            }
-            .andExpect {
-                status { isNotFound() }
-                jsonPath("$.code") { value("RESERVATION_NOT_FOUND") }
-            }
-
-        assertEquals(ReservationStatus.BOOKED, reservationRepository.findById(reservation.id!!).get().status)
-    }
-
-    @Test
-    fun `PATCH cancel-by-staff should return 403 for a customer`() {
-        val reservation = saveReservation(reservationTime)
-        val customer = userRepository.findById(reservation.customerId).get()
-
-        mockMvc
-            .patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
-                with(csrf())
-                cookie(testSessions.customer(customer))
-            }
-            .andExpect {
-                status { isForbidden() }
-            }
-    }
-
-    @Test
-    fun `PATCH cancel-by-staff should return 409 for a terminal reservation`() {
-        val reservation = saveReservation(reservationTime)
-        reservation.status = ReservationStatus.COMPLETED
-        reservationRepository.save(reservation)
-
-        mockMvc
-            .patch("/api/reservations/${reservation.id!!}/cancel-by-staff") {
-                with(csrf())
-                cookie(staffSession)
-            }
-            .andExpect {
-                status { isConflict() }
-                jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
-            }
     }
 }

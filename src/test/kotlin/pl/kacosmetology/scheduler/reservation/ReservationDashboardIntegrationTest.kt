@@ -1,256 +1,85 @@
 package pl.kacosmetology.scheduler.reservation
 
-import com.ninjasquad.springmockk.MockkBean
-import jakarta.servlet.http.Cookie
-import java.time.LocalDateTime
-import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-import org.springframework.context.annotation.Import
-import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.get
-import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import pl.kacosmetology.scheduler.company.Company
-import pl.kacosmetology.scheduler.company.CompanyEmployee
-import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
-import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.offering.Offering
-import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.security.TestSessions
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
-import software.amazon.awssdk.services.s3.S3Client
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 
-/**
- * Integration tests for [ReservationController.getReservations] — the owner dashboard endpoint `GET
- * /api/reservations?employeeId=&start=&end=`.
- */
-@SpringBootTest
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration::class)
-class ReservationDashboardIntegrationTest {
-
-    @Autowired private lateinit var mockMvc: MockMvc
-    @Autowired private lateinit var testSessions: TestSessions
-    @Autowired private lateinit var userRepository: UserRepository
-    @Autowired private lateinit var companyRepository: CompanyRepository
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-    @Autowired private lateinit var offeringRepository: OfferingRepository
-    @Autowired private lateinit var reservationRepository: ReservationRepository
-
-    @MockkBean private lateinit var s3Client: S3Client
-
-    private lateinit var owner: User
-    private lateinit var employee: User
-    private lateinit var customer: User
-    private var companyId: Long = 0
-    private var offeringId: Long = 0
-    private lateinit var ownerSession: Cookie
-    private lateinit var employeeSession: Cookie
-
-    private val rangeStart = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0)
-    private val rangeEnd = LocalDateTime.now().withHour(23).withMinute(59).withSecond(59).withNano(0)
-
-    @BeforeEach
-    fun setup() {
-        reservationRepository.deleteAll()
-        offeringRepository.deleteAll()
-        companyEmployeeRepository.deleteAll()
-        userRepository.deleteAll()
-        companyRepository.deleteAll()
-
-        val company = companyRepository.save(Company(name = "Dashboard Salon"))
-        companyId = company.id!!
-
-        owner = userRepository.save(User(phoneNumber = "+48100000001", firstName = "Owner", lastName = "Test"))
-        employee = userRepository.save(User(phoneNumber = "+48100000002", firstName = "Employee", lastName = "Test"))
-        customer = userRepository.save(User(phoneNumber = "+48100000003", firstName = "Customer", lastName = "Test"))
-
-        val ownerEmployment =
-            companyEmployeeRepository.save(
-                CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
+/** Both company staff roles read coworkers' calendars using company-local customer presentation. */
+class ReservationDashboardIntegrationTest : ReservationContractTestSupport() {
+    private fun calendar(
+        employee: Long = salon.employee,
+        cookie: jakarta.servlet.http.Cookie = staffCookie(),
+        start: String = future.toString(),
+        end: String = future.plusDays(1).toString(),
+    ) =
+        mvc.perform(
+                get("/api/reservations")
+                    .cookie(cookie)
+                    .param("employeeId", employee.toString())
+                    .param("start", start)
+                    .param("end", end),
             )
-        val employeeEmployment =
-            companyEmployeeRepository.save(
-                CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
-            )
+            .andReturn()
 
-        val offering =
-            offeringRepository.save(
-                Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80),
-            )
-        offeringId = offering.id!!
-
-        // Reservation for the employee today at 10:00
-        reservationRepository.save(
-            Reservation(
-                companyId = companyId,
-                customerId = customer.id!!,
-                employeeId = employee.id!!,
-                serviceId = offeringId,
-                price = 80,
-                startTime = rangeStart.withHour(10),
-                endTime = rangeStart.withHour(11),
-                status = ReservationStatus.BOOKED,
-            ),
+    @Test
+    fun `owner and employee may read any company employee booking with local customer names`() {
+        val id = reservation()
+        jdbc.update(
+            "UPDATE company_customers SET first_name='Company',last_name='Customer' WHERE company_id=? AND user_id=?",
+            salon.company,
+            salon.customer,
         )
-
-        ownerSession = testSessions.staff(owner, ownerEmployment)
-        employeeSession = testSessions.staff(employee, employeeEmployment)
+        val coworker = newEmployee()
+        for (cookie in listOf(staffCookie(), staffCookie(coworker.second))) {
+            val response = calendar(cookie = cookie)
+            assertEquals(200, response.response.status, response.response.contentAsString)
+            assertEquals(id, tree(response)[0]["id"].longValue())
+            assertEquals("Company", tree(response)[0]["customerFirstName"].stringValue())
+            assertEquals("Customer", tree(response)[0]["customerLastName"].stringValue())
+        }
     }
 
     @Test
-    fun `owner should be able to query any employee's reservations`() {
-        mockMvc
-            .get("/api/reservations") {
-                cookie(ownerSession)
-                param("employeeId", employee.id!!.toString())
-                param("start", rangeStart.toString())
-                param("end", rangeEnd.toString())
-            }
-            .andExpect {
-                status { isOk() }
-                jsonPath("$.length()") { value(1) }
-                jsonPath("$[0].employeeId") { value(employee.id!!) }
-                jsonPath("$[0].customerId") { value(customer.id!!) }
-                jsonPath("$[0].status") { value("BOOKED") }
-            }
+    fun `calendar ranges include overlapping starts but exclude visits beginning at end`() {
+        val overlaps = reservation(future.minusMinutes(15))
+        reservation(future.plusHours(1))
+        val response = calendar(end = future.plusHours(1).toString())
+        assertEquals(200, response.response.status)
+        assertEquals(listOf(overlaps), tree(response).values().map { it["id"].longValue() })
     }
 
     @Test
-    fun `malformed start date should return bad request`() {
-        mockMvc
-            .get("/api/reservations") {
-                cookie(ownerSession)
-                param("employeeId", employee.id.toString())
-                param("start", "not-a-date")
-                param("end", rangeEnd.toString())
-            }
-            .andExpect {
-                status { isBadRequest() }
-                jsonPath("$.code") { value("INVALID_PARAMETER") }
-                jsonPath("$.detail") { value("Nieprawidłowa wartość parametru 'start'") }
-            }
+    fun `malformed offset and Z query date times are invalid input`() {
+        for (value in
+            listOf(
+                "not-a-date",
+                future.toString() + "Z",
+                future.toString() + "+01:00",
+                future.toString() + "+02:00",
+            )) assertEquals(400, calendar(start = value).response.status)
     }
 
     @Test
-    fun `employee should be able to query own reservations`() {
-        mockMvc
-            .get("/api/reservations") {
-                cookie(employeeSession)
-                param("employeeId", employee.id!!.toString())
-                param("start", rangeStart.toString())
-                param("end", rangeEnd.toString())
-            }
-            .andExpect {
-                status { isOk() }
-                jsonPath("$.length()") { value(1) }
-            }
+    fun `foreign and absent employee calendars are opaque missing resources`() {
+        val foreign = fixtures.salon()
+        assertEquals(404, calendar(employee = foreign.employee).response.status)
+        assertEquals(404, calendar(employee = Long.MAX_VALUE).response.status)
     }
 
     @Test
-    fun `employee should get 403 when querying another employee's reservations`() {
-        val otherEmployee =
-            userRepository.save(
-                User(phoneNumber = "+48199999999", firstName = "Other", lastName = "Employee"),
-            )
-        companyEmployeeRepository.save(
-            CompanyEmployee(
-                companyId = companyId,
-                userId = otherEmployee.id!!,
-                role = "EMPLOYEE",
-            ),
+    fun `dashboard is unavailable without staff authentication`() {
+        assertEquals(403, calendar(cookie = customerCookie()).response.status)
+        assertEquals(
+            401,
+            mvc.perform(
+                    get("/api/reservations")
+                        .param("employeeId", salon.employee.toString())
+                        .param("start", future.toString())
+                        .param("end", future.plusDays(1).toString()),
+                )
+                .andReturn()
+                .response
+                .status,
         )
-
-        mockMvc
-            .get("/api/reservations") {
-                cookie(employeeSession)
-                param("employeeId", otherEmployee.id!!.toString())
-                param("start", rangeStart.toString())
-                param("end", rangeEnd.toString())
-            }
-            .andExpect {
-                status { isForbidden() }
-            }
-    }
-
-    @Test
-    fun `results should be filtered by date range`() {
-        // Add a reservation outside the range (next week)
-        reservationRepository.save(
-            Reservation(
-                companyId = companyId,
-                customerId = customer.id!!,
-                employeeId = employee.id!!,
-                serviceId = offeringId,
-                price = 80,
-                startTime = rangeStart.plusDays(7).withHour(9),
-                endTime = rangeStart.plusDays(7).withHour(10),
-                status = ReservationStatus.BOOKED,
-            ),
-        )
-
-        // Query only today — should return 1 (the one from @BeforeEach)
-        mockMvc
-            .get("/api/reservations") {
-                cookie(ownerSession)
-                param("employeeId", employee.id!!.toString())
-                param("start", rangeStart.toString())
-                param("end", rangeEnd.toString())
-            }
-            .andExpect {
-                status { isOk() }
-                jsonPath("$.length()") { value(1) }
-            }
-    }
-
-    @Test
-    fun `dashboard results should include reservations overlapping range start`() {
-        reservationRepository.save(
-            Reservation(
-                companyId = companyId,
-                customerId = customer.id!!,
-                employeeId = employee.id!!,
-                serviceId = offeringId,
-                price = 80,
-                startTime = rangeStart.minusMinutes(30),
-                endTime = rangeStart.plusMinutes(30),
-                status = ReservationStatus.BOOKED,
-            ),
-        )
-
-        mockMvc
-            .get("/api/reservations") {
-                cookie(ownerSession)
-                param("employeeId", employee.id!!.toString())
-                param("start", rangeStart.toString())
-                param("end", rangeStart.plusHours(1).toString())
-            }
-            .andExpect {
-                status { isOk() }
-                jsonPath("$.length()") { value(1) }
-                jsonPath("$[0].startTime") {
-                    value(
-                        org.hamcrest.Matchers.startsWith(
-                            rangeStart.minusMinutes(30).toString().substring(0, 16),
-                        ),
-                    )
-                }
-            }
-    }
-
-    @Test
-    fun `unauthenticated request should be rejected`() {
-        mockMvc
-            .get("/api/reservations") {
-                param("employeeId", employee.id!!.toString())
-                param("start", rangeStart.toString())
-                param("end", rangeEnd.toString())
-            }
-            .andExpect {
-                status { isUnauthorized() }
-            }
     }
 }
