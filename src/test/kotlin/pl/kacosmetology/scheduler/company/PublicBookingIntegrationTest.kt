@@ -71,7 +71,15 @@ class PublicBookingIntegrationTest {
         employeeId = employee.id!!
 
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = companyId, userId = employeeId, role = "EMPLOYEE"),
+            CompanyEmployee(
+                companyId = companyId,
+                userId = employeeId,
+                role = "EMPLOYEE",
+                firstName = "Anna",
+                lastName = "Kowalska",
+                photoUrl = "https://example.com/a.jpg",
+                eligibilityMode = EmployeeEligibilityMode.ALL_SERVICES,
+            ),
         )
 
         val offering =
@@ -101,7 +109,7 @@ class PublicBookingIntegrationTest {
     }
 
     @Test
-    fun `GET public employees should return all when no assignments configured`() {
+    fun `GET public employees returns all offerings only for ALL_SERVICES mode`() {
         mockMvc
             .get("/api/employees/public/company/$companyId") {
                 param("offeringId", offeringId.toString())
@@ -117,6 +125,11 @@ class PublicBookingIntegrationTest {
 
     @Test
     fun `GET public employees should filter by offering assignment`() {
+        companyEmployeeRepository.save(
+            companyEmployeeRepository.findByCompanyIdAndUserId(companyId, employeeId)!!.apply {
+                eligibilityMode = EmployeeEligibilityMode.SPECIFIC_SERVICES
+            },
+        )
         assignmentRepository.save(
             EmployeeOfferingAssignment(
                 companyId = companyId,

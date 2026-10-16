@@ -52,7 +52,16 @@ class CompanyEmployeeControllerIntegrationTest {
 
         val owner = userRepository.save(User(phoneNumber = "+48100200300", firstName = "Owner", lastName = "Test"))
         ownerUserId = owner.id!!
-        companyEmployeeRepository.save(CompanyEmployee(companyId = company.id!!, userId = ownerUserId, role = "OWNER"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(
+                companyId = company.id!!,
+                userId = ownerUserId,
+                role = "OWNER",
+                firstName = "Owner",
+                lastName = "Test",
+                loginEmail = "owner@local.test",
+            ),
+        )
 
         val employee =
             userRepository.save(User(phoneNumber = "+48300200100", firstName = "Employee", lastName = "Test"))
@@ -65,7 +74,14 @@ class CompanyEmployeeControllerIntegrationTest {
         val outsider =
             userRepository.save(User(phoneNumber = "+48500600700", firstName = "Outsider", lastName = "Test"))
         companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = outsider.id!!, role = "EMPLOYEE"),
+            CompanyEmployee(
+                companyId = otherCompany.id!!,
+                userId = outsider.id!!,
+                role = "EMPLOYEE",
+                firstName = "Outsider",
+                lastName = "Test",
+                loginEmail = "outsider@other.test",
+            ),
         )
 
         val customer = userRepository.save(User(phoneNumber = "+48700800900", firstName = "Jan", lastName = "Nowak"))

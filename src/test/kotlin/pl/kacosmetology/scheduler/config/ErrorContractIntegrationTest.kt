@@ -95,10 +95,10 @@ class ErrorContractIntegrationTest {
     }
 
     @Test
-    fun `unknown offering in availability query should return OFFERING_UNAVAILABLE`() {
+    fun `unknown offering in availability query is an opaque missing resource`() {
         mockMvc.get("/api/availability?employeeId=1&serviceId=999999&date=2030-01-01").andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("OFFERING_UNAVAILABLE") }
+            status { isNotFound() }
+            jsonPath("$.code") { value("NOT_FOUND") }
         }
     }
 

@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.user
 
 import com.ninjasquad.springmockk.MockkBean
 import jakarta.servlet.http.Cookie
+import java.time.Clock
 import java.time.LocalDateTime
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -9,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
@@ -16,6 +18,7 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
@@ -29,6 +32,8 @@ import software.amazon.awssdk.services.s3.S3Client
 @Import(TestcontainersConfiguration::class)
 class CustomerListIntegrationTest {
 
+    @Autowired private lateinit var jdbc: JdbcTemplate
+    @Autowired private lateinit var clock: Clock
     @Autowired private lateinit var mockMvc: MockMvc
     @Autowired private lateinit var testSessions: TestSessions
     @Autowired private lateinit var userRepository: UserRepository
@@ -144,6 +149,29 @@ class CustomerListIntegrationTest {
             CompanyCustomerBlock(companyId = companyId, customerId = customer.id!!, noShowCount = 2, blocked = true),
         )
 
+        repeat(2) { index ->
+            val start = LocalDateTime.ofInstant(clock.instant(), BUSINESS_ZONE).minusDays(index.toLong() + 2)
+            val missed =
+                reservationRepository.save(
+                    Reservation(
+                        companyId = companyId,
+                        customerId = customer.id!!,
+                        employeeId = employee.id!!,
+                        serviceId = offeringId,
+                        price = 100,
+                        startTime = start,
+                        endTime = start.plusMinutes(30),
+                        status = ReservationStatus.NO_SHOW,
+                    ),
+                )
+            jdbc.update(
+                "INSERT INTO no_show_penalties(reservation_id,company_id,customer_id,appointment_date) VALUES(?,?,?,?)",
+                missed.id!!,
+                companyId,
+                customer.id!!,
+                start.toLocalDate(),
+            )
+        }
         mockMvc
             .get("/api/customers") {
                 cookie(ownerSession)

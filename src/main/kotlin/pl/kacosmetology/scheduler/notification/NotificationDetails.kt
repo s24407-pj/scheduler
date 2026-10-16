@@ -45,8 +45,8 @@ class NotificationDetails(private val jdbc: JdbcTemplate) {
             .filterNotNull()
 
     /**
-     * A creation or appointment-date change after 09:00 excludes the record from this day's reminder run. Same-date
-     * edits do not reset reminder identity or cut-off eligibility. Durable audit is authoritative after rescheduling.
+     * A creation or appointment start change after 09:00 excludes the record from this day's reminder run. Other edits
+     * do not reset reminder identity or cut-off eligibility. Durable audit is authoritative after rescheduling.
      */
     fun eligibleAtCutoff(id: Long, cutoff: Instant): Boolean =
         jdbc.queryForObject(
@@ -54,8 +54,7 @@ class NotificationDetails(private val jdbc: JdbcTemplate) {
             SELECT r.created_at<=? AND NOT EXISTS (
                 SELECT 1 FROM reservation_audit a WHERE a.reservation_id=r.id AND a.occurred_at>?
                 AND (a.before_state IS NULL OR
-                    (((a.before_state->>'start_time')::timestamptz AT TIME ZONE 'Europe/Warsaw')::date
-                    IS DISTINCT FROM ((a.after_state->>'start_time')::timestamptz AT TIME ZONE 'Europe/Warsaw')::date))
+                    ((a.before_state->>'start_time')::timestamptz IS DISTINCT FROM (a.after_state->>'start_time')::timestamptz))
             ) FROM reservations r WHERE r.id=?
             """
                 .trimIndent(),

@@ -307,13 +307,15 @@ class NotificationDeliveryIntegrationTest {
     }
 
     @Test
-    fun `created or moved after nine cutoff gets no reminder but same day edit remains eligible`() {
+    fun `created or moved after nine cutoff gets no reminder while non-time edit remains eligible`() {
         clock.set(nine.plusSeconds(60))
         booking(nine.plusSeconds(86400 + 3600), created = nine.plusSeconds(1))
         val moved = booking(nine.plusSeconds(2 * 86400 + 3600))
         edit(moved, nine.plusSeconds(86400 + 7200))
-        val sameDay = booking(nine.plusSeconds(86400 + 10800))
-        edit(sameDay, nine.plusSeconds(86400 + 14400))
+        val movedSameDay = booking(nine.plusSeconds(86400 + 10800))
+        edit(movedSameDay, nine.plusSeconds(86400 + 14400))
+        val sameDay = booking(nine.plusSeconds(86400 + 18000))
+        edit(sameDay)
         service.startReminderRun()
         assertEquals(1L, count())
         assertEquals(

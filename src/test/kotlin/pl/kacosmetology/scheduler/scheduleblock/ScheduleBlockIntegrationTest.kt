@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.scheduleblock
 
 import com.ninjasquad.springmockk.MockkBean
 import jakarta.servlet.http.Cookie
+import java.time.Clock
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -30,6 +31,7 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
@@ -46,6 +48,7 @@ import tools.jackson.databind.ObjectMapper
 @Import(TestcontainersConfiguration::class)
 class ScheduleBlockIntegrationTest {
 
+    @Autowired private lateinit var clock: Clock
     @Autowired private lateinit var mockMvc: MockMvc
     @Autowired private lateinit var objectMapper: ObjectMapper
     @Autowired private lateinit var testSessions: TestSessions
@@ -64,7 +67,8 @@ class ScheduleBlockIntegrationTest {
     private var companyId: Long = 0
     private lateinit var employeeSession: Cookie
     private lateinit var ownerSession: Cookie
-    private val testDate = LocalDate.now().plusDays(3)
+    private val testDate
+        get() = LocalDate.ofInstant(clock.instant(), BUSINESS_ZONE).plusDays(3)
 
     @BeforeEach
     fun setup() {
@@ -136,8 +140,10 @@ class ScheduleBlockIntegrationTest {
     fun `POST schedule-blocks permits an ongoing block`() {
         val body =
             mapOf(
-                "startTime" to LocalDateTime.now().minusHours(1).toString(),
-                "endTime" to LocalDateTime.now().plusHours(1).toString(),
+                "startTime" to
+                    LocalDateTime.ofInstant(clock.instant(), BUSINESS_ZONE).withNano(0).minusHours(1).toString(),
+                "endTime" to
+                    LocalDateTime.ofInstant(clock.instant(), BUSINESS_ZONE).withNano(0).plusHours(1).toString(),
             )
 
         mockMvc
@@ -200,6 +206,8 @@ class ScheduleBlockIntegrationTest {
                 "employeeId" to employee.id!!,
                 "serviceId" to offering.id!!,
                 "startTime" to startTime.toString(),
+                "firstName" to "Klient",
+                "lastName" to "Testowy",
             )
         val blockBody =
             mapOf(
@@ -217,6 +225,7 @@ class ScheduleBlockIntegrationTest {
                     mockMvc
                         .post("/api/reservations") {
                             with(csrf())
+                            header("Idempotency-Key", "booking-block-race")
                             cookie(customerSession)
                             contentType = MediaType.APPLICATION_JSON
                             content = objectMapper.writeValueAsString(reservationBody)

@@ -12,7 +12,8 @@ class CustomerServiceTest {
     private val reservations = mockk<ReservationRepository>()
     private val blocks = mockk<CompanyCustomerBlockRepository>()
     private val profiles = mockk<CompanyCustomerRepository>()
-    private val service = CustomerService(users, reservations, blocks, profiles)
+    private val blocking = mockk<CustomerBlockingPolicy>()
+    private val service = CustomerService(users, reservations, blocks, profiles, blocking)
 
     @Test
     fun `list uses company owned names and contact rather than global account presentation`() {
@@ -29,7 +30,9 @@ class CustomerServiceTest {
         every { users.findAllById(listOf(2L)) } returns
             listOf(User(id = 2, phoneNumber = "+48500100200", firstName = "Global", lastName = "Wrong"))
         every { blocks.findByCompanyId(1) } returns emptyList()
+        every { blocking.currentCount(1, 2) } returns 2
         val result = service.listCustomers(1).single()
+        assertEquals(2, result.noShowCount)
         assertEquals("Local", result.firstName)
         assertEquals("private", result.notes)
         assertEquals("local@example.test", result.contactEmail)

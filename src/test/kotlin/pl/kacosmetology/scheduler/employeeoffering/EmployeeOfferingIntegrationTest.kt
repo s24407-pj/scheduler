@@ -352,11 +352,14 @@ class EmployeeOfferingIntegrationTest {
                 "startTime" to
                     LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0).toString(),
                 "customerPhone" to customer.phoneNumber,
+                "customerFirstName" to "Klient",
+                "customerLastName" to "Test",
             )
 
         mockMvc
             .post("/api/reservations/staff") {
                 with(csrf())
+                header("Idempotency-Key", "unqualified-staff-booking")
                 cookie(employeeSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(body)
@@ -465,6 +468,7 @@ class EmployeeOfferingIntegrationTest {
         mockMvc
             .post("/api/reservations") {
                 with(csrf())
+                header("Idempotency-Key", "staff-customer-realm")
                 cookie(employeeSession)
                 contentType = MediaType.APPLICATION_JSON
                 content = """{"employeeId":$employeeId,"serviceId":$offeringId,"startTime":"2030-01-01T10:00:00"}"""
@@ -474,6 +478,7 @@ class EmployeeOfferingIntegrationTest {
             .perform(
                 org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/reservations/1/cancel")
                     .with(csrf())
+                    .header("If-Match", "0")
                     .cookie(employeeSession),
             )
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden)

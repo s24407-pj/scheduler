@@ -9,12 +9,15 @@ import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.mock.web.MockMultipartFile
+import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.company.EmployeeEligibilityMode
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignment
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
@@ -22,6 +25,8 @@ import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 
 @ExtendWith(MockKExtension::class)
 class OfferingServiceTest {
+
+    @MockK private lateinit var companies: CompanyRepository
 
     @MockK private lateinit var offeringRepository: OfferingRepository
 
@@ -38,6 +43,11 @@ class OfferingServiceTest {
 
     private val manicure = Offering(id = 1, companyId = companyId, name = "Manicure", durationMinutes = 60, price = 100)
     private val pedicure = Offering(id = 2, companyId = companyId, name = "Pedicure", durationMinutes = 60, price = 120)
+
+    @BeforeEach
+    fun companyLock() {
+        every { companies.findByIdForUpdate(companyId) } returns Company(id = companyId, name = "Salon")
+    }
 
     @Test
     fun `getPublicEmployeeOfferings should return only active offerings assigned at the company`() {
@@ -62,7 +72,7 @@ class OfferingServiceTest {
     }
 
     @Test
-    fun `getPublicEmployeeOfferings should return every active company offering when the employee has no assignments there`() {
+    fun `getPublicEmployeeOfferings should return every active company offering in explicit ALL_SERVICES mode`() {
         every { companyEmployeeRepository.findByCompanyIdAndUserId(companyId, employeeId) } returns
             CompanyEmployee(companyId = companyId, userId = employeeId, role = "EMPLOYEE")
         every { assignmentRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId) } returns emptyList()

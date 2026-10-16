@@ -20,7 +20,9 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
+import pl.kacosmetology.scheduler.auth.RedisRollingRateLimiter
 import pl.kacosmetology.scheduler.quote.dto.QuoteResponse
+import pl.kacosmetology.scheduler.reservation.BookingSubmissionService
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
 @WebMvcTest(QuoteController::class)
@@ -28,6 +30,8 @@ import pl.kacosmetology.scheduler.security.CustomUserDetails
 class QuoteEndpointTest {
     @Autowired private lateinit var mvc: MockMvc
     @MockkBean private lateinit var service: QuoteService
+    @MockkBean private lateinit var limits: RedisRollingRateLimiter
+    @MockkBean private lateinit var submissions: BookingSubmissionService
     private val customer = CustomUserDetails(3, "+48111222333", "ROLE_CUSTOMER")
     private val body = """{"serviceId":2,"startTime":"2026-06-01T14:00:00"}"""
 
