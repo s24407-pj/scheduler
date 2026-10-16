@@ -6,6 +6,24 @@
 - **JDK 25** and **lefthook**, pinned in `mise.toml`. Run `mise install && lefthook install` once; mise activates the JDK inside the repo and lefthook installs the git hooks. The Gradle wrapper downloads Gradle. Plugin and library versions live in `gradle/libs.versions.toml`; Spring Boot-managed dependencies take their version from the Boot BOM.
 - With rootless Podman, export `DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock` (for example in `~/.zshrc`). Non-interactive shells that do not load `~/.zshrc` need `zsh -ic '<command>'`.
 
+### Podman API idle timeout during long test runs
+
+Podman's API service defaults to a five-second idle timeout. A socket-activated service may exit while Testcontainers retains a pooled connection, causing `ContainerLaunchException` with `Broken pipe` when a later Spring context starts another container. Keep a dedicated local API service alive in one terminal:
+
+```bash
+podman system service --time=0 "unix://$XDG_RUNTIME_DIR/scheduler-verification.sock"
+```
+
+In another terminal, run the complete suite against that socket:
+
+```bash
+DOCKER_HOST="unix://$XDG_RUNTIME_DIR/scheduler-verification.sock" \
+TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="$XDG_RUNTIME_DIR/scheduler-verification.sock" \
+./gradlew clean build
+```
+
+Stop the dedicated service with Ctrl-C after verification. This changes neither the normal Podman service nor the test assertions.
+
 ## Running
 
 ### Full stack in containers (recommended)
