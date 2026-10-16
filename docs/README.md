@@ -18,3 +18,5 @@
 Docs describe the code as it is. Where an accepted decision is not implemented yet, the text says **Pending** and links the ADR.
 
 - [Identity and staff administration](./identity.md) — separate realms, salon profiles and password lifecycle.
+
+Final implementation and evidence: [revised scheduler contract](./implementation-report.md).

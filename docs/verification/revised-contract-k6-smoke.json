@@ -1,0 +1,12 @@
+{
+  "clientCommit": "c8a0c24",
+  "k6Version": "0.57.0",
+  "virtualUsers": 1,
+  "durationSeconds": 5,
+  "checks": 18,
+  "failedChecks": 0,
+  "httpRequests": 16,
+  "failedHttpRequests": 0,
+  "p95Milliseconds": 45.7,
+  "loadStressSpikeExecuted": false
+}

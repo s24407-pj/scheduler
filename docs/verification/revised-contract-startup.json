@@ -1,0 +1,17 @@
+{
+  "runtime_commit": "ae14285",
+  "database": "scheduler_verify_final",
+  "/actuator/health": 200,
+  "/actuator/info": 401,
+  "/actuator/metrics": 401,
+  "/actuator/prometheus": 401,
+  "/api/company/public/1": 200,
+  "/api/offerings/public/company/1": 200,
+  "/v3/api-docs": 200,
+  "login_without_csrf": 403,
+  "staff_login_normalized_email": 200,
+  "session_me": 200,
+  "owner_metrics_forbidden": 403,
+  "logout": 204,
+  "revoked_me": 401
+}
