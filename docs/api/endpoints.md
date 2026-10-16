@@ -48,7 +48,7 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
 | GET | `/api/employees/public/company/{companyId}?offeringId` | Public | Employees eligible for the offering |
-| GET | `/api/employees` | OWNER, EMPLOYEE | Includes current ALL_SERVICES / SPECIFIC_SERVICES eligibility mode; `id` is user ID for employee subresources |
+| GET | `/api/employees` | OWNER, EMPLOYEE | Includes current ALL_SERVICES / SPECIFIC_SERVICES eligibility mode; `userId` is the identifier used by employee subresources |
 | POST | `/api/employees` | OWNER | Creates EMPLOYEE account plus initial setup token; 201 |
 | PUT | `/api/employees/{id}` | OWNER | Company-local names, login email, optional contact phone |
 | PUT | `/api/employees/{id}/enabled` | OWNER | Revokes access/links when disabled; returns preserved future booking warnings |

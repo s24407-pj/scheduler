@@ -2,10 +2,7 @@
 
 Spring Boot API for a beauty and cosmetology salon scheduler. Customers book with SMS OTP; staff use a separate TanStack Start dashboard with Spring Session authentication.
 
-**Related local projects:**
-
-- `../../scheduler-dashboard` — current staff dashboard repository (Bun/TanStack Start)
-- `../scheduler-dashboard-start` and `../scheduler-dashboard` — older frontend prototypes with obsolete JWT contracts
+**Staff frontend:** [scheduler-dashboard](https://github.com/s24407-pj/scheduler-dashboard) (Bun/TanStack Start).
 
 ## Features
 

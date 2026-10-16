@@ -42,7 +42,7 @@ JDK 25 and lefthook are pinned in `mise.toml` (`mise install && lefthook install
 
 Beauty/barber salon scheduling backend: **Kotlin**, **Spring Boot 4** (Web MVC, Security, Data JPA, Validation, Actuator), **PostgreSQL** + **Flyway**, **Redis** (OTP, rate limiting, cache), **Spring Session Redis**, **Cloudflare R2** for images, **Testcontainers** + **MockK**/**SpringMockK** for tests.
 
-Customers authenticate via SMS OTP; staff via company-scoped email/password. The current staff frontend is the separate repository `../../scheduler-dashboard` (TanStack Start, Bun). Sibling `../scheduler-dashboard-start` and `../scheduler-dashboard` are older JWT-based prototypes.
+Customers authenticate via SMS OTP; staff via company-scoped email/password. The current staff frontend is the separate repository [scheduler-dashboard](https://github.com/s24407-pj/scheduler-dashboard) (TanStack Start, Bun).
 
 ```
 src/main/kotlin/pl/kacosmetology/scheduler/
