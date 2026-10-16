@@ -1,16 +1,16 @@
 # Scheduler
 
-Spring Boot backend for a beauty and cosmetology salon scheduling system. Customers book via SMS OTP authentication; owners and employees manage reservations through a separate dashboard.
+Spring Boot API for a beauty and cosmetology salon scheduler. Customers book with SMS OTP; staff use a separate TanStack Start dashboard with Spring Session authentication.
 
-**Related projects:**
+**Related local projects:**
 
-- [scheduler-dashboard-start](../scheduler-dashboard-start) — TanStack Start app: public booking pages and the staff studio (recommended)
-- [scheduler-dashboard](../scheduler-dashboard) — legacy React admin UI for owners and employees
+- `../../scheduler-dashboard` — current staff dashboard repository (Bun/TanStack Start)
+- `../scheduler-dashboard-start` and `../scheduler-dashboard` — older frontend prototypes with obsolete JWT contracts
 
 ## Features
 
 - Customer booking with SMS OTP login and Redis-backed HttpOnly sessions
-- Staff login (email + password) with employment selection and role-based access (`OWNER`, `EMPLOYEE`)
+- Company-scoped staff login (email + password) with role-based access (`OWNER`, `EMPLOYEE`)
 - Availability calculation from work schedules, reservations, and schedule blocks
 - Offering catalog with categories and image uploads (Cloudflare R2)
 - SMS notifications (confirmation, cancellation, reminders)
@@ -34,7 +34,7 @@ The API runs at `http://localhost:8080` with the `dev` profile, which seeds a co
 | Owner    | `gabinet@kacosmetology.pl`   | `admin123`    |
 | Employee | `pracownik@kacosmetology.pl` | `employee123` |
 
-Customer OTP codes are written to the app log. The seed has no work schedules, so set one before expecting available slots.
+Customer OTP codes are not logged; development instructions explain how to inspect the local Redis key. The seed has no work schedules, so set one before expecting available slots.
 
 Running on the host, configuration, seed details, and testing: [docs/development.md](./docs/development.md).
 
