@@ -64,6 +64,7 @@ class AuthService(
         if (!limit.allowed) throw RateLimitExceededException(retryAfterSeconds = limit.retryAfterSeconds)
         val phoneNumber = canonicalPhone(request.phoneNumber)
         requireVerified(otpStore.verifyAndConsumeCode(phoneNumber, request.code), clientIp)
+        eventPublisher.publishEvent(OtpConsumedEvent(phoneNumber, request.code))
         val user = userRepository.findByPhoneNumber(phoneNumber) ?: userRepository.save(User(phoneNumber = phoneNumber))
         return CustomUserDetails(requireNotNull(user.id), user.phoneNumber, "ROLE_CUSTOMER")
     }

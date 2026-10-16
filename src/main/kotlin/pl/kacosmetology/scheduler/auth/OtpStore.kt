@@ -48,6 +48,7 @@ class OtpStore(
                 local previous = redis.call('GET', KEYS[4])
                 if previous == code then code = string.format('%06d', (tonumber(code) + 1) % 1000000) end
                 redis.call('SET', KEYS[1], code, 'PX', 300000)
+                redis.call('SET', KEYS[6], day, 'PX', 300000)
                 redis.call('SET', KEYS[2], '1', 'PX', 60000)
                 redis.call('ZADD', KEYS[3], now, ARGV[2])
                 redis.call('PEXPIRE', KEYS[3], 300000)
@@ -58,6 +59,34 @@ class OtpStore(
                 """
                     .trimIndent(),
                 List::class.java,
+            )
+
+        private val firstDeliveryBudgetScript =
+            RedisScript.of<Long>(
+                """
+                local reservedDay = tonumber(redis.call('GET', KEYS[1]))
+                local now = redis.call('TIME')
+                local currentDay = math.floor(tonumber(now[1]) / 86400)
+                if reservedDay == currentDay then return 0 end
+                return 1
+                """
+                    .trimIndent(),
+                Long::class.java,
+            )
+
+        private val deliveryTtlScript =
+            RedisScript.of<Long>(
+                """
+                local value = redis.call('GET', KEYS[1])
+                if not value then return -1 end
+                local separator = string.find(value, '|', 1, true)
+                local code = separator and string.sub(value, 1, separator - 1) or value
+                local failures = separator and tonumber(string.sub(value, separator + 1)) or 0
+                if code ~= ARGV[1] or failures >= 3 then return -1 end
+                return redis.call('PTTL', KEYS[1])
+                """
+                    .trimIndent(),
+                Long::class.java,
             )
 
         private val verifyScript =
@@ -93,6 +122,7 @@ class OtpStore(
                         "rate:sms:$phoneNumber",
                         "otp:previous:$phoneNumber",
                         "otp:global-daily",
+                        "otp:delivery-day:$phoneNumber",
                     ),
                     candidate,
                     UUID.randomUUID().toString(),
@@ -104,6 +134,14 @@ class OtpStore(
         }
         return result[1].toString()
     }
+
+    /** First-attempt allowance belongs to its Redis issuance day; a later UTC day needs a fresh reservation. */
+    fun firstDeliveryNeedsBudget(phoneNumber: String): Boolean =
+        checkNotNull(redisTemplate.execute(firstDeliveryBudgetScript, listOf("otp:delivery-day:$phoneNumber"))) == 1L
+
+    /** Remaining original lifetime only when the same unconsumed code is still usable; never extends its expiry. */
+    fun deliveryTtlMillis(phoneNumber: String, code: String): Long? =
+        checkNotNull(redisTemplate.execute(deliveryTtlScript, listOf("otp:$phoneNumber"), code)).takeIf { it > 0 }
 
     /** Records at most three failures, preserves expiry, and consumes success in a single Redis operation. */
     fun verifyAndConsumeCode(phoneNumber: String, submittedCode: String): OtpVerificationResult {

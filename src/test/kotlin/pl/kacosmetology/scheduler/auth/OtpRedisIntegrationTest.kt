@@ -24,6 +24,7 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
+import pl.kacosmetology.scheduler.auth.sms.SmsDeliveryResult
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import software.amazon.awssdk.services.s3.S3Client
 
@@ -36,6 +37,7 @@ class OtpRedisIntegrationTest {
     @Autowired private lateinit var verifications: OtpVerificationRateLimiter
     @Autowired private lateinit var rolling: RedisRollingRateLimiter
     @Autowired private lateinit var authService: AuthService
+    @Autowired private lateinit var deliveries: OtpDeliveryService
     @Autowired private lateinit var transactionManager: PlatformTransactionManager
     @MockkBean private lateinit var smsSender: SmsSender
     @MockkBean private lateinit var s3Client: S3Client
@@ -46,6 +48,12 @@ class OtpRedisIntegrationTest {
         redis.connectionFactory!!.connection.use { it.serverCommands().flushAll() }
         clearMocks(smsSender)
         every { smsSender.sendOtp(any(), any()) } just Runs
+        every { smsSender.deliverOtp(any(), any()) } answers
+            {
+                smsSender.sendOtp(firstArg(), secondArg())
+                SmsDeliveryResult.ACCEPTED
+            }
+        deliveries.recoverAfterRestart()
     }
 
     @Test

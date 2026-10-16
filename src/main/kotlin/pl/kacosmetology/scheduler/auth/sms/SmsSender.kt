@@ -5,6 +5,15 @@ interface SmsSender {
     /** Sends a one-time password [code] to the given [phoneNumber]. */
     fun sendOtp(phoneNumber: String, code: String)
 
+    /** Provider acceptance for an OTP; unclassified exceptions never prove a safe-to-retry rejection. */
+    fun deliverOtp(phoneNumber: String, code: String): SmsDeliveryResult =
+        try {
+            sendOtp(phoneNumber, code)
+            SmsDeliveryResult.ACCEPTED
+        } catch (_: Exception) {
+            SmsDeliveryResult.AMBIGUOUS
+        }
+
     /** Sends an arbitrary [message] to the given [phoneNumber]. */
     fun sendMessage(phoneNumber: String, message: String)
 

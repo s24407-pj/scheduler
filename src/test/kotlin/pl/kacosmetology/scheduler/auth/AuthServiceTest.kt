@@ -31,7 +31,7 @@ class AuthServiceTest {
 
     @MockK private lateinit var otpStore: OtpStore
 
-    @MockK private lateinit var eventPublisher: ApplicationEventPublisher
+    @MockK(relaxUnitFun = true) private lateinit var eventPublisher: ApplicationEventPublisher
 
     @MockK private lateinit var passwordEncoder: PasswordEncoder
 
@@ -52,7 +52,7 @@ class AuthServiceTest {
     private val testPhone = "+48111222333"
 
     @Test
-    fun `requestCode normalizes phone and publishes after commit dispatch event`() {
+    fun `requestCode normalizes phone and publishes durable issuance intent`() {
         every { otpRequestRateLimiter.check(testIp) } returns RateLimitDecision(true, 0)
         every { otpStore.issueCode(testPhone) } returns "123456"
         every { eventPublisher.publishEvent(any<OtpIssuedEvent>()) } just Runs
@@ -121,6 +121,7 @@ class AuthServiceTest {
             userRepository.save(match { it.phoneNumber == testPhone && it.firstName == "" && it.lastName == "" })
         }
         verify(exactly = 1) { otpStore.verifyAndConsumeCode(testPhone, "123456") }
+        verify(exactly = 1) { eventPublisher.publishEvent(match<OtpConsumedEvent> { it.phoneNumber == testPhone }) }
     }
 
     @Test

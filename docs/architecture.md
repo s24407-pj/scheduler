@@ -59,7 +59,7 @@ Security 7's `csrf.spa()` uses standard cookie tokens and SPA request handling, 
 
 ### Login hardening
 
-Staff login keeps the same error message for unknown email, SMS-only accounts and wrong passwords and runs one bcrypt comparison in each case. OTP identity is global and phone-only: normalize to `+digits` before lookup; verification requires no name and creates no company customer profile. OTP SMS dispatch runs after transaction commit; failures are logged without secrets and never escape into the request.
+Staff login keeps the same error message for unknown email, SMS-only accounts and wrong passwords and runs one bcrypt comparison in each case. OTP identity is global and phone-only: normalize to `+digits` before lookup; verification requires no name and creates no company customer profile. OTP intent is durable before commit in `otp_deliveries`; classified provider delivery runs after commit, checks original Redis validity, clears terminal secrets and conservatively marks unknown in-flight sends ambiguous on restart. Failures are logged without secrets and never escape into the request.
 
 ### Rate limiting (Redis)
 
@@ -75,7 +75,7 @@ Staff login keeps the same error message for unknown email, SMS-only accounts an
 
 OTP codes contain exactly six digits and expire after five minutes. Lua scripts enforce limits using Redis server time, atomically issue replacements, preserve expiry after failures and consume a correct code only once. A replacement differs from the preceding code, invalidates it, and receives a new expiry and attempt allowance. The phone limit counts accepted issuances only; every issuance request, including cooldown denials, counts against the IP limit. IP verification requests count regardless of outcome. No browser bot challenge is required.
 
-The global daily cap uses UTC calendar days from Redis time and counts accepted OTP issuances and notification send reservations conservatively before dispatch. Failed or rolled-back dispatches do not refund capacity. Production refuses to start unless `OTP_GLOBAL_DAILY_SMS_CAP` is positive. Request limits and accepted-issuance accounting fail closed if Redis is unavailable. Development dispatch logs never include codes; inspect the local Redis `otp:<canonical-phone>` key for manual testing.
+The global daily cap uses UTC calendar days from Redis time and reserves first OTP attempts at accepted issuance, additional definite-temporary OTP retries and notification attempts conservatively before dispatch. Failed or rolled-back dispatches do not refund capacity. Production refuses to start unless `OTP_GLOBAL_DAILY_SMS_CAP` is positive. Request limits and accepted-issuance accounting fail closed if Redis is unavailable. Development dispatch logs never include codes; inspect the local Redis `otp:<canonical-phone>` key for manual testing.
 
 Client IP is `request.remoteAddr`. With `server.forward-headers-strategy: native`, Tomcat replaces it with the `X-Forwarded-For` client only when the direct peer matches the `TRUSTED_PROXIES` regex; the default (empty) trusts no proxy, so a client-supplied header cannot bypass the limits. Behind a reverse proxy, set `TRUSTED_PROXIES` to the proxy's address, otherwise every client shares the proxy's limit. For Dokploy behind Cloudflare, see [deployment.md](./deployment.md#client-ip-for-rate-limiting). Exceeding a limit returns 429 with `Retry-After`.
 
