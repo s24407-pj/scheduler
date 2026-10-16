@@ -6,7 +6,9 @@ import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityConflictSource
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.config.ErrorCode
 
 /** Business logic for employee schedule blocks (breaks, personal unavailability). */
@@ -15,6 +17,7 @@ class ScheduleBlockService(
     private val scheduleBlockRepository: ScheduleBlockRepository,
     private val employeeAvailabilityPolicy: EmployeeAvailabilityPolicy,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
+    private val companyRepository: CompanyRepository,
 ) {
 
     /**
@@ -35,6 +38,15 @@ class ScheduleBlockService(
             throw IllegalArgumentException("Czas zakończenia musi być późniejszy niż czas rozpoczęcia")
         }
 
+        if (
+            BUSINESS_ZONE.rules.getValidOffsets(startTime).size != 1 ||
+                BUSINESS_ZONE.rules.getValidOffsets(endTime).size != 1
+        ) {
+            throw ApiException(
+                ErrorCode.INVALID_LOCAL_TIME,
+                "Granice blokady muszą istnieć jednoznacznie w strefie Europe/Warsaw",
+            )
+        }
         val conflict = employeeAvailabilityPolicy.findFirstConflict(companyId, employeeId, startTime, endTime)
         if (conflict != null) {
             val message =
@@ -63,14 +75,16 @@ class ScheduleBlockService(
      */
     @Transactional
     fun deleteBlock(blockId: Long, requesterId: Long, isOwner: Boolean, companyId: Long) {
+        companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val block =
-            scheduleBlockRepository.findById(blockId).orElse(null)?.takeIf { it.companyId == companyId }
+            scheduleBlockRepository.findByIdAndCompanyId(blockId, companyId)
                 ?: throw ApiException(ErrorCode.SCHEDULE_BLOCK_NOT_FOUND, "Blokada nie istnieje")
 
         if (!isOwner && block.employeeId != requesterId) {
             throw ApiException(ErrorCode.ACCESS_DENIED, "Nie możesz usunąć cudzej blokady")
         }
 
+        lockCompanyMembership(companyId, block.employeeId)
         scheduleBlockRepository.delete(block)
     }
 
@@ -93,6 +107,7 @@ class ScheduleBlockService(
     }
 
     private fun lockCompanyMembership(companyId: Long, employeeId: Long) {
+        companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         if (companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId) == null) {
             throw NoSuchElementException("Pracownik nie należy do tej firmy")
         }

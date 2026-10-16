@@ -16,14 +16,18 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.company.Company
+import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.company.EmployeeEligibilityMode
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.workschedule.EmployeeScheduleOverrideRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 
@@ -43,6 +47,8 @@ class AvailabilityServiceTest {
     @MockK private lateinit var employeeAvailabilityPolicy: EmployeeAvailabilityPolicy
 
     @MockK private lateinit var clock: Clock
+    @MockK private lateinit var reservationRepository: ReservationRepository
+    @MockK private lateinit var overrideRepository: EmployeeScheduleOverrideRepository
 
     private lateinit var availabilityService: AvailabilityService
 
@@ -71,12 +77,18 @@ class AvailabilityServiceTest {
                 assignmentRepository,
                 companyEmployeeRepository,
                 employeeAvailabilityPolicy,
-                BookableSlotPolicy(workScheduleRepository),
+                BookableSlotPolicy(workScheduleRepository, overrideRepository),
                 clock,
+                reservationRepository,
             )
         every { clock.instant() } answers { Instant.now() }
         every { clock.zone } returns BUSINESS_ZONE
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(any(), any()) } returns true
+        every { overrideRepository.findByCompanyIdAndEmployeeIdAndScheduleDate(any(), any(), any()) } returns null
+        every { companyEmployeeRepository.findByCompanyIdAndUserId(any(), any()) } answers
+            {
+                CompanyEmployee(companyId = firstArg(), userId = secondArg(), role = "EMPLOYEE")
+            }
+        every { reservationRepository.existsCustomerOverlapping(any(), any(), any(), any(), any()) } returns false
         every { employeeAvailabilityPolicy.findConflicts(any(), employeeId, any(), any()) } returns emptyList()
         every { employeeAvailabilityPolicy.overlapsAny(any(), any(), any()) } answers
             {
@@ -447,7 +459,16 @@ class AvailabilityServiceTest {
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
         every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, employeeId) } returns true
-        every { assignmentRepository.existsByEmployeeIdAndOfferingId(employeeId, serviceId) } returns false
+        every { companyEmployeeRepository.findByCompanyIdAndUserId(companyId, employeeId) } returns
+            CompanyEmployee(
+                companyId = companyId,
+                userId = employeeId,
+                role = "EMPLOYEE",
+                eligibilityMode = EmployeeEligibilityMode.SPECIFIC_SERVICES,
+            )
+        every {
+            assignmentRepository.existsByCompanyIdAndEmployeeIdAndOfferingId(companyId, employeeId, serviceId)
+        } returns false
 
         // WHEN & THEN
         val ex =
@@ -465,15 +486,10 @@ class AvailabilityServiceTest {
             Offering(id = serviceId, companyId = companyId, name = "Strzyżenie", durationMinutes = 60, price = 100)
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
         every { companyRepository.findById(companyId) } returns Optional.of(defaultCompany)
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
+        every { companyEmployeeRepository.findByCompanyIdAndUserId(companyId, employeeId) } returns null
 
         // WHEN & THEN
-        val ex =
-            assertThrows<ApiException> {
-                availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
-            }
-        assertEquals("Pracownik nie należy do firmy wybranej usługi", ex.message)
-        assertEquals(ErrorCode.EMPLOYEE_NOT_IN_COMPANY, ex.code)
+        assertThrows<NoSuchElementException> { availabilityService.getAvailableSlots(employeeId, serviceId, testDate) }
     }
 
     @Test
@@ -490,11 +506,11 @@ class AvailabilityServiceTest {
         every { serviceRepository.findById(serviceId) } returns Optional.of(service)
 
         val ex =
-            assertThrows<ApiException> {
+            assertThrows<NoSuchElementException> {
                 availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
             }
 
-        assertEquals(ErrorCode.OFFERING_UNAVAILABLE, ex.code)
+        assertEquals("Usługa nie istnieje", ex.message)
     }
 
     @Test
@@ -533,10 +549,10 @@ class AvailabilityServiceTest {
         every { serviceRepository.findById(serviceId) } returns Optional.empty()
 
         val ex =
-            assertThrows<ApiException> {
+            assertThrows<NoSuchElementException> {
                 availabilityService.getAvailableSlots(employeeId, serviceId, testDate)
             }
-        assertEquals(ErrorCode.OFFERING_UNAVAILABLE, ex.code)
+        assertEquals("Usługa nie istnieje", ex.message)
     }
 
     @Test

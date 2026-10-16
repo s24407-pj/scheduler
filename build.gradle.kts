@@ -43,16 +43,17 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("tools.jackson.module:jackson-module-kotlin")
 
+    // ImageIO decoder verifies actual WebP payloads as well as standard JPEG/PNG.
+    implementation("com.twelvemonkeys.imageio:imageio-webp:3.12.0")
+
     // AWS SDK (for Cloudflare R2 — S3-compatible)
     implementation(libs.aws.s3)
 
     // OpenAPI spec + Swagger UI (enabled only in the dev profile)
     implementation(libs.springdoc.openapi.webmvc.ui)
 
-    // JWT
-    implementation(libs.jjwt.api)
-    runtimeOnly(libs.jjwt.impl)
-    runtimeOnly(libs.jjwt.jackson)
+    // Redis-backed servlet sessions (Spring Boot managed)
+    implementation("org.springframework.boot:spring-boot-starter-session-data-redis")
 
     // Test - Spring Boot
     testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
@@ -103,7 +104,8 @@ allOpen {
 
 tasks.withType<Test> {
     useJUnitPlatform()
-    systemProperty("user.timezone", "Europe/Warsaw")
+    systemProperty("user.timezone", "UTC")
+    systemProperty("scheduler.jobs.enabled", "false")
     systemProperty("spring.profiles.active", "test")
 }
 

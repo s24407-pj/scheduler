@@ -9,10 +9,14 @@ import java.time.DayOfWeek
 import java.time.LocalTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
+import pl.kacosmetology.scheduler.company.Company
+import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.workschedule.dto.SetWeeklyScheduleRequest
 import pl.kacosmetology.scheduler.workschedule.dto.WorkScheduleEntryRequest
 
@@ -23,10 +27,21 @@ class WorkScheduleServiceTest {
 
     @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
+    @MockK private lateinit var companyRepository: CompanyRepository
+
+    @MockK private lateinit var overrideRepository: EmployeeScheduleOverrideRepository
+
     @InjectMockKs private lateinit var workScheduleService: WorkScheduleService
 
     private val companyId = 1L
     private val employeeId = 10L
+
+    @BeforeEach
+    fun mockPolicyLocks() {
+        every { companyRepository.findByIdForUpdate(companyId) } returns Company(id = companyId, name = "Firma")
+        every { companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId) } returns
+            CompanyEmployee(companyId = companyId, userId = employeeId, role = "EMPLOYEE")
+    }
 
     @Test
     fun `setSchedule should save entries and return responses`() {
@@ -68,16 +83,11 @@ class WorkScheduleServiceTest {
     }
 
     @Test
-    fun `setSchedule with null entries should clear schedule`() {
-        val request = SetWeeklyScheduleRequest(entries = null)
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
-        every { workScheduleRepository.deleteAllByCompanyIdAndEmployeeId(companyId, employeeId) } returns Unit
-        every { workScheduleRepository.flush() } returns Unit
-        every { workScheduleRepository.saveAll(any<List<EmployeeWorkSchedule>>()) } returns emptyList()
-
-        val result = workScheduleService.setSchedule(companyId, employeeId, request)
-
-        assertTrue(result.isEmpty())
+    fun `setSchedule with null entries rejects without changing saved schedule`() {
+        assertThrows<IllegalArgumentException> {
+            workScheduleService.setSchedule(companyId, employeeId, SetWeeklyScheduleRequest(entries = null))
+        }
+        verify(exactly = 0) { workScheduleRepository.deleteAllByCompanyIdAndEmployeeId(any(), any()) }
     }
 
     @Test
@@ -121,6 +131,7 @@ class WorkScheduleServiceTest {
     fun `setSchedule should throw when employee does not belong to company`() {
         val request = SetWeeklyScheduleRequest(entries = emptyList())
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
+        every { companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId) } returns null
 
         assertThrows<NoSuchElementException> {
             workScheduleService.setSchedule(companyId, employeeId, request)

@@ -15,8 +15,6 @@ import pl.kacosmetology.scheduler.company.dto.UpdateCompanySettingsRequest
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
 
 @ExtendWith(MockKExtension::class)
 class CompanyServiceTest {
@@ -24,8 +22,6 @@ class CompanyServiceTest {
     @MockK private lateinit var companyRepository: CompanyRepository
 
     @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-
-    @MockK private lateinit var userRepository: UserRepository
 
     @MockK private lateinit var offeringRepository: OfferingRepository
 
@@ -64,7 +60,7 @@ class CompanyServiceTest {
                 closingTime = LocalTime.of(18, 0),
                 slotIntervalMinutes = 15,
             )
-        every { companyRepository.findById(companyId) } returns Optional.of(company)
+        every { companyRepository.findByIdForUpdate(companyId) } returns company
 
         val result = companyService.updateSettings(companyId, request)
 
@@ -85,7 +81,7 @@ class CompanyServiceTest {
                 closingTime = LocalTime.of(9, 0),
                 slotIntervalMinutes = 30,
             )
-        every { companyRepository.findById(companyId) } returns Optional.of(company)
+        every { companyRepository.findByIdForUpdate(companyId) } returns company
 
         val ex = assertThrows<IllegalArgumentException> { companyService.updateSettings(companyId, request) }
         assertEquals("Godzina zamknięcia musi być późniejsza niż godzina otwarcia", ex.message)
@@ -100,20 +96,33 @@ class CompanyServiceTest {
                 closingTime = LocalTime.of(9, 0),
                 slotIntervalMinutes = 30,
             )
-        every { companyRepository.findById(companyId) } returns Optional.of(company)
+        every { companyRepository.findByIdForUpdate(companyId) } returns company
 
         assertThrows<IllegalArgumentException> { companyService.updateSettings(companyId, request) }
     }
 
     @Test
     fun `getEmployees should return mapped employee responses`() {
-        val user1 = User(id = 10L, phoneNumber = "+48100000001", firstName = "Anna", lastName = "Kowalska")
-        val user2 = User(id = 11L, phoneNumber = "+48100000002", firstName = "Bartek", lastName = "Nowak")
-        val ce1 = CompanyEmployee(id = 1L, companyId = companyId, userId = 10L, role = "OWNER")
-        val ce2 = CompanyEmployee(id = 2L, companyId = companyId, userId = 11L, role = "EMPLOYEE")
+        val ce1 =
+            CompanyEmployee(
+                id = 1L,
+                companyId = companyId,
+                userId = 10L,
+                role = "OWNER",
+                firstName = "Anna",
+                lastName = "Kowalska",
+            )
+        val ce2 =
+            CompanyEmployee(
+                id = 2L,
+                companyId = companyId,
+                userId = 11L,
+                role = "EMPLOYEE",
+                firstName = "Bartek",
+                lastName = "Nowak",
+            )
 
         every { companyEmployeeRepository.findAllByCompanyId(companyId) } returns listOf(ce1, ce2)
-        every { userRepository.findAllById(setOf(10L, 11L)) } returns listOf(user1, user2)
 
         val result = companyService.getEmployees(companyId)
 
@@ -127,7 +136,6 @@ class CompanyServiceTest {
     @Test
     fun `getEmployees should return empty list when no employees`() {
         every { companyEmployeeRepository.findAllByCompanyId(companyId) } returns emptyList()
-        every { userRepository.findAllById(emptySet()) } returns emptyList()
 
         val result = companyService.getEmployees(companyId)
 
@@ -160,15 +168,23 @@ class CompanyServiceTest {
                 price = 100,
                 active = true,
             )
-        val user = User(id = 10L, phoneNumber = "+48100000001", firstName = "Anna", lastName = "Kowalska")
-        val ce = CompanyEmployee(id = 1L, companyId = companyId, userId = 10L, role = "EMPLOYEE")
+        val ce =
+            CompanyEmployee(
+                id = 1L,
+                companyId = companyId,
+                userId = 10L,
+                role = "EMPLOYEE",
+                firstName = "Anna",
+                lastName = "Kowalska",
+                eligibilityMode = EmployeeEligibilityMode.SPECIFIC_SERVICES,
+            )
 
         every { companyRepository.findById(companyId) } returns Optional.of(company)
         every { offeringRepository.findById(offeringId) } returns Optional.of(offering)
         every { companyEmployeeRepository.findAllByCompanyId(companyId) } returns listOf(ce)
         every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, 10L) } returns true
-        every { assignmentRepository.existsByEmployeeIdAndOfferingId(10L, offeringId) } returns true
-        every { userRepository.findAllById(listOf(10L)) } returns listOf(user)
+        every { assignmentRepository.existsByCompanyIdAndEmployeeIdAndOfferingId(companyId, 10L, offeringId) } returns
+            true
 
         val result = companyService.getPublicBookableEmployees(companyId, offeringId)
 
@@ -185,7 +201,7 @@ class CompanyServiceTest {
                 closingTime = LocalTime.of(17, 0),
                 slotIntervalMinutes = 30,
             )
-        every { companyRepository.findById(companyId) } returns Optional.empty()
+        every { companyRepository.findByIdForUpdate(companyId) } returns null
 
         assertThrows<NoSuchElementException> { companyService.updateSettings(companyId, request) }
     }

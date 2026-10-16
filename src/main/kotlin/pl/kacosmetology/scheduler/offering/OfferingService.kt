@@ -6,6 +6,8 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.company.EmployeeEligibilityMode
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 
@@ -13,24 +15,26 @@ import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 @Service
 class OfferingService(
     private val offeringRepository: OfferingRepository,
+    private val companies: CompanyRepository,
     private val offeringImageService: OfferingImageService,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
     private val assignmentRepository: EmployeeOfferingAssignmentRepository,
 ) {
     /**
      * Returns the active offerings [employeeId] can perform at [companyId], following the booking rules: the offerings
-     * assigned to the employee at that company, or every active offering of the company when the employee has no
-     * assignments there. Throws [NoSuchElementException] when the employee is not employed at [companyId].
+     * assigned to a SPECIFIC_SERVICES employee at that company, or every active company offering for ALL_SERVICES.
+     * Throws [NoSuchElementException] when the employee is not employed at [companyId].
      */
     @Transactional(readOnly = true)
     fun getPublicEmployeeOfferings(companyId: Long, employeeId: Long): List<Offering> {
-        if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
-            throw NoSuchElementException("Pracownik nie istnieje")
-        }
+        val employee =
+            companyEmployeeRepository.findByCompanyIdAndUserId(companyId, employeeId)?.takeIf { it.enabled }
+                ?: throw NoSuchElementException("Pracownik nie istnieje")
         val assignedIds =
             assignmentRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId).map { it.offeringId }.toSet()
         val activeOfferings = offeringRepository.findAllByCompanyIdAndActiveTrue(companyId)
-        return if (assignedIds.isEmpty()) activeOfferings else activeOfferings.filter { it.id in assignedIds }
+        return if (employee.eligibilityMode == EmployeeEligibilityMode.ALL_SERVICES) activeOfferings
+        else activeOfferings.filter { it.id in assignedIds }
     }
 
     /** Returns only active offerings for a company. Used by public endpoints and booking. Cached in Redis. */
@@ -49,13 +53,14 @@ class OfferingService(
     /** Returns a single offering by ID or throws [IllegalArgumentException]. */
     @Transactional(readOnly = true)
     fun getOfferingById(id: Long): Offering {
-        return offeringRepository.findById(id).orElseThrow { IllegalArgumentException("Usługa o ID $id nie istnieje") }
+        return offeringRepository.findById(id).orElseThrow { NoSuchElementException("Usługa nie istnieje") }
     }
 
     /** Creates a new offering and evicts the company offerings cache. */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun createOffering(companyId: Long, request: OfferingRequest): Offering {
+        companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         return offeringRepository.save(
             Offering(
                 companyId = companyId,
@@ -70,10 +75,11 @@ class OfferingService(
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun updateOffering(id: Long, companyId: Long, request: OfferingRequest): Offering {
+        companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val existing = getOfferingById(id)
 
         if (existing.companyId != companyId) {
-            throw IllegalStateException("Brak dostępu do tej usługi")
+            throw NoSuchElementException("Usługa nie istnieje")
         }
 
         existing.name = request.name
@@ -86,10 +92,11 @@ class OfferingService(
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun activateOffering(id: Long, companyId: Long) {
+        companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val existing = getOfferingById(id)
 
         if (existing.companyId != companyId) {
-            throw IllegalStateException("Brak dostępu do tej usługi")
+            throw NoSuchElementException("Usługa nie istnieje")
         }
 
         existing.active = true
@@ -102,8 +109,9 @@ class OfferingService(
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun uploadImage(offeringId: Long, companyId: Long, file: MultipartFile): Offering {
+        companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val offering = getOfferingById(offeringId)
-        if (offering.companyId != companyId) throw IllegalStateException("Brak dostępu do tej usługi")
+        if (offering.companyId != companyId) throw NoSuchElementException("Usługa nie istnieje")
         offeringImageService.upload(companyId, offeringId, file)
         return offering
     }
@@ -112,8 +120,9 @@ class OfferingService(
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun deleteImage(offeringId: Long, imageId: Long, companyId: Long): Offering {
+        companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val offering = getOfferingById(offeringId)
-        if (offering.companyId != companyId) throw IllegalStateException("Brak dostępu do tej usługi")
+        if (offering.companyId != companyId) throw NoSuchElementException("Usługa nie istnieje")
         offeringImageService.delete(imageId, offeringId)
         return offering
     }
@@ -122,10 +131,11 @@ class OfferingService(
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun deleteOffering(id: Long, companyId: Long) {
+        companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val existing = getOfferingById(id)
 
         if (existing.companyId != companyId) {
-            throw IllegalStateException("Brak dostępu do tej usługi")
+            throw NoSuchElementException("Usługa nie istnieje")
         }
 
         existing.active = false

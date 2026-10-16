@@ -1,587 +1,353 @@
 package pl.kacosmetology.scheduler.reservation
 
-import com.ninjasquad.springmockk.MockkBean
-import io.mockk.Runs
-import io.mockk.every
-import io.mockk.just
-import java.time.DayOfWeek
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.LocalTime
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.BeforeEach
+import io.mockk.verify
+import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
-import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-import org.springframework.context.annotation.Import
-import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.http.MediaType
-import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.get
-import org.springframework.test.web.servlet.patch
-import org.springframework.test.web.servlet.post
-import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
-import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
-import pl.kacosmetology.scheduler.auth.sms.SmsSender
-import pl.kacosmetology.scheduler.company.Company
-import pl.kacosmetology.scheduler.company.CompanyEmployee
-import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
-import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
-import pl.kacosmetology.scheduler.offering.Offering
-import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.reservation.dto.CreateReservationRequest
-import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
-import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
-import pl.kacosmetology.scheduler.security.JwtService
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
-import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
-import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
-import software.amazon.awssdk.services.s3.S3Client
-import tools.jackson.databind.ObjectMapper
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 
-@SpringBootTest
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration::class)
-class CustomerReservationFlowIntegrationTest {
-
-    @Autowired private lateinit var mockMvc: MockMvc
-
-    @Autowired private lateinit var objectMapper: ObjectMapper
-
-    @Autowired private lateinit var userRepository: UserRepository
-
-    @Autowired private lateinit var companyRepository: CompanyRepository
-
-    @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
-
-    @Autowired private lateinit var serviceRepository: OfferingRepository
-
-    @Autowired private lateinit var redisTemplate: StringRedisTemplate
-
-    @Autowired private lateinit var reservationRepository: ReservationRepository
-
-    @Autowired private lateinit var scheduleBlockRepository: ScheduleBlockRepository
-
-    @Autowired private lateinit var jwtService: JwtService
-
-    @MockkBean private lateinit var smsSender: SmsSender
-
-    @Autowired private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
-
-    @MockkBean private lateinit var s3Client: S3Client
-
-    private var companyId: Long = 0
-    private var employeeId: Long = 0
-    private var serviceId: Long = 0
-
-    @BeforeEach
-    fun setup() {
-        // 1. Czyszczenie bazy danych przed testem
-        reservationRepository.deleteAll()
-        scheduleBlockRepository.deleteAll()
-        workScheduleRepository.deleteAll()
-        redisTemplate.connectionFactory?.connection?.serverCommands()?.flushAll()
-        serviceRepository.deleteAll()
-        companyEmployeeRepository.deleteAll()
-        userRepository.deleteAll()
-        companyRepository.deleteAll()
-
-        // 2. Mockowanie wysyłki SMS
-        every { smsSender.sendOtp(any(), any()) } just Runs
-
-        // 3. Konfiguracja Salonu i Pracownika
-        val company = companyRepository.save(Company(name = "Salon Piękności"))
-        val employee =
-            userRepository.save(User(phoneNumber = "+48999000111", firstName = "Pani", lastName = "Kosmetyczka"))
-        companyEmployeeRepository.save(
-            CompanyEmployee(
-                companyId = company.id!!,
-                userId = employee.id!!,
-                role = "EMPLOYEE",
-            ),
-        )
-
-        val service =
-            serviceRepository.save(
-                Offering(
-                    companyId = company.id!!,
-                    name = "Manicure",
-                    durationMinutes = 60,
-                    price = 120,
-                ),
-            )
-
-        companyId = company.id!!
-        employeeId = employee.id!!
-        serviceId = service.id!!
-        saveWeeklySchedule(companyId, employeeId)
+/** Customer submissions enforce current scheduling rules without approval, holds or confirmation SMS. */
+class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() {
+    @Test
+    fun `successful booking creates BOOKED and salon profile with no notification`() {
+        shift()
+        val created = book()
+        assertEquals(201, created.response.status, created.response.contentAsString)
+        assertEquals("BOOKED", tree(created)["status"].stringValue())
+        assertEquals(1L, count("company_customers"))
+        assertEquals(1L, count("reservation_audit"))
+        assertEquals(0L, count("notification_deliveries"))
+        verify(exactly = 0) { sms.sendMessage(any(), any()) }
     }
 
-    private fun saveWeeklySchedule(companyId: Long, employeeId: Long) {
-        DayOfWeek.entries.forEach { day ->
-            workScheduleRepository.save(
-                EmployeeWorkSchedule(
-                    companyId = companyId,
-                    employeeId = employeeId,
-                    dayOfWeek = day,
-                    startTime = LocalTime.of(8, 0),
-                    endTime = LocalTime.of(18, 0),
-                ),
-            )
-        }
+    @Test
+    fun `first booking requires names and failed submission creates no salon profile`() {
+        shift()
+        assertEquals(400, book(customerBody() - "firstName").response.status)
+        assertEquals(0L, count("company_customers"))
+        assertEquals(0L, count("reservations"))
     }
 
-    private fun book(token: String, startTime: LocalDateTime, offeringId: Long = serviceId) =
-        mockMvc.post("/api/reservations") {
-            header("Authorization", "Bearer $token")
-            contentType = MediaType.APPLICATION_JSON
-            content =
-                objectMapper.writeValueAsString(
-                    CreateReservationRequest(employeeId = employeeId, serviceId = offeringId, startTime = startTime),
+    @Test
+    fun `existing salon profile cannot be renamed by a booking request`() {
+        shift()
+        profile()
+        assertEquals(
+            201,
+            book(
+                    customerBody() +
+                        mapOf("firstName" to "Hijack", "lastName" to "Changed", "contactEmail" to "wrong@example.test"),
                 )
-        }
-
-    @Test
-    fun `customer booking off the slot grid should return 409`() {
-        book(customerToken("+48555700001"), tomorrowAt(10).plusMinutes(7)).andExpect {
-            status { isConflict() }
-            jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
-            jsonPath("$.detail") { value("Ten termin nie jest dostępny do rezerwacji") }
-        }
-
-        assertEquals(0, reservationRepository.findAll().size)
-    }
-
-    @Test
-    fun `customer booking outside the employee's working hours should return 409`() {
-        val token = customerToken("+48555700002")
-
-        book(token, tomorrowAt(7)).andExpect {
-            status { isConflict() }
-            jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
-        }
-        // 60-minute offering starting 17:30 would end after 18:00
-        book(token, tomorrowAt(17).plusMinutes(30)).andExpect {
-            status { isConflict() }
-            jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
-        }
-
-        assertEquals(0, reservationRepository.findAll().size)
-    }
-
-    @Test
-    fun `customer can cancel before the visit starts but not after`() {
-        val customer = userRepository.save(User(phoneNumber = "+48555700003", firstName = "K", lastName = "T"))
-        val token = jwtService.generateCustomerToken(customer)
-        val future = saveReservation(customer.id!!, LocalDateTime.now(BUSINESS_ZONE).plusHours(1))
-        val started = saveReservation(customer.id!!, LocalDateTime.now(BUSINESS_ZONE).minusMinutes(90))
-
-        mockMvc
-            .patch("/api/reservations/${future.id!!}/cancel") {
-                header("Authorization", "Bearer $token")
-            }
-            .andExpect {
-                status { isNoContent() }
-            }
-        mockMvc
-            .patch("/api/reservations/${started.id!!}/cancel") {
-                header("Authorization", "Bearer $token")
-            }
-            .andExpect {
-                status { isConflict() }
-                jsonPath("$.code") { value("INVALID_STATUS_TRANSITION") }
-            }
-
-        assertEquals(ReservationStatus.CANCELLED, reservationRepository.findById(future.id!!).get().status)
-        assertEquals(ReservationStatus.PENDING, reservationRepository.findById(started.id!!).get().status)
-    }
-
-    @Test
-    fun `employee shared by two companies can be booked at the same time at each company`() {
-        val otherCompany = companyRepository.save(Company(name = "Drugi Salon"))
-        companyEmployeeRepository.save(
-            CompanyEmployee(companyId = otherCompany.id!!, userId = employeeId, role = "EMPLOYEE"),
+                .response
+                .status,
         )
-        val otherOffering =
-            serviceRepository.save(
-                Offering(companyId = otherCompany.id!!, name = "Pedicure", durationMinutes = 60, price = 90),
-            )
-        saveWeeklySchedule(otherCompany.id!!, employeeId)
-
-        book(customerToken("+48555700004"), tomorrowAt(10)).andExpect { status { isCreated() } }
-
-        mockMvc
-            .get("/api/availability") {
-                param("employeeId", employeeId.toString())
-                param("serviceId", otherOffering.id!!.toString())
-                param("date", tomorrowAt(10).toLocalDate().toString())
-            }
-            .andExpect {
-                status { isOk() }
-                jsonPath("$[?(@.time == '10:00:00')]") { exists() }
-            }
-        book(customerToken("+48555700005"), tomorrowAt(10), otherOffering.id!!).andExpect {
-            status { isCreated() }
-        }
-
-        assertEquals(2, reservationRepository.findAll().size)
+        assertEquals("Jan", jdbc.queryForObject("SELECT first_name FROM company_customers", String::class.java))
+        assertNull(jdbc.queryForObject("SELECT contact_email FROM company_customers", String::class.java))
     }
 
-    private fun saveReservation(customerId: Long, startTime: LocalDateTime): Reservation =
-        reservationRepository.save(
-            Reservation(
-                companyId = companyId,
-                customerId = customerId,
-                employeeId = employeeId,
-                serviceId = serviceId,
-                price = 120,
-                startTime = startTime,
-                endTime = startTime.plusMinutes(60),
-            ),
+    @Test
+    fun `missing schedule off grid outside shift and employee block each reject booking`() {
+        assertEquals(409, book().response.status)
+        shift()
+        assertEquals(409, book(customerBody(future.plusMinutes(7))).response.status)
+        assertEquals(409, book(customerBody(future.withHour(20))).response.status)
+        block()
+        assertEquals(409, book().response.status)
+        assertEquals(0L, count("company_customers"))
+    }
+
+    @Test
+    fun `foreign employee and disabled or unqualified employee cannot be booked`() {
+        shift()
+        val foreign = fixtures.salon()
+        assertEquals(404, book(customerBody(employee = foreign.employee)).response.status)
+        jdbc.update("UPDATE company_employees SET enabled=false WHERE id=?", salon.staff)
+        assertEquals(409, book().response.status)
+        jdbc.update(
+            "UPDATE company_employees SET enabled=true,eligibility_mode='SPECIFIC_SERVICES' WHERE id=?",
+            salon.staff,
         )
-
-    @Test
-    fun `full flow - new customer registers via SMS and creates a reservation`() {
-        val newCustomerPhone = "+48555666777"
-
-        // ==========================================
-        // KROK 1: Klient prosi o kod SMS
-        // ==========================================
-        val requestCodeReq = RequestCodeRequest(phoneNumber = newCustomerPhone)
-
-        mockMvc
-            .post("/api/auth/request-code") {
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(requestCodeReq)
-            }
-            .andExpect {
-                status { isOk() }
-            }
-
-        // Odczytujemy kod z Redis
-        val generatedCode = redisTemplate.opsForValue().get("otp:$newCustomerPhone")
-        assertNotNull(generatedCode, "Kod OTP powinien być w Redis")
-
-        // ==========================================
-        // KROK 2: Klient weryfikuje kod i podaje dane
-        // ==========================================
-        val verifyCodeReq =
-            VerifyCodeRequest(
-                phoneNumber = newCustomerPhone,
-                code = generatedCode!!,
-                firstName = "Julia",
-                lastName = "Nowak",
-            )
-
-        // Wyciągamy token JWT z odpowiedzi JSON!
-        val verifyResponse =
-            mockMvc
-                .post("/api/auth/verify-code") {
-                    contentType = MediaType.APPLICATION_JSON
-                    content = objectMapper.writeValueAsString(verifyCodeReq)
-                }
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.token") { exists() }
-                }
-                .andReturn()
-
-        // Parsujemy odpowiedź, aby zdobyć czysty string z tokenem
-        val responseBody = verifyResponse.response.contentAsString
-        val jwtToken = objectMapper.readTree(responseBody).get("token").stringValue()
-
-        // ==========================================
-        // KROK 3: Klient tworzy rezerwację z użyciem JWT
-        // ==========================================
-        // Wybieramy datę w przyszłości, żeby przejść przez Twoją nową walidację @Future!
-        val reservationTime = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
-
-        val createReservationReq =
-            CreateReservationRequest(
-                employeeId = employeeId,
-                serviceId = serviceId,
-                startTime = reservationTime,
-            )
-
-        mockMvc
-            .post("/api/reservations") {
-                header("Authorization", "Bearer $jwtToken") // KLUCZOWE: Używamy zdobytego tokena!
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(createReservationReq)
-            }
-            .andExpect {
-                status { isCreated() } // Oczekujemy 201 Created
-            }
-
-        // ==========================================
-        // KROK 4: Weryfikacja efektu końcowego w bazie
-        // ==========================================
-        val reservationsInDb = reservationRepository.findAll()
-        assertEquals(1, reservationsInDb.size, "Powinna powstać dokładnie jedna rezerwacja")
-
-        val savedReservation = reservationsInDb.first()
-        assertEquals(employeeId, savedReservation.employeeId)
-        assertEquals(serviceId, savedReservation.serviceId)
-        assertEquals(120, savedReservation.price, "Cena powinna być skopiowana ze snapshotu usługi")
-        assertEquals(ReservationStatus.PENDING, savedReservation.status)
-
-        // Weryfikacja czy nowo zarejestrowany klient jest poprawnie przypisany
-        val customerInDb = userRepository.findByPhoneNumber(newCustomerPhone)
-        assertNotNull(customerInDb)
-        assertEquals(customerInDb!!.id!!, savedReservation.customerId, "Rezerwacja powinna należeć do nowego klienta")
+        assertEquals(409, book().response.status)
     }
 
     @Test
-    fun `customer reservation should return 409 when requested time overlaps schedule block`() {
-        val customerPhone = "+48555111222"
-        val requestCodeReq = RequestCodeRequest(phoneNumber = customerPhone)
+    fun `zero notice requires strict future while positive notice boundary is inclusive`() {
+        shift()
+        setLocalNow(future)
+        assertEquals(409, book().response.status)
+        setLocalNow(localNow)
+        jdbc.update("UPDATE companies SET min_booking_advance_minutes=60 WHERE id=?", salon.company)
+        assertEquals(201, book().response.status)
+    }
 
-        mockMvc
-            .post("/api/auth/request-code") {
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(requestCodeReq)
-            }
-            .andExpect {
-                status { isOk() }
-            }
-
-        val generatedCode = redisTemplate.opsForValue().get("otp:$customerPhone")
-        assertNotNull(generatedCode)
-
-        val verifyResponse =
-            mockMvc
-                .post("/api/auth/verify-code") {
-                    contentType = MediaType.APPLICATION_JSON
-                    content =
-                        objectMapper.writeValueAsString(
-                            VerifyCodeRequest(
-                                phoneNumber = customerPhone,
-                                code = generatedCode!!,
-                                firstName = "Adam",
-                                lastName = "Testowy",
-                            ),
-                        )
-                }
-                .andExpect {
-                    status { isOk() }
-                }
-                .andReturn()
-
-        val jwtToken = objectMapper.readTree(verifyResponse.response.contentAsString).get("token").stringValue()
-        val blockStart = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
-        scheduleBlockRepository.save(
-            ScheduleBlock(
-                companyId = companyRepository.findAll().first().id!!,
-                employeeId = employeeId,
-                startTime = blockStart,
-                endTime = blockStart.plusHours(1),
-            ),
+    @Test
+    fun `final 90th calendar date is bookable and following date is rejected`() {
+        val last = localNow.toLocalDate().plusDays(90).atTime(19, 30)
+        shift(date = last)
+        assertEquals(
+            java.time.LocalTime.of(20, 0),
+            slotPolicy.effectiveShift(salon.company, salon.employee, last.toLocalDate())!!.endTime,
         )
-
-        val createReservationReq =
-            CreateReservationRequest(
-                employeeId = employeeId,
-                serviceId = serviceId,
-                startTime = blockStart.plusMinutes(30),
-            )
-
-        mockMvc
-            .post("/api/reservations") {
-                header("Authorization", "Bearer $jwtToken")
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(createReservationReq)
-            }
-            .andExpect {
-                status { isConflict() }
-                content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
-                jsonPath("$.status") { value(409) }
-                jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
-                jsonPath("$.detail") { value("Ten termin jest już zajęty") }
-                jsonPath("$.instance") { value("/api/reservations") }
-            }
-
-        assertEquals(0, reservationRepository.findAll().size)
+        val created = book(customerBody(last))
+        assertEquals(201, created.response.status, created.response.contentAsString)
+        shift(date = last.plusDays(1))
+        assertEquals(409, book(customerBody(last.plusDays(1))).response.status)
     }
 
     @Test
-    fun `repeating an identical booking request should return the existing reservation with 200`() {
-        val token = customerToken("+48555333444")
-        val body =
-            objectMapper.writeValueAsString(
-                CreateReservationRequest(employeeId = employeeId, serviceId = serviceId, startTime = tomorrowAt(11)),
-            )
-
-        val firstId =
-            mockMvc
-                .post("/api/reservations") {
-                    header("Authorization", "Bearer $token")
-                    contentType = MediaType.APPLICATION_JSON
-                    content = body
-                }
-                .andExpect {
-                    status { isCreated() }
-                }
-                .andReturn()
-                .let { objectMapper.readTree(it.response.contentAsString).get("id").asLong() }
-
-        mockMvc
-            .post("/api/reservations") {
-                header("Authorization", "Bearer $token")
-                contentType = MediaType.APPLICATION_JSON
-                content = body
-            }
-            .andExpect {
-                status { isOk() }
-                jsonPath("$.id") { value(firstId) }
-            }
-
-        assertEquals(1, reservationRepository.findAll().size)
+    fun `customer cancels only own future booking and cannot self reschedule`() {
+        val id = reservation()
+        assertEquals(
+            403,
+            edit(id, mapOf("startTime" to future.plusHours(1).toString()), cookie = customerCookie()).response.status,
+        )
+        assertEquals(404, action(id, "cancel", cookie = customerCookie(newCustomer())).response.status)
+        setLocalNow(future)
+        assertEquals(409, action(id, "cancel", cookie = customerCookie()).response.status)
+        setLocalNow(localNow)
+        assertEquals(204, action(id, "cancel", cookie = customerCookie()).response.status)
+        assertEquals("CANCELLED", state(id))
     }
 
     @Test
-    fun `booking a local time skipped by the daylight saving change should return 400`() {
-        val token = customerToken("+48555333555")
-        val transition =
-            generateSequence(BUSINESS_ZONE.rules.nextTransition(Instant.now())) {
-                    BUSINESS_ZONE.rules.nextTransition(it.instant)
-                }
-                .first { it.isGap }
+    fun `same customer may overlap appointments at independent salons`() {
+        shift()
+        assertEquals(201, book().response.status)
+        val other = fixtures.salon()
+        fixtures.shift(other, future)
+        assertEquals(201, book(customerBody(employee = other.employee, service = other.service)).response.status)
+        assertEquals(2L, count("reservations"))
+    }
 
-        mockMvc
-            .post("/api/reservations") {
-                header("Authorization", "Bearer $token")
-                contentType = MediaType.APPLICATION_JSON
-                content =
-                    objectMapper.writeValueAsString(
-                        CreateReservationRequest(
-                            employeeId = employeeId,
-                            serviceId = serviceId,
-                            startTime = transition.dateTimeBefore.plusMinutes(30),
-                        ),
+    @Test
+    fun `new submission key cannot bypass employee overlap with a conflicting booking`() {
+        shift()
+        val first = book()
+        assertEquals(201, first.response.status)
+        val duplicate = book(key = UUID.randomUUID().toString())
+        assertEquals(409, duplicate.response.status)
+        assertEquals(1L, count("reservations"))
+    }
+
+    @Test
+    fun `atomic any employee allocation books distinct available employees under concurrency`() {
+        shift()
+        val other = newEmployee().first
+        shift(other)
+        val cookies = listOf(customerCookie(), customerCookie(newCustomer()))
+        val results = race(cookies.indices.map { i -> { book(customerBody(employee = null), cookie = cookies[i]) } })
+        assertEquals(
+            listOf(201, 201),
+            results.map { it.response.status }.sorted(),
+            results.joinToString { it.response.contentAsString },
+        )
+        assertEquals(setOf(salon.employee, other), results.map { tree(it)["employeeId"].longValue() }.toSet())
+        assertEquals(2L, count("reservations"))
+    }
+
+    @Test
+    fun `any employee load ratio counts completed minutes and never subtracts blocks from shift`() {
+        shift(start = "08:00", end = "20:00")
+        val other = newEmployee().first
+        shift(other, "08:00", "16:00")
+        val a = reservation(future.withHour(8), "COMPLETED", newCustomer())
+        jdbc.update(
+            "UPDATE reservations SET end_time=?,agreed_duration_minutes=120 WHERE id=?",
+            future.withHour(10).atZone(pl.kacosmetology.scheduler.config.BUSINESS_ZONE).toOffsetDateTime(),
+            a,
+        )
+        val b = reservation(future.withHour(8), customer = newCustomer(), employee = other)
+        jdbc.update(
+            "UPDATE reservations SET end_time=?,agreed_duration_minutes=90 WHERE id=?",
+            future
+                .withHour(9)
+                .withMinute(30)
+                .atZone(pl.kacosmetology.scheduler.config.BUSINESS_ZONE)
+                .toOffsetDateTime(),
+            b,
+        )
+        block(start = future.withHour(16), end = future.withHour(20))
+        val created = book(customerBody(employee = null))
+        assertEquals(201, created.response.status, created.response.contentAsString)
+        assertEquals(salon.employee, tree(created)["employeeId"].longValue())
+    }
+
+    @Test
+    fun `future customer booking cap is atomic across concurrent nonoverlapping requests`() {
+        shift()
+        jdbc.update("UPDATE companies SET max_future_customer_bookings=1 WHERE id=?", salon.company)
+        val cookie = customerCookie()
+        val results =
+            race(listOf({ book(cookie = cookie) }, { book(customerBody(future.plusHours(1)), cookie = cookie) }))
+        assertEquals(listOf(201, 409), results.map { it.response.status }.sorted())
+        assertEquals(1L, count("reservations"))
+        assertTrue(results.any { it.response.contentAsString.contains("BOOKING_LIMIT_REACHED") })
+    }
+
+    @Test
+    fun `simultaneous different customers cannot book the same employee interval`() {
+        shift()
+        val a = customerCookie()
+        val b = customerCookie(newCustomer())
+        val results = race(listOf({ book(cookie = a) }, { book(cookie = b) }))
+        assertEquals(listOf(201, 409), results.map { it.response.status }.sorted())
+        assertEquals(1L, count("reservations"))
+    }
+
+    @Test
+    fun `pre MVC invalid payload remains bound to submission key`() {
+        val key = "unknown-field-bound"
+        assertEquals(400, book(customerBody() + mapOf("unexpected" to true), key).response.status)
+        assertEquals(409, book(customerBody(), key).response.status)
+        assertEquals(0L, count("reservations"))
+    }
+
+    @Test
+    fun `policy update committed under company lock is authoritative for a waiting booking`() {
+        shift()
+        val held = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val policy = pool.submit {
+                org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult {
+                    jdbc.queryForObject(
+                        "SELECT id FROM companies WHERE id=? FOR UPDATE",
+                        Long::class.java,
+                        salon.company,
                     )
+                    jdbc.update("UPDATE companies SET min_booking_advance_minutes=120 WHERE id=?", salon.company)
+                    held.countDown()
+                    check(release.await(10, TimeUnit.SECONDS))
+                }
             }
-            .andExpect {
-                status { isBadRequest() }
-                jsonPath("$.code") { value("INVALID_LOCAL_TIME") }
+            assertTrue(held.await(10, TimeUnit.SECONDS))
+            val request = pool.submit<org.springframework.test.web.servlet.MvcResult> { book() }
+            org.junit.jupiter.api.assertThrows<java.util.concurrent.TimeoutException> {
+                request.get(200, TimeUnit.MILLISECONDS)
             }
-
-        assertEquals(0, reservationRepository.findAll().size)
+            release.countDown()
+            policy.get(10, TimeUnit.SECONDS)
+            val result = request.get(15, TimeUnit.SECONDS)
+            assertEquals(409, result.response.status, result.response.contentAsString)
+            assertEquals("BOOKING_ADVANCE_REQUIRED", tree(result)["code"].stringValue())
+            assertEquals(0L, count("company_customers"))
+        } finally {
+            release.countDown()
+            pool.shutdownNow()
+        }
     }
 
     @Test
-    fun `cancelling another customer's reservation should return 404`() {
-        val ownerToken = customerToken("+48555333666")
-        val reservationId =
-            mockMvc
-                .post("/api/reservations") {
-                    header("Authorization", "Bearer $ownerToken")
-                    contentType = MediaType.APPLICATION_JSON
-                    content =
-                        objectMapper.writeValueAsString(
-                            CreateReservationRequest(
-                                employeeId = employeeId,
-                                serviceId = serviceId,
-                                startTime = tomorrowAt(12),
-                            ),
+    fun `simultaneous manual first visits at different companies share only canonical phone identity`() {
+        val other = fixtures.salon()
+        val a = staffCookie()
+        val b = staffCookie(other.staff)
+        val results =
+            race(
+                listOf(
+                    { manual(manualBody(phone = "+48500100200"), cookie = a) },
+                    {
+                        manual(
+                            manualBody(employee = other.employee, service = other.service, phone = "+48500100200") +
+                                mapOf("customerFirstName" to "Other"),
+                            cookie = b,
                         )
-                }
-                .andExpect {
-                    status { isCreated() }
-                }
-                .andReturn()
-                .let { objectMapper.readTree(it.response.contentAsString).get("id").asLong() }
-
-        mockMvc
-            .patch("/api/reservations/$reservationId/cancel") {
-                header("Authorization", "Bearer ${customerToken("+48555333777")}")
-            }
-            .andExpect {
-                status { isNotFound() }
-                jsonPath("$.code") { value("RESERVATION_NOT_FOUND") }
-            }
-
-        assertEquals(ReservationStatus.PENDING, reservationRepository.findById(reservationId).get().status)
-    }
-
-    private fun customerToken(phone: String): String =
-        jwtService.generateCustomerToken(
-            userRepository.save(User(phoneNumber = phone, firstName = "Klient", lastName = "Testowy")),
+                    },
+                ),
+            )
+        assertEquals(
+            listOf(201, 201),
+            results.map { it.response.status }.sorted(),
+            results.joinToString { it.response.contentAsString },
         )
-
-    private fun tomorrowAt(hour: Int): LocalDateTime =
-        LocalDateTime.now(BUSINESS_ZONE).plusDays(1).withHour(hour).withMinute(0).withSecond(0).withNano(0)
-
-    @Test
-    fun `customer reservation should return 400 when employee belongs to another company`() {
-        val customerPhone = "+48555111999"
-        val requestCodeReq = RequestCodeRequest(phoneNumber = customerPhone)
-
-        mockMvc
-            .post("/api/auth/request-code") {
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(requestCodeReq)
-            }
-            .andExpect {
-                status { isOk() }
-            }
-
-        val generatedCode = redisTemplate.opsForValue().get("otp:$customerPhone")
-        assertNotNull(generatedCode)
-
-        val verifyResponse =
-            mockMvc
-                .post("/api/auth/verify-code") {
-                    contentType = MediaType.APPLICATION_JSON
-                    content =
-                        objectMapper.writeValueAsString(
-                            VerifyCodeRequest(
-                                phoneNumber = customerPhone,
-                                code = generatedCode!!,
-                                firstName = "Ewa",
-                                lastName = "Testowa",
-                            ),
-                        )
-                }
-                .andExpect {
-                    status { isOk() }
-                }
-                .andReturn()
-
-        val jwtToken = objectMapper.readTree(verifyResponse.response.contentAsString).get("token").stringValue()
-        val otherCompany = companyRepository.save(Company(name = "Obcy Salon"))
-        val otherEmployee =
-            userRepository.save(User(phoneNumber = "+48999123123", firstName = "Obcy", lastName = "Pracownik"))
-        companyEmployeeRepository.save(
-            CompanyEmployee(
-                companyId = otherCompany.id!!,
-                userId = otherEmployee.id!!,
-                role = "EMPLOYEE",
+        assertEquals(
+            1L,
+            jdbc.queryForObject(
+                "SELECT count(*) FROM customer_accounts WHERE phone_number='+48500100200'",
+                Long::class.java,
             ),
         )
-        val reservationTime = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
+        assertEquals(
+            setOf("Jan", "Other"),
+            jdbc.queryForList("SELECT first_name FROM company_customers", String::class.java).toSet(),
+        )
+    }
 
-        val createReservationReq =
-            CreateReservationRequest(
-                employeeId = otherEmployee.id!!,
-                serviceId = serviceId,
-                startTime = reservationTime,
-            )
+    @Test
+    fun `successful submission replay after completion ignores changed current rules without another allocation`() {
+        shift()
+        val key = "completed-replay"
+        val created = book(key = key)
+        assertEquals(201, created.response.status)
+        val id = id(created)
+        setLocalNow(future)
+        assertEquals(204, action(id, "complete").response.status)
+        jdbc.update("UPDATE company_employees SET enabled=false WHERE id=?", salon.staff)
+        jdbc.update("UPDATE offerings SET active=false WHERE id=?", salon.service)
+        val replay = book(key = key)
+        assertEquals(200, replay.response.status, replay.response.contentAsString)
+        assertEquals(id, id(replay))
+        assertEquals("COMPLETED", tree(replay)["status"].stringValue())
+        assertEquals(tree(created)["createdAt"], tree(replay)["createdAt"])
+        assertEquals(1L, count("reservations"))
+        assertEquals(2L, count("reservation_audit"))
+        assertEquals(0L, count("notification_deliveries"))
+    }
 
-        mockMvc
-            .post("/api/reservations") {
-                header("Authorization", "Bearer $jwtToken")
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(createReservationReq)
+    @Test
+    fun `submission locked longer than five seconds returns explicit in progress then succeeds after release`() {
+        val key = "locked-submission"
+        assertEquals(409, book(key = key).response.status)
+        shift()
+        val held = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val lock = pool.submit {
+                org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult {
+                    jdbc.queryForMap("SELECT * FROM booking_submissions WHERE submission_key=? FOR UPDATE", key)
+                    held.countDown()
+                    check(release.await(15, TimeUnit.SECONDS))
+                }
             }
-            .andExpect {
-                status { isBadRequest() }
-            }
+            assertTrue(held.await(10, TimeUnit.SECONDS))
+            val busy = book(key = key)
+            assertEquals(409, busy.response.status, busy.response.contentAsString)
+            assertEquals("IDEMPOTENCY_IN_PROGRESS", tree(busy)["code"].stringValue())
+            assertEquals(0L, count("reservations"))
+            release.countDown()
+            lock.get(10, TimeUnit.SECONDS)
+            assertEquals(201, book(key = key).response.status)
+        } finally {
+            release.countDown()
+            pool.shutdownNow()
+        }
+    }
 
-        assertEquals(0, reservationRepository.findAll().size)
+    private fun race(
+        calls: List<() -> org.springframework.test.web.servlet.MvcResult>,
+    ): List<org.springframework.test.web.servlet.MvcResult> {
+        val pool = Executors.newFixedThreadPool(calls.size)
+        val ready = CountDownLatch(calls.size)
+        val go = CountDownLatch(1)
+        try {
+            val futures = calls.map { call ->
+                pool.submit<org.springframework.test.web.servlet.MvcResult> {
+                    ready.countDown()
+                    check(go.await(10, TimeUnit.SECONDS))
+                    call()
+                }
+            }
+            assertTrue(ready.await(10, TimeUnit.SECONDS))
+            go.countDown()
+            return futures.map { it.get(20, TimeUnit.SECONDS) }
+        } finally {
+            go.countDown()
+            pool.shutdownNow()
+        }
     }
 }

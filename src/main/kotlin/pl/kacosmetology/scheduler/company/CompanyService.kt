@@ -6,19 +6,18 @@ import pl.kacosmetology.scheduler.company.dto.CompanyEmployeeResponse
 import pl.kacosmetology.scheduler.company.dto.CompanyPublicProfileResponse
 import pl.kacosmetology.scheduler.company.dto.CompanySettingsResponse
 import pl.kacosmetology.scheduler.company.dto.PublicEmployeeResponse
+import pl.kacosmetology.scheduler.company.dto.UpdateCompanyProfileRequest
 import pl.kacosmetology.scheduler.company.dto.UpdateCompanySettingsRequest
 import pl.kacosmetology.scheduler.company.dto.toPublicProfileResponse
 import pl.kacosmetology.scheduler.company.dto.toSettingsResponse
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
-import pl.kacosmetology.scheduler.user.UserRepository
 
 /** Business logic for reading and updating company settings (business hours, slot interval). */
 @Service
 class CompanyService(
     private val companyRepository: CompanyRepository,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
-    private val userRepository: UserRepository,
     private val offeringRepository: OfferingRepository,
     private val assignmentRepository: EmployeeOfferingAssignmentRepository,
 ) {
@@ -30,10 +29,7 @@ class CompanyService(
         return company.toPublicProfileResponse()
     }
 
-    /**
-     * Returns employees eligible to perform [offeringId] at [companyId]. Employees without any offering assignments are
-     * eligible for every offering in their company.
-     */
+    /** Returns active employees eligible to perform [offeringId] at [companyId], using explicit qualification modes. */
     @Transactional(readOnly = true)
     fun getPublicBookableEmployees(companyId: Long, offeringId: Long): List<PublicEmployeeResponse> {
         companyRepository.findById(companyId).orElseThrow { NoSuchElementException("Firma nie istnieje") }
@@ -46,28 +42,18 @@ class CompanyService(
             throw NoSuchElementException("Usługa nie istnieje")
         }
 
-        val memberships = companyEmployeeRepository.findAllByCompanyId(companyId)
-        val eligibleUserIds =
-            memberships
-                .filter { emp ->
-                    !assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, emp.userId) ||
-                        assignmentRepository.existsByEmployeeIdAndOfferingId(emp.userId, offeringId)
-                }
-                .map { it.userId }
-
-        if (eligibleUserIds.isEmpty()) return emptyList()
-
-        val usersById = userRepository.findAllById(eligibleUserIds).associateBy { it.id }
-        return eligibleUserIds.mapNotNull { userId ->
-            usersById[userId]?.let { user ->
-                PublicEmployeeResponse(
-                    id = userId,
-                    firstName = user.firstName,
-                    lastName = user.lastName,
-                    photoUrl = user.photoUrl,
-                )
+        return companyEmployeeRepository
+            .findAllByCompanyId(companyId)
+            .filter {
+                it.enabled &&
+                    (it.eligibilityMode == EmployeeEligibilityMode.ALL_SERVICES ||
+                        assignmentRepository.existsByCompanyIdAndEmployeeIdAndOfferingId(
+                            companyId,
+                            it.userId,
+                            offeringId,
+                        ))
             }
-        }
+            .map { PublicEmployeeResponse(it.userId, it.firstName, it.lastName, it.photoUrl) }
     }
 
     /** Returns company settings. Throws [NoSuchElementException] if the company does not exist. */
@@ -83,18 +69,17 @@ class CompanyService(
      */
     @Transactional(readOnly = true)
     fun getEmployees(companyId: Long): List<CompanyEmployeeResponse> {
-        val memberships = companyEmployeeRepository.findAllByCompanyId(companyId)
-        val userIds = memberships.map { it.userId }.toSet()
-        val usersById = userRepository.findAllById(userIds).associateBy { it.id }
-        return memberships.map { ce ->
-            val user = usersById[ce.userId] ?: throw NoSuchElementException("Użytkownik ${ce.userId} nie istnieje")
+        return companyEmployeeRepository.findAllByCompanyId(companyId).map { ce ->
             CompanyEmployeeResponse(
-                id = requireNotNull(ce.id) { "Persisted employment must have an ID" },
-                userId = ce.userId,
-                firstName = user.firstName,
-                lastName = user.lastName,
-                role = ce.role,
-                photoUrl = user.photoUrl,
+                requireNotNull(ce.id),
+                ce.userId,
+                ce.firstName,
+                ce.lastName,
+                ce.role,
+                ce.photoUrl,
+                ce.loginEmail,
+                ce.contactPhone,
+                ce.enabled,
             )
         }
     }
@@ -105,7 +90,8 @@ class CompanyService(
      */
     @Transactional
     fun updateSettings(companyId: Long, request: UpdateCompanySettingsRequest): CompanySettingsResponse {
-        val company = companyRepository.findById(companyId).orElseThrow { NoSuchElementException("Firma nie istnieje") }
+        val company =
+            companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
 
         val openingTime = requireNotNull(request.openingTime) { "Godzina otwarcia jest wymagana" }
         val closingTime = requireNotNull(request.closingTime) { "Godzina zamknięcia jest wymagana" }
@@ -120,6 +106,18 @@ class CompanyService(
         company.lastMinuteDiscountPercent = request.lastMinuteDiscountPercent
         company.lastMinuteDiscountHours = request.lastMinuteDiscountHours
         company.minBookingAdvanceMinutes = request.minBookingAdvanceMinutes
+        company.maxBookingAdvanceDays = request.maxBookingAdvanceDays
+        company.maxFutureCustomerBookings = request.maxFutureCustomerBookings
         return company.toSettingsResponse()
+    }
+
+    /** Updates only the authenticated owner's company-local public presentation. */
+    @Transactional
+    fun updateProfile(companyId: Long, request: UpdateCompanyProfileRequest): CompanyPublicProfileResponse {
+        val company =
+            companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
+        company.name = request.name.trim()
+        company.address = request.address?.trim()?.takeIf { it.isNotEmpty() }
+        return company.toPublicProfileResponse()
     }
 }

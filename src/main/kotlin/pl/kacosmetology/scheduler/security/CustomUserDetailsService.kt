@@ -1,6 +1,5 @@
 package pl.kacosmetology.scheduler.security
 
-import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.security.core.userdetails.UsernameNotFoundException
@@ -21,30 +20,33 @@ class CustomUserDetailsService(
                 ?: throw UsernameNotFoundException("User not found with phone number: $username")
 
         return CustomUserDetails(
-            user = user,
+            id = requireNotNull(user.id),
+            phoneNumber = user.phoneNumber,
             companyId = null,
-            authorities = listOf(SimpleGrantedAuthority("ROLE_CUSTOMER")),
+            role = "ROLE_CUSTOMER",
         )
     }
 
     /** Loads a principal from one employment and grants only that employment's role. */
     fun loadStaffByEmployment(username: String, employmentId: Long): CustomUserDetails {
-        val user =
-            userRepository.findByPhoneNumber(username)
-                ?: throw UsernameNotFoundException("User not found with phone number: $username")
         val employment =
             companyEmployeeRepository.findById(employmentId).orElseThrow {
-                UsernameNotFoundException("Employment not found: $employmentId")
+                UsernameNotFoundException("Staff account not found")
             }
-        if (employment.userId != user.id) {
-            throw UsernameNotFoundException("Employment does not belong to user: $username")
+        if (!employment.enabled || employment.loginEmail != username) {
+            throw UsernameNotFoundException("Staff account unavailable")
         }
 
+        if (employment.role !in setOf("OWNER", "EMPLOYEE")) {
+            throw UsernameNotFoundException("Unsupported employment role")
+        }
         return CustomUserDetails(
-            user = user,
+            id = employment.userId,
+            phoneNumber = requireNotNull(employment.loginEmail),
             companyId = employment.companyId,
-            authorities = listOf(SimpleGrantedAuthority("ROLE_${employment.role.uppercase()}")),
+            role = "ROLE_${employment.role.uppercase()}",
             employmentId = employment.id,
+            authVersion = employment.authVersion,
         )
     }
 }

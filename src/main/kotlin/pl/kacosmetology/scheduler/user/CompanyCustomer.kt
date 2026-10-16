@@ -10,6 +10,9 @@ class CompanyCustomer(
     id: Long? = null,
     @Column(name = "company_id", nullable = false) val companyId: Long,
     @Column(name = "user_id", nullable = false) val userId: Long,
+    @Column(name = "first_name", nullable = false) var firstName: String = "",
+    @Column(name = "last_name", nullable = false) var lastName: String = "",
+    @Column(name = "contact_email") var contactEmail: String? = null,
     @Column(columnDefinition = "TEXT") var notes: String? = null,
     @Column(name = "created_at", insertable = false, updatable = false) val createdAt: OffsetDateTime? = null,
 ) {

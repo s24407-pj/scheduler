@@ -3,12 +3,7 @@ package pl.kacosmetology.scheduler.reservation.dto
 import jakarta.validation.constraints.*
 import java.time.LocalDateTime
 
-private const val PHONE_REGEXP = "^\\+?[0-9]{9,15}$"
-
-/**
- * Request body for a staff member creating a reservation on behalf of a client. If the client does not exist,
- * [customerFirstName] and [customerLastName] are required to create the account.
- */
+/** Manual booking uses regular catalog terms unless staff explicitly override price or duration. */
 data class StaffCreateReservationRequest(
     @field:NotNull(message = "ID pracownika jest wymagane")
     @field:Positive(message = "ID pracownika musi być dodatnie")
@@ -16,12 +11,16 @@ data class StaffCreateReservationRequest(
     @field:NotNull(message = "ID usługi jest wymagane")
     @field:Positive(message = "ID usługi musi być dodatnie")
     val serviceId: Long?,
-    @field:NotNull(message = "Czas rozpoczęcia jest wymagany")
-    @field:Future(message = "Czas rezerwacji musi być w przyszłości")
-    val startTime: LocalDateTime?,
-    @field:NotBlank(message = "Numer telefonu klienta jest wymagany")
-    @field:Pattern(regexp = PHONE_REGEXP, message = "Nieprawidłowy format numeru telefonu")
+    @field:NotNull(message = "Czas rozpoczęcia jest wymagany") val startTime: LocalDateTime?,
+    @field:NotBlank(message = "Telefon klienta jest wymagany")
+    @field:Pattern(regexp = "^\\+?[0-9]{9,15}$", message = "Nieprawidłowy numer telefonu")
     val customerPhone: String?,
-    @field:Size(max = 50, message = "Imię nie może być dłuższe niż 50 znaków") val customerFirstName: String? = null,
-    @field:Size(max = 50, message = "Nazwisko nie może być dłuższe niż 50 znaków") val customerLastName: String? = null,
+    @field:Size(max = 100, message = "Imię jest za długie") val customerFirstName: String? = null,
+    @field:Size(max = 100, message = "Nazwisko jest za długie") val customerLastName: String? = null,
+    @field:PositiveOrZero(message = "Cena nie może być ujemna") val price: Int? = null,
+    @field:Min(value = 1, message = "Czas musi wynosić co najmniej minutę")
+    @field:Max(value = 1440, message = "Czas nie może przekraczać 1440 minut")
+    val durationMinutes: Int? = null,
+    val overrideEmployeeBlock: Boolean = false,
+    val notifyCustomer: Boolean = false,
 )

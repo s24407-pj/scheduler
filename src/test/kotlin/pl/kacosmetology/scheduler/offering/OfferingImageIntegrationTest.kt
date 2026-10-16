@@ -2,6 +2,15 @@ package pl.kacosmetology.scheduler.offering
 
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
+import io.mockk.verify
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.Callable
+import java.util.concurrent.CyclicBarrier
+import java.util.concurrent.Executors
+import javax.imageio.ImageIO
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -9,18 +18,21 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.mock.web.MockMultipartFile
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.core.sync.RequestBody
@@ -49,9 +61,16 @@ class OfferingImageIntegrationTest {
 
     @Autowired private lateinit var reservationRepository: ReservationRepository
 
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
 
+    @Autowired private lateinit var imageService: OfferingImageService
+    @Autowired private lateinit var transactions: PlatformTransactionManager
     @MockkBean private lateinit var s3Client: S3Client
+
+    private fun validImage(): ByteArray =
+        ByteArrayOutputStream()
+            .also { ImageIO.write(BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", it) }
+            .toByteArray()
 
     private lateinit var owner: User
     private lateinit var employee: User
@@ -88,9 +107,9 @@ class OfferingImageIntegrationTest {
         every { s3Client.deleteObject(any<DeleteObjectRequest>()) } returns DeleteObjectResponse.builder().build()
     }
 
-    private fun ownerToken() = jwtService.generateStaffToken(owner, ownerEmployment)
+    private fun ownerSession() = testSessions.staff(owner, ownerEmployment)
 
-    private fun employeeToken() = jwtService.generateStaffToken(employee, employeeEmployment)
+    private fun employeeSession() = testSessions.staff(employee, employeeEmployment)
 
     @Test
     fun `POST image - owner uploads image and gets 200 with imageUrl`() {
@@ -98,13 +117,11 @@ class OfferingImageIntegrationTest {
             offeringRepository.save(
                 Offering(companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80),
             )
-        val file = MockMultipartFile("image", "photo.jpg", "image/jpeg", ByteArray(1024))
+        val file = MockMultipartFile("image", "photo.jpg", "image/jpeg", validImage())
 
         mockMvc
             .perform(
-                multipart("/api/offerings/${offering.id!!}/image")
-                    .file(file)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/offerings/${offering.id!!}/image").file(file).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.images.length()").value(1))
@@ -121,9 +138,7 @@ class OfferingImageIntegrationTest {
 
         mockMvc
             .perform(
-                multipart("/api/offerings/${offering.id!!}/image")
-                    .file(file)
-                    .header("Authorization", "Bearer ${employeeToken()}"),
+                multipart("/api/offerings/${offering.id!!}/image").file(file).with(csrf()).cookie(employeeSession()),
             )
             .andExpect(status().isForbidden)
     }
@@ -138,7 +153,7 @@ class OfferingImageIntegrationTest {
 
         mockMvc
             .perform(
-                multipart("/api/offerings/${offering.id!!}/image").file(file),
+                multipart("/api/offerings/${offering.id!!}/image").file(file).with(csrf()),
             )
             .andExpect(status().isUnauthorized)
     }
@@ -149,7 +164,7 @@ class OfferingImageIntegrationTest {
 
         mockMvc
             .perform(
-                multipart("/api/offerings/99999/image").file(file).header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/offerings/99999/image").file(file).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isNotFound)
     }
@@ -164,9 +179,7 @@ class OfferingImageIntegrationTest {
 
         mockMvc
             .perform(
-                multipart("/api/offerings/${offering.id!!}/image")
-                    .file(file)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/offerings/${offering.id!!}/image").file(file).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isBadRequest)
     }
@@ -189,9 +202,7 @@ class OfferingImageIntegrationTest {
 
         mockMvc
             .perform(
-                multipart("/api/offerings/${offering.id!!}/image")
-                    .file(file)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/offerings/${offering.id!!}/image").file(file).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isConflict)
     }
@@ -209,7 +220,8 @@ class OfferingImageIntegrationTest {
 
         mockMvc
             .delete("/api/offerings/${offering.id!!}/image/${image.id!!}") {
-                header("Authorization", "Bearer ${ownerToken()}")
+                with(csrf())
+                cookie(ownerSession())
             }
             .andExpect {
                 status { isOk() }
@@ -226,10 +238,104 @@ class OfferingImageIntegrationTest {
 
         mockMvc
             .delete("/api/offerings/${offering.id!!}/image/99999") {
-                header("Authorization", "Bearer ${ownerToken()}")
+                with(csrf())
+                cookie(ownerSession())
             }
             .andExpect {
                 status { isNotFound() }
             }
+    }
+
+    @Test
+    fun `concurrent uploads cannot exceed gallery capacity`() {
+        val offering =
+            offeringRepository.save(Offering(companyId = companyId, name = "Usługa", durationMinutes = 30, price = 80))
+        repeat(4) {
+            offeringImageRepository.save(
+                OfferingImage(offeringId = offering.id!!, imageUrl = "https://example.test/$it.png"),
+            )
+        }
+        val barrier = CyclicBarrier(2)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val results =
+                pool
+                    .invokeAll(
+                        (1..2).map {
+                            Callable {
+                                barrier.await()
+                                runCatching {
+                                    imageService.upload(
+                                        companyId,
+                                        offering.id!!,
+                                        MockMultipartFile("image", "a.png", "image/png", validImage()),
+                                    )
+                                }
+                                    .isSuccess
+                            }
+                        },
+                    )
+                    .map { it.get() }
+            assertEquals(1, results.count { it })
+            assertEquals(5, offeringImageRepository.countByOfferingId(offering.id!!))
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `rolled back deletion keeps referenced R2 object and rolled back upload removes new object`() {
+        val offering =
+            offeringRepository.save(Offering(companyId = companyId, name = "Usługa", durationMinutes = 30, price = 80))
+        val image =
+            offeringImageRepository.save(
+                OfferingImage(offeringId = offering.id!!, imageUrl = "http://pub.r2.dev/existing.png"),
+            )
+        TransactionTemplate(transactions).executeWithoutResult { status ->
+            imageService.delete(image.id!!, offering.id!!)
+            verify(exactly = 0) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
+            status.setRollbackOnly()
+        }
+        assertFalse(offeringImageRepository.findById(image.id!!).isEmpty)
+        verify(exactly = 0) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
+        TransactionTemplate(transactions).executeWithoutResult { status ->
+            imageService.upload(
+                companyId,
+                offering.id!!,
+                MockMultipartFile("image", "a.png", "image/png", validImage()),
+            )
+            status.setRollbackOnly()
+        }
+        assertEquals(1, offeringImageRepository.countByOfferingId(offering.id!!))
+        verify(exactly = 1) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
+    }
+
+    @Test
+    fun `foreign gallery mutation is opaque before validation or object storage`() {
+        val foreignCompany = companyRepository.save(Company(name = "Inna firma"))
+        val offering =
+            offeringRepository.save(
+                Offering(companyId = foreignCompany.id!!, name = "Usługa", durationMinutes = 30, price = 80),
+            )
+        val image =
+            offeringImageRepository.save(
+                OfferingImage(offeringId = offering.id!!, imageUrl = "http://pub.r2.dev/existing.png"),
+            )
+        mockMvc
+            .perform(
+                multipart("/api/offerings/${offering.id!!}/image")
+                    .file(MockMultipartFile("image", "fake.png", "image/png", byteArrayOf(1)))
+                    .with(csrf())
+                    .cookie(ownerSession()),
+            )
+            .andExpect(status().isNotFound)
+        mockMvc
+            .delete("/api/offerings/${offering.id!!}/image/${image.id!!}") {
+                with(csrf())
+                cookie(ownerSession())
+            }
+            .andExpect { status { isNotFound() } }
+        verify(exactly = 0) { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) }
+        verify(exactly = 0) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
     }
 }

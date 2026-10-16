@@ -4,7 +4,7 @@ import java.time.LocalDateTime
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 
-/** Customer-facing DTO — excludes internal fields like companyId, customerId and version. */
+/** Booking confirmation and replay expose the current reservation and accepted commercial agreement. */
 data class ReservationResponse(
     val id: Long,
     val employeeId: Long,
@@ -14,6 +14,15 @@ data class ReservationResponse(
     val endTime: LocalDateTime,
     val status: ReservationStatus,
     val createdAt: LocalDateTime?,
+    val revision: Long = 0,
+    val durationMinutes: Int = 0,
+    val serviceName: String = "",
+    val serviceNameSource: String = "ACCEPTED",
+    val companyId: Long = 0,
+    val companyName: String = "",
+    val companyAddress: String? = null,
+    val employeeName: String = "",
+    val archived: Boolean = false,
 )
 
 /** Staff-facing DTO — includes customerId for the employee's schedule view. */
@@ -26,6 +35,8 @@ data class EmployeeReservationResponse(
     val endTime: LocalDateTime,
     val status: ReservationStatus,
     val createdAt: LocalDateTime?,
+    val revision: Long = 0,
+    val internalCancellationReason: String? = null,
 )
 
 /** Dashboard DTO — includes both customerId and employeeId for the owner's cross-employee view. */
@@ -41,6 +52,8 @@ data class DashboardReservationResponse(
     val endTime: LocalDateTime,
     val status: ReservationStatus,
     val createdAt: LocalDateTime?,
+    val revision: Long = 0,
+    val internalCancellationReason: String? = null,
 )
 
 /** Maps a [Reservation] to the customer-facing [ReservationResponse]. */
@@ -54,6 +67,12 @@ fun Reservation.toResponse() =
         endTime = endTime,
         status = status,
         createdAt = createdAt,
+        revision = version,
+        durationMinutes = agreedDurationMinutes,
+        serviceName = acceptedServiceName,
+        serviceNameSource = serviceNameSource,
+        companyId = companyId,
+        archived = archived,
     )
 
 /** Maps a [Reservation] to the staff-facing [EmployeeReservationResponse]. */
@@ -67,6 +86,8 @@ fun Reservation.toEmployeeResponse() =
         endTime = endTime,
         status = status,
         createdAt = createdAt,
+        revision = version,
+        internalCancellationReason = internalCancellationReason,
     )
 
 /** Maps a [Reservation] to the owner dashboard [DashboardReservationResponse] with full employee+customer context. */
@@ -83,4 +104,6 @@ fun Reservation.toDashboardResponse(customerFirstName: String, customerLastName:
         endTime = endTime,
         status = status,
         createdAt = createdAt,
+        revision = version,
+        internalCancellationReason = internalCancellationReason,
     )

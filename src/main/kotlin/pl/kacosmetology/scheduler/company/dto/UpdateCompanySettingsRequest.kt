@@ -23,6 +23,10 @@ data class UpdateCompanySettingsRequest(
     @field:Min(value = 0, message = "Minimalny czas na rezerwację nie może być ujemny")
     @field:Max(value = 10080, message = "Minimalny czas na rezerwację nie może przekraczać 10080 minut (7 dni)")
     val minBookingAdvanceMinutes: Int = 0,
+    @field:Min(value = 0, message = "Maksymalny horyzont rezerwacji nie może być ujemny")
+    val maxBookingAdvanceDays: Int = 90,
+    @field:Min(value = 0, message = "Limit przyszłych rezerwacji nie może być ujemny")
+    val maxFutureCustomerBookings: Int = 10,
 ) {
     @AssertTrue(message = "Interwał slotów musi być wielokrotnością 5 minut")
     fun isSlotIntervalDivisibleByFive() = slotIntervalMinutes % 5 == 0

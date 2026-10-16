@@ -10,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.mock.web.MockMultipartFile
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
@@ -21,7 +22,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
@@ -44,7 +45,7 @@ class EmployeePhotoIntegrationTest {
 
     @Autowired private lateinit var reservationRepository: ReservationRepository
 
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
 
     @MockkBean private lateinit var s3Client: S3Client
 
@@ -81,19 +82,17 @@ class EmployeePhotoIntegrationTest {
         every { s3Client.deleteObject(any<DeleteObjectRequest>()) } returns DeleteObjectResponse.builder().build()
     }
 
-    private fun ownerToken() = jwtService.generateStaffToken(owner, ownerEmployment)
+    private fun ownerSession() = testSessions.staff(owner, ownerEmployment)
 
-    private fun employeeToken() = jwtService.generateStaffToken(employee, employeeEmployment)
+    private fun employeeSession() = testSessions.staff(employee, employeeEmployment)
 
     @Test
     fun `POST photo - owner uploads photo and gets 200 with photoUrl`() {
-        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(1024))
+        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", pngBytes())
 
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo")
-                    .file(file)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/employees/${employee.id!!}/photo").file(file).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.photoUrl").isString)
@@ -103,22 +102,18 @@ class EmployeePhotoIntegrationTest {
     @Test
     fun `POST photo - uploading replacement deletes old key and returns new URL`() {
         // First upload
-        val file1 = MockMultipartFile("photo", "first.jpg", "image/jpeg", ByteArray(512))
+        val file1 = MockMultipartFile("photo", "first.jpg", "image/jpeg", pngBytes())
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo")
-                    .file(file1)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/employees/${employee.id!!}/photo").file(file1).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isOk)
 
         // Second upload should trigger a delete of the old key
-        val file2 = MockMultipartFile("photo", "second.png", "image/png", ByteArray(256))
+        val file2 = MockMultipartFile("photo", "second.png", "image/png", pngBytes())
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo")
-                    .file(file2)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/employees/${employee.id!!}/photo").file(file2).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.photoUrl").isString)
@@ -129,24 +124,22 @@ class EmployeePhotoIntegrationTest {
 
     @Test
     fun `POST photo - employee (non-owner) gets 403`() {
-        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
+        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", pngBytes())
 
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo")
-                    .file(file)
-                    .header("Authorization", "Bearer ${employeeToken()}"),
+                multipart("/api/employees/${employee.id!!}/photo").file(file).with(csrf()).cookie(employeeSession()),
             )
             .andExpect(status().isForbidden)
     }
 
     @Test
     fun `POST photo - unauthenticated gets 401`() {
-        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
+        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", pngBytes())
 
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo").file(file),
+                multipart("/api/employees/${employee.id!!}/photo").file(file).with(csrf()),
             )
             .andExpect(status().isUnauthorized)
     }
@@ -155,26 +148,22 @@ class EmployeePhotoIntegrationTest {
     fun `POST photo - employee not in company returns 404`() {
         val outsider =
             userRepository.save(User(phoneNumber = "+48199999999", firstName = "Outside", lastName = "Person"))
-        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", ByteArray(100))
+        val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", pngBytes())
 
         mockMvc
             .perform(
-                multipart("/api/employees/${outsider.id!!}/photo")
-                    .file(file)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/employees/${outsider.id!!}/photo").file(file).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isNotFound)
     }
 
     @Test
     fun `POST photo - invalid MIME type returns 400`() {
-        val file = MockMultipartFile("photo", "doc.pdf", "application/pdf", ByteArray(100))
+        val file = MockMultipartFile("photo", "doc.pdf", "application/pdf", "fake".toByteArray())
 
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo")
-                    .file(file)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/employees/${employee.id!!}/photo").file(file).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isBadRequest)
     }
@@ -185,9 +174,7 @@ class EmployeePhotoIntegrationTest {
 
         mockMvc
             .perform(
-                multipart("/api/employees/${employee.id!!}/photo")
-                    .file(file)
-                    .header("Authorization", "Bearer ${ownerToken()}"),
+                multipart("/api/employees/${employee.id!!}/photo").file(file).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isBadRequest)
     }
@@ -195,12 +182,14 @@ class EmployeePhotoIntegrationTest {
     @Test
     fun `DELETE photo - owner removes existing photo and gets 200 with null photoUrl`() {
         // Persist photo URL directly
-        employee.photoUrl = "https://pub.r2.dev/employees/$companyId/${employee.id!!}/abc.jpg"
-        userRepository.save(employee)
+        employeeEmployment.photoUrl =
+            "${"https://pub-e2e7a57b5ea74031a70f3c42d58af33f.r2.dev"}/employees/$companyId/${employee.id!!}/abc.jpg"
+        companyEmployeeRepository.save(employeeEmployment)
 
         mockMvc
             .delete("/api/employees/${employee.id!!}/photo") {
-                header("Authorization", "Bearer ${ownerToken()}")
+                with(csrf())
+                cookie(ownerSession())
             }
             .andExpect {
                 status { isOk() }
@@ -214,7 +203,8 @@ class EmployeePhotoIntegrationTest {
     fun `DELETE photo - no-op when employee has no photo, returns 200 with null photoUrl`() {
         mockMvc
             .delete("/api/employees/${employee.id!!}/photo") {
-                header("Authorization", "Bearer ${ownerToken()}")
+                with(csrf())
+                cookie(ownerSession())
             }
             .andExpect {
                 status { isOk() }
@@ -223,4 +213,49 @@ class EmployeePhotoIntegrationTest {
 
         verify(exactly = 0) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
     }
+
+    @Test
+    fun `removing one company photo preserves another company legacy reference`() {
+        val otherCompany = companyRepository.save(Company(name = "Other photo salon"))
+        val shared = "https://pub-e2e7a57b5ea74031a70f3c42d58af33f.r2.dev/legacy/shared.png"
+        employeeEmployment.photoUrl = shared
+        companyEmployeeRepository.saveAndFlush(employeeEmployment)
+        val foreign =
+            companyEmployeeRepository.saveAndFlush(
+                CompanyEmployee(
+                    companyId = otherCompany.id!!,
+                    userId = employee.id!!,
+                    role = "EMPLOYEE",
+                    firstName = "Other",
+                    lastName = "Presentation",
+                    photoUrl = shared,
+                ),
+            )
+        mockMvc
+            .delete("/api/employees/${employee.id!!}/photo") {
+                with(csrf())
+                cookie(ownerSession())
+            }
+            .andExpect { status { isOk() } }
+        org.junit.jupiter.api.Assertions.assertNull(
+            companyEmployeeRepository.findById(employeeEmployment.id!!).orElseThrow().photoUrl,
+        )
+        org.junit.jupiter.api.Assertions.assertEquals(
+            shared,
+            companyEmployeeRepository.findById(foreign.id!!).orElseThrow().photoUrl,
+        )
+        verify(exactly = 0) { s3Client.deleteObject(any<DeleteObjectRequest>()) }
+    }
+
+    private fun pngBytes(): ByteArray =
+        java.io
+            .ByteArrayOutputStream()
+            .also {
+                javax.imageio.ImageIO.write(
+                    java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_RGB),
+                    "png",
+                    it,
+                )
+            }
+            .toByteArray()
 }

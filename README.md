@@ -9,7 +9,7 @@ Spring Boot backend for a beauty and cosmetology salon scheduling system. Custom
 
 ## Features
 
-- Customer booking with SMS OTP login and JWT sessions
+- Customer booking with SMS OTP login and Redis-backed HttpOnly sessions
 - Staff login (email + password) with employment selection and role-based access (`OWNER`, `EMPLOYEE`)
 - Availability calculation from work schedules, reservations, and schedule blocks
 - Offering catalog with categories and image uploads (Cloudflare R2)

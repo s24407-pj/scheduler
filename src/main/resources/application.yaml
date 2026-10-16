@@ -1,5 +1,12 @@
 server:
   port: 8080
+  servlet:
+    session:
+      cookie:
+        name: SESSION
+        http-only: true
+        path: /
+        same-site: lax
   forward-headers-strategy: native
   tomcat:
     remoteip:
@@ -9,6 +16,12 @@ server:
 spring:
   application:
     name: scheduler
+  session:
+    timeout: 24h
+    data:
+      redis:
+        namespace: scheduler:sessions
+        repository-type: indexed
   datasource:
     url: jdbc:postgresql://localhost:5432/scheduler_db
     username: ${DB_USERNAME:postgres}
@@ -21,7 +34,9 @@ spring:
     properties:
       hibernate:
         jdbc:
-          time_zone: Europe/Warsaw
+          time_zone: UTC
+        type:
+          java_time_use_direct_jdbc: true
 
   flyway:
     enabled: true
@@ -40,22 +55,12 @@ spring:
       repositories:
         enabled: false
 
-jwt:
-  secret: ${JWT_SECRET:ToJestTymczasowySekretDoRozwojuAplikacjiLokalnieWymienGoNaProdukcji}
-  expiration-ms: ${JWT_EXPIRATION_MS:86400000}
-
 cors:
   allowed-origins: ${CORS_ORIGINS:http://localhost:5173}
 
 otp:
-  ttl-minutes: ${OTP_TTL_MINUTES:5}
-  max-attempts: ${OTP_MAX_ATTEMPTS:3}
-  rate-window-minutes: ${OTP_RATE_WINDOW_MINUTES:5}
-  verification-max-attempts: ${OTP_VERIFICATION_MAX_ATTEMPTS:3}
-  verification-ip-max-attempts: ${OTP_VERIFICATION_IP_MAX_ATTEMPTS:10}
-  verification-ip-rate-window-minutes: ${OTP_VERIFICATION_IP_RATE_WINDOW_MINUTES:5}
-  request-ip-max-attempts: ${OTP_REQUEST_IP_MAX_ATTEMPTS:10}
-  request-ip-rate-window-minutes: ${OTP_REQUEST_IP_RATE_WINDOW_MINUTES:15}
+  # Mandatory positive operator-configured cap in prod; zero disables this cap in development only.
+  global-daily-sms-cap: ${OTP_GLOBAL_DAILY_SMS_CAP:0}
 
 login:
   max-attempts: ${LOGIN_MAX_ATTEMPTS:10}
@@ -85,7 +90,8 @@ management:
         include: health,info,metrics,prometheus
   endpoint:
     health:
-      show-details: when-authorized
+      show-details: never
+      show-components: never
       probes:
         enabled: true
   metrics:

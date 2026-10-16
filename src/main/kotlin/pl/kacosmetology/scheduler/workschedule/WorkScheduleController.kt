@@ -1,10 +1,15 @@
 package pl.kacosmetology.scheduler.workschedule
 
 import jakarta.validation.Valid
+import java.time.LocalDate
+import org.springframework.format.annotation.DateTimeFormat
+import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
 import pl.kacosmetology.scheduler.security.CustomUserDetails
+import pl.kacosmetology.scheduler.workschedule.dto.ScheduleOverrideRequest
+import pl.kacosmetology.scheduler.workschedule.dto.ScheduleOverrideResponse
 import pl.kacosmetology.scheduler.workschedule.dto.SetWeeklyScheduleRequest
 import pl.kacosmetology.scheduler.workschedule.dto.WorkScheduleEntryResponse
 
@@ -35,4 +40,36 @@ class WorkScheduleController(
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): List<WorkScheduleEntryResponse> =
         workScheduleService.setSchedule(userDetails.requireCompanyId(), employeeId, request)
+
+    /** Lists coworker schedule overrides in the authenticated company. */
+    @GetMapping("/{employeeId}/schedule-overrides")
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun getOverrides(
+        @PathVariable employeeId: Long,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) start: LocalDate,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) end: LocalDate,
+        @AuthenticationPrincipal principal: CustomUserDetails,
+    ): List<ScheduleOverrideResponse> =
+        workScheduleService.getOverrides(principal.requireCompanyId(), employeeId, start, end)
+
+    /** Replaces one date's schedule; only owners manage scheduling. */
+    @PutMapping("/{employeeId}/schedule-overrides/{date}")
+    @PreAuthorize("hasRole('OWNER')")
+    fun setOverride(
+        @PathVariable employeeId: Long,
+        @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) date: LocalDate,
+        @Valid @RequestBody request: ScheduleOverrideRequest,
+        @AuthenticationPrincipal principal: CustomUserDetails,
+    ): ScheduleOverrideResponse =
+        workScheduleService.setOverride(principal.requireCompanyId(), employeeId, date, request)
+
+    /** Restores the weekly schedule for one date. */
+    @DeleteMapping("/{employeeId}/schedule-overrides/{date}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('OWNER')")
+    fun deleteOverride(
+        @PathVariable employeeId: Long,
+        @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) date: LocalDate,
+        @AuthenticationPrincipal principal: CustomUserDetails,
+    ) = workScheduleService.deleteOverride(principal.requireCompanyId(), employeeId, date)
 }

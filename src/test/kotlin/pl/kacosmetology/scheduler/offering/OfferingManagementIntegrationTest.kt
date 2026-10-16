@@ -10,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.*
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.company.Company
@@ -18,7 +19,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -41,7 +42,7 @@ class OfferingManagementIntegrationTest {
 
     @Autowired private lateinit var reservationRepository: ReservationRepository
 
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
 
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
@@ -83,11 +84,12 @@ class OfferingManagementIntegrationTest {
     }
 
     @Test
-    fun `should reject offering creation request without JWT token (401)`() {
+    fun `should reject offering creation request without session (401)`() {
         val request = OfferingRequest(name = "Masaż", durationMinutes = 60, price = 200)
 
         mockMvc
             .post("/api/offerings") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(request)
             }
@@ -97,13 +99,14 @@ class OfferingManagementIntegrationTest {
     }
 
     @Test
-    fun `should create offering and assign to company from token (201)`() {
-        val tokenA = jwtService.generateStaffToken(userA, employmentA)
+    fun `should create offering and assign to company from session (201)`() {
+        val sessionA = testSessions.staff(userA, employmentA)
         val request = OfferingRequest(name = "Masaż", durationMinutes = 60, price = 200)
 
         mockMvc
             .post("/api/offerings") {
-                header("Authorization", "Bearer $tokenA")
+                with(csrf())
+                cookie(sessionA)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(request)
             }
@@ -121,11 +124,12 @@ class OfferingManagementIntegrationTest {
                 Offering(companyId = companyA_Id, name = "Złota Usługa", durationMinutes = 30, price = 500),
             )
 
-        val tokenB = jwtService.generateStaffToken(userB, employmentB)
+        val sessionB = testSessions.staff(userB, employmentB)
 
         mockMvc
             .delete("/api/offerings/${offeringOfCompanyA.id!!}") {
-                header("Authorization", "Bearer $tokenB")
+                with(csrf())
+                cookie(sessionB)
             }
             .andExpect {
                 status { isNotFound() }
@@ -161,11 +165,11 @@ class OfferingManagementIntegrationTest {
             offeringRepository.save(
                 Offering(companyId = companyA_Id, name = "Masaż", durationMinutes = 60, price = 200),
             )
-        val tokenA = jwtService.generateStaffToken(userA, employmentA)
+        val sessionA = testSessions.staff(userA, employmentA)
 
         mockMvc
             .get("/api/offerings/${offering.id!!}") {
-                header("Authorization", "Bearer $tokenA")
+                cookie(sessionA)
             }
             .andExpect {
                 status { isOk() }
@@ -180,11 +184,12 @@ class OfferingManagementIntegrationTest {
             offeringRepository.save(
                 Offering(companyId = companyA_Id, name = "Stara", durationMinutes = 30, price = 50, active = false),
             )
-        val tokenA = jwtService.generateStaffToken(userA, employmentA)
+        val sessionA = testSessions.staff(userA, employmentA)
 
         mockMvc
             .patch("/api/offerings/${inactive.id!!}/activate") {
-                header("Authorization", "Bearer $tokenA")
+                with(csrf())
+                cookie(sessionA)
             }
             .andExpect {
                 status { isNoContent() }
@@ -200,11 +205,12 @@ class OfferingManagementIntegrationTest {
             offeringRepository.save(
                 Offering(companyId = companyA_Id, name = "Stara", durationMinutes = 30, price = 50, active = false),
             )
-        val tokenB = jwtService.generateStaffToken(userB, employmentB)
+        val sessionB = testSessions.staff(userB, employmentB)
 
         mockMvc
             .patch("/api/offerings/${inactive.id!!}/activate") {
-                header("Authorization", "Bearer $tokenB")
+                with(csrf())
+                cookie(sessionB)
             }
             .andExpect {
                 status { isNotFound() }
@@ -218,13 +224,14 @@ class OfferingManagementIntegrationTest {
                 Offering(companyId = companyA_Id, name = "Stara Nazwa", durationMinutes = 30, price = 100),
             )
 
-        val tokenA = jwtService.generateStaffToken(userA, employmentA)
+        val sessionA = testSessions.staff(userA, employmentA)
 
         val updateRequest = OfferingRequest(name = "Nowa Nazwa", durationMinutes = 45, price = 250)
 
         mockMvc
             .put("/api/offerings/${initialOffering.id!!}") {
-                header("Authorization", "Bearer $tokenA")
+                with(csrf())
+                cookie(sessionA)
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(updateRequest)
             }

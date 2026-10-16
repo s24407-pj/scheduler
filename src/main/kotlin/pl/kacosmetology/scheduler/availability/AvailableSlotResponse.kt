@@ -13,4 +13,6 @@ data class AvailableSlotResponse(
     val time: LocalTime,
     val price: Int,
     val originalPrice: Int,
+    /** The requesting customer overlaps another visit in this company; the salon slot remains visible. */
+    val personalConflict: Boolean = false,
 )

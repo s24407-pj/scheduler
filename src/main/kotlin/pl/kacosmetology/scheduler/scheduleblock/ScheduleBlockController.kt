@@ -2,7 +2,6 @@ package pl.kacosmetology.scheduler.scheduleblock
 
 import jakarta.validation.Valid
 import java.time.LocalDateTime
-import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -22,7 +21,7 @@ class ScheduleBlockController(
 
     /**
      * Creates a non-overlapping schedule block for an employee of the authenticated company. OWNER may specify a target
-     * employee via [CreateScheduleBlockRequest.employeeId]; EMPLOYEE always creates for themselves (JWT identity).
+     * employee via [CreateScheduleBlockRequest.employeeId]; EMPLOYEE may target only themselves.
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -35,7 +34,10 @@ class ScheduleBlockController(
         val companyId =
             userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
         val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
-        val targetEmployeeId = if (isOwner && request.employeeId != null) request.employeeId else requesterId
+        if (!isOwner && request.employeeId != null && request.employeeId != requesterId) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Możesz tworzyć tylko własne blokady")
+        }
+        val targetEmployeeId = request.employeeId ?: requesterId
 
         return scheduleBlockService
             .createBlock(
@@ -66,22 +68,21 @@ class ScheduleBlockController(
     }
 
     /**
-     * Returns schedule blocks within a time range. OWNER may supply [employeeId] to query another employee's blocks
-     * within their company. EMPLOYEE always receives only their own blocks (the param is ignored).
+     * Returns schedule blocks within a time range. Every staff member may supply [employeeId] to read a colleague's
+     * intervals and reasons within their company.
      */
     @GetMapping("/employee")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getMyBlocks(
         @AuthenticationPrincipal userDetails: CustomUserDetails,
         @RequestParam(required = false) employeeId: Long?,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) start: LocalDateTime,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) end: LocalDateTime,
+        @RequestParam start: LocalDateTime,
+        @RequestParam end: LocalDateTime,
     ): List<ScheduleBlockResponse> {
         val requesterId = userDetails.id
         val companyId =
             userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
-        val isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" }
-        val targetId = if (isOwner && employeeId != null) employeeId else requesterId
+        val targetId = employeeId ?: requesterId
         return scheduleBlockService.getEmployeeBlocks(companyId, targetId, start, end).map { it.toResponse() }
     }
 }

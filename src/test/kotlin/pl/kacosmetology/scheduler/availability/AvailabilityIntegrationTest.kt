@@ -16,6 +16,7 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.company.EmployeeEligibilityMode
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignment
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering
@@ -25,6 +26,7 @@ import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
@@ -54,11 +56,14 @@ class AvailabilityIntegrationTest {
 
     @Autowired private lateinit var assignmentRepository: EmployeeOfferingAssignmentRepository
 
+    @Autowired private lateinit var testSessions: TestSessions
+
     @MockkBean private lateinit var s3Client: S3Client
 
     private var employeeId: Long = 0
     private var serviceId: Long = 0
     private var companyId: Long = 0
+    private var customerId: Long = 0
     private val testDate = LocalDate.now().plusDays(2) // Za dwa dni, by uniknąć filtrów przeszłości
 
     @Test
@@ -111,6 +116,7 @@ class AvailabilityIntegrationTest {
                 ),
             )
 
+        customerId = customer.id!!
         employeeId = employee.id!!
         serviceId = service.id!!
 
@@ -135,7 +141,7 @@ class AvailabilityIntegrationTest {
                 price = 250,
                 startTime = testDate.atTime(10, 0),
                 endTime = testDate.atTime(12, 0),
-                status = ReservationStatus.CONFIRMED,
+                status = ReservationStatus.BOOKED,
             ),
         )
     }
@@ -240,14 +246,12 @@ class AvailabilityIntegrationTest {
     @Test
     fun `slots should have discounted price when last-minute discount is configured and testDate is within window`() {
         // Re-create company with 20% discount and a huge window so testDate (2 days ahead) is inside
-        companyRepository
-            .deleteAll() // cascade deletes are handled by @BeforeEach ordering; here we rebuild only company
         val discountCompany =
             companyRepository.save(
                 Company(
                     name = "Salon Rabatowy",
                     lastMinuteDiscountPercent = 20,
-                    lastMinuteDiscountHours = 9999,
+                    lastMinuteDiscountHours = 72,
                 ),
             )
         val newCompanyId = discountCompany.id!!
@@ -292,7 +296,12 @@ class AvailabilityIntegrationTest {
     }
 
     @Test
-    fun `should return 400 when employee has service assignments but not for requested service`() {
+    fun `should return 409 when specific mode employee has no requested assignment`() {
+        companyEmployeeRepository.save(
+            companyEmployeeRepository.findByCompanyIdAndUserId(companyId, employeeId)!!.apply {
+                eligibilityMode = EmployeeEligibilityMode.SPECIFIC_SERVICES
+            },
+        )
         val otherService =
             serviceRepository.save(
                 Offering(companyId = companyId, name = "Inny Serwis", durationMinutes = 30, price = 50),
@@ -313,12 +322,12 @@ class AvailabilityIntegrationTest {
                 param("date", testDate.toString())
             }
             .andExpect {
-                status { isBadRequest() }
+                status { isConflict() }
             }
     }
 
     @Test
-    fun `should return 400 when employee belongs to another company`() {
+    fun `foreign employee is opaque 404`() {
         val otherCompany = companyRepository.save(Company(name = "Obcy Salon"))
         val otherEmployee =
             userRepository.save(User(phoneNumber = "+48111999000", firstName = "Obcy", lastName = "Pracownik"))
@@ -346,7 +355,7 @@ class AvailabilityIntegrationTest {
                 param("date", testDate.toString())
             }
             .andExpect {
-                status { isBadRequest() }
+                status { isNotFound() }
             }
     }
 
@@ -381,5 +390,58 @@ class AvailabilityIntegrationTest {
                 // Slot 15:30-17:30 przekracza koniec grafiku
                 jsonPath("$[?(@.time == '15:30:00')]") { doesNotExist() }
             }
+    }
+
+    @Test
+    fun `authenticated customer conflicts annotate free coworker slots without hiding salon capacity`() {
+        val otherEmployeeId = 9000L
+        companyEmployeeRepository.save(
+            CompanyEmployee(
+                companyId = companyId,
+                userId = otherEmployeeId,
+                role = "EMPLOYEE",
+                firstName = "Drugi",
+                lastName = "Pracownik",
+            ),
+        )
+        workScheduleRepository.save(
+            EmployeeWorkSchedule(
+                companyId = companyId,
+                employeeId = otherEmployeeId,
+                dayOfWeek = testDate.dayOfWeek,
+                startTime = LocalTime.of(9, 0),
+                endTime = LocalTime.of(17, 0),
+            ),
+        )
+        val customer = userRepository.findById(customerId).orElseThrow()
+        val path = "/api/availability?employeeId=$otherEmployeeId&serviceId=$serviceId&date=$testDate"
+        mockMvc.get(path).andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(13) }
+            jsonPath("$[2].time") { value("10:00:00") }
+            jsonPath("$[2].personalConflict") { value(false) }
+        }
+        mockMvc
+            .get(path) { cookie(testSessions.customer(customer)) }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.length()") { value(13) }
+                jsonPath("$[2].time") { value("10:00:00") }
+                jsonPath("$[2].personalConflict") { value(true) }
+                jsonPath("$[6].personalConflict") { value(false) }
+            }
+    }
+
+    @Test
+    fun `missing and inactive public availability service is opaque 404`() {
+        mockMvc.get("/api/availability?employeeId=$employeeId&serviceId=99999999&date=$testDate").andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("NOT_FOUND") }
+        }
+        serviceRepository.save(serviceRepository.findById(serviceId).orElseThrow().apply { active = false })
+        mockMvc.get("/api/availability?employeeId=$employeeId&serviceId=$serviceId&date=$testDate").andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("NOT_FOUND") }
+        }
     }
 }

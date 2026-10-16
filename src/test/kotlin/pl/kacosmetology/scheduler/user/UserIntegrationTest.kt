@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.user
 
 import com.ninjasquad.springmockk.MockkBean
-import org.junit.jupiter.api.Assertions.assertEquals
+import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -9,6 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.put
@@ -16,7 +17,7 @@ import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
-import pl.kacosmetology.scheduler.security.JwtService
+import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.user.dto.UpdateUserProfileRequest
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
@@ -32,7 +33,7 @@ class UserIntegrationTest {
 
     @Autowired private lateinit var userRepository: UserRepository
 
-    @Autowired private lateinit var jwtService: JwtService
+    @Autowired private lateinit var testSessions: TestSessions
 
     @Autowired private lateinit var reservationRepository: ReservationRepository
 
@@ -43,7 +44,7 @@ class UserIntegrationTest {
     @MockkBean private lateinit var s3Client: S3Client
 
     private lateinit var testUser: User
-    private lateinit var jwtToken: String
+    private lateinit var sessionCookie: Cookie
 
     @BeforeEach
     fun setup() {
@@ -59,73 +60,37 @@ class UserIntegrationTest {
                 User(phoneNumber = "+48111222333", firstName = "Jan", lastName = "Kowalski"),
             )
 
-        jwtToken = jwtService.generateCustomerToken(testUser)
+        sessionCookie = testSessions.customer(testUser)
     }
 
     @Test
     fun `GET api-users-me should return logged in user profile (200)`() {
         mockMvc
             .get("/api/users/me") {
-                header("Authorization", "Bearer $jwtToken")
+                cookie(sessionCookie)
             }
             .andExpect {
                 status { isOk() }
-                jsonPath("$.firstName") { value("Jan") }
-                jsonPath("$.lastName") { value("Kowalski") }
+                jsonPath("$.firstName") { doesNotExist() }
+                jsonPath("$.lastName") { doesNotExist() }
                 jsonPath("$.phoneNumber") { value("+48111222333") }
             }
     }
 
     @Test
-    fun `PUT api-users-me should update profile and save to database (200)`() {
-        val updateRequest =
-            UpdateUserProfileRequest(
-                firstName = "Piotr",
-                lastName = "Nowak",
-                email = "piotr.nowak@example.com",
-            )
-
+    fun `PUT api-users-me cannot edit salon owned profiles`() {
         mockMvc
             .put("/api/users/me") {
-                header("Authorization", "Bearer $jwtToken")
+                with(csrf())
+                cookie(sessionCookie)
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(updateRequest)
+                content = objectMapper.writeValueAsString(UpdateUserProfileRequest("Piotr", "Nowak", null))
             }
-            .andExpect {
-                status { isOk() }
-                jsonPath("$.firstName") { value("Piotr") }
-                jsonPath("$.email") { value("piotr.nowak@example.com") }
-            }
-
-        // Upewniamy się, że zmiana zapisała się w prawdziwej bazie
-        val userInDb = userRepository.findById(testUser.id!!).get()
-        assertEquals("Piotr", userInDb.firstName)
-        assertEquals("piotr.nowak@example.com", userInDb.email)
+            .andExpect { status { isMethodNotAllowed() } }
     }
 
     @Test
-    fun `PUT api-users-me should return 400 when validation fails`() {
-        // Próbujemy wysłać puste imię i niepoprawny adres e-mail
-        val badRequest =
-            UpdateUserProfileRequest(
-                firstName = "",
-                lastName = "Kowalski",
-                email = "to-nie-jest-email",
-            )
-
-        mockMvc
-            .put("/api/users/me") {
-                header("Authorization", "Bearer $jwtToken")
-                contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(badRequest)
-            }
-            .andExpect {
-                status { isBadRequest() } // Dzięki @Valid powinno natychmiast odrzucić!
-            }
-    }
-
-    @Test
-    fun `should reject request without token (401)`() {
+    fun `should reject request without session (401)`() {
         mockMvc.get("/api/users/me").andExpect {
             status { isUnauthorized() }
         }
@@ -145,16 +110,16 @@ class UserIntegrationTest {
                     passwordHash = "super_secret_hash",
                 ),
             )
-        val token = jwtService.generateCustomerToken(userWithPassword)
+        val session = testSessions.customer(userWithPassword)
 
         // WHEN & THEN
         mockMvc
             .get("/api/users/me") {
-                header("Authorization", "Bearer $token")
+                cookie(session)
             }
             .andExpect {
                 status { isOk() }
-                jsonPath("$.firstName") { value("Anna") }
+                jsonPath("$.firstName") { doesNotExist() }
                 // Kluczowe! Pole passwordHash NIE MOŻE istnieć w odpowiedzi
                 jsonPath("$.passwordHash") { doesNotExist() }
                 jsonPath("$.password_hash") { doesNotExist() }

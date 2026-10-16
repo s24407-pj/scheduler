@@ -7,6 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -26,7 +27,7 @@ class ErrorContractIntegrationTest {
     @MockkBean private lateinit var s3Client: S3Client
 
     @Test
-    fun `request without token should return 401 problem detail`() {
+    fun `request without session should return 401 problem detail`() {
         mockMvc.get("/api/reservations/me").andExpect {
             status { isUnauthorized() }
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
@@ -36,7 +37,7 @@ class ErrorContractIntegrationTest {
     }
 
     @Test
-    fun `request with invalid token should return 401`() {
+    fun `legacy bearer header cannot replace session authentication`() {
         mockMvc
             .get("/api/reservations/me") {
                 header("Authorization", "Bearer not-a-jwt")
@@ -51,6 +52,7 @@ class ErrorContractIntegrationTest {
     fun `validation failure should list field errors`() {
         mockMvc
             .post("/api/auth/request-code") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = """{"phoneNumber":"abc"}"""
             }
@@ -66,6 +68,7 @@ class ErrorContractIntegrationTest {
     fun `malformed json should return MALFORMED_REQUEST`() {
         mockMvc
             .post("/api/auth/login-staff") {
+                with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = "{"
             }
@@ -92,10 +95,10 @@ class ErrorContractIntegrationTest {
     }
 
     @Test
-    fun `unknown offering in availability query should return OFFERING_UNAVAILABLE`() {
+    fun `unknown offering in availability query is an opaque missing resource`() {
         mockMvc.get("/api/availability?employeeId=1&serviceId=999999&date=2030-01-01").andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("OFFERING_UNAVAILABLE") }
+            status { isNotFound() }
+            jsonPath("$.code") { value("NOT_FOUND") }
         }
     }
 

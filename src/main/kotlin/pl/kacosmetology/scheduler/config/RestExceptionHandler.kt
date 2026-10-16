@@ -63,7 +63,7 @@ class RestExceptionHandler : ResponseEntityExceptionHandler() {
     fun handleBadCredentials(ex: BadCredentialsException): ResponseEntity<ProblemDetail> =
         problem(ErrorCode.INVALID_CREDENTIALS, "Nieprawidłowe dane logowania")
 
-    /** Missing or invalid JWT; reached through the security entry point configured in `SecurityConfig`. */
+    /** Missing or invalid session; reached through the security entry point configured in `SecurityConfig`. */
     @ExceptionHandler(AuthenticationException::class)
     fun handleAuthentication(ex: AuthenticationException): ResponseEntity<ProblemDetail> =
         problem(ErrorCode.UNAUTHORIZED, "Wymagane uwierzytelnienie")
@@ -76,7 +76,12 @@ class RestExceptionHandler : ResponseEntityExceptionHandler() {
     /** OTP or login rate limit exceeded. */
     @ExceptionHandler(RateLimitExceededException::class)
     fun handleRateLimit(ex: RateLimitExceededException): ResponseEntity<ProblemDetail> =
-        problem(ErrorCode.RATE_LIMITED, ex.message ?: "Zbyt wiele żądań")
+        ResponseEntity.status(429)
+            .header("Retry-After", ex.retryAfterSeconds.coerceAtLeast(1).toString())
+            .body(
+                ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.message ?: "Zbyt wiele żądań")
+                    .coded(ErrorCode.RATE_LIMITED),
+            )
 
     /** Fallback for uncoded business rule violations. */
     @ExceptionHandler(IllegalArgumentException::class)

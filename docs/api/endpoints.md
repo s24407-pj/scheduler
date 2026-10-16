@@ -2,19 +2,30 @@
 
 A short index of paths and authorization rules. Request and response schemas come from the generated OpenAPI spec ([ADR-0005](../adr/0005-generated-openapi-spec.md)), available in the `dev` profile at `/swagger-ui.html` and `/v3/api-docs`. Update this table in the same change as any controller mapping or `@PreAuthorize` change.
 
-**Access:** *Public* = no JWT (listed in `SecurityConfig`). *Authenticated* = any valid JWT, no `@PreAuthorize`. Roles = `@PreAuthorize`. All staff operations are limited to the JWT's company. A missing or invalid JWT on a non-public path returns 401; a role mismatch returns 403.
+**Access:** *Public* = no authentication (listed in `SecurityConfig`). *Authenticated* = any valid authenticated session, no `@PreAuthorize`. Roles = `@PreAuthorize`. All staff operations are limited to the authenticated session's company. A missing or invalid authenticated session on a non-public path returns 401; a role mismatch returns 403.
+
+All unsafe methods require `X-XSRF-TOKEN` and its cookie, including public auth calls. Successful login returns status and sets HttpOnly `SESSION`; refresh `/api/auth/csrf` after authentication/logout. See the [frontend contract](../architecture.md#csrf-cookies-and-frontend-contract).
 
 Times and dates: see [time handling](../time-handling.md). Errors: see [errors](./errors.md).
+
+## Quotes — `QuoteController`
+
+| Method | Path | Access | Notes |
+| ------ | ---- | ------ | ----- |
+| POST | `/api/quotes` | CUSTOMER | Creates durable ten-minute commercial quote; 201; no slot hold; CSRF required |
 
 ## Auth — `AuthController`
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| POST | `/api/auth/request-code` | Public | Sends OTP to phone; rate-limited per phone and IP |
-| POST | `/api/auth/verify-code` | Public | Returns customer JWT; rate-limited per code and IP |
-| POST | `/api/auth/login-staff` | Public | `email`, `password`, optional `employmentId`; rate-limited per IP |
-| POST | `/api/auth/logout` | Authenticated | Revokes the session of the calling token; 204 |
-| POST | `/api/auth/logout-all` | Authenticated | Revokes every session of the caller; 204 |
+| POST | `/api/auth/request-code` | Public | Sends six-digit OTP after commit; 60s cooldown, rolling phone/IP limits and global daily cap |
+| POST | `/api/auth/verify-code` | Public | Creates phone-only customer HttpOnly session without names; atomic single-use OTP, rolling IP limit |
+| POST | `/api/auth/login-staff` | Public | `companyId`, normalized `email`, `password`; failed authentication is 401, no employment selection |
+| POST | `/api/auth/staff-password` | Public, CSRF required | One-use 24h setup/recovery token, sets password without login; 204 |
+| POST | `/api/auth/logout` | Public, CSRF required | Revokes the session of the current browser; 204 |
+| GET | `/api/auth/csrf` | Public | Sets XSRF-TOKEN; returns CSRF token/header name |
+| GET | `/api/auth/me` | Authenticated | Safe account ID/username/authorities/company/employment scope |
+| POST | `/api/auth/logout-all` | Authenticated | Revokes all devices for the caller's customer or company staff account only; 204 |
 
 ## Availability — `AvailabilityController`
 
@@ -29,7 +40,8 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | GET | `/api/company/public/{companyId}` | Public | Public salon profile |
 | GET | `/api/company/employees` | Authenticated | Staff of the caller's company |
 | GET | `/api/company/settings` | Authenticated | Caller's company settings |
-| PUT | `/api/company/settings` | OWNER | |
+| PUT | `/api/company/settings` | OWNER | Includes notice/horizon/customer booking cap |
+| PUT | `/api/company/profile` | OWNER | Company-local public name/address |
 
 ## Employees — `CompanyEmployeeController`, `EmployeeController`, `WorkScheduleController`, `EmployeeOfferingController`
 
@@ -37,11 +49,21 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | ------ | ---- | ------ | ----- |
 | GET | `/api/employees/public/company/{companyId}?offeringId` | Public | Employees eligible for the offering |
 | GET | `/api/employees` | OWNER, EMPLOYEE | |
+| POST | `/api/employees` | OWNER | Creates EMPLOYEE account plus initial setup token; 201 |
+| PUT | `/api/employees/{id}` | OWNER | Company-local names, login email, optional contact phone |
+| PUT | `/api/employees/{id}/enabled` | OWNER | Revokes access/links when disabled; returns preserved future booking warnings |
+| POST | `/api/employees/{id}/password-link` | OWNER | Replaces one-use 24h setup/recovery token |
+| GET | `/api/staff/me` | OWNER, EMPLOYEE | Current company-local staff profile |
+| POST | `/api/staff/password` | OWNER, EMPLOYEE | Current password required; revokes all account sessions; 204 |
 | POST | `/api/employees/{id}/photo` | OWNER | Multipart field `photo` |
 | DELETE | `/api/employees/{id}/photo` | OWNER | |
-| GET | `/api/employees/{employeeId}/work-schedule` | OWNER, EMPLOYEE | JWT company's schedule only |
-| PUT | `/api/employees/{employeeId}/work-schedule` | OWNER | Replaces whole week at the JWT company |
-| GET | `/api/employees/{employeeId}/offerings` | OWNER, EMPLOYEE | Assignments at the JWT company |
+| GET | `/api/employees/{employeeId}/work-schedule` | OWNER, EMPLOYEE | authenticated session company's schedule only |
+| PUT | `/api/employees/{employeeId}/work-schedule` | OWNER | Replaces whole week at the authenticated session company |
+| GET | `/api/employees/{employeeId}/schedule-overrides?start&end` | OWNER, EMPLOYEE | Inclusive date range at session company |
+| PUT | `/api/employees/{employeeId}/schedule-overrides/{date}` | OWNER | Replacement same-day shift or day off |
+| DELETE | `/api/employees/{employeeId}/schedule-overrides/{date}` | OWNER | Restore weekly schedule |
+| GET | `/api/employees/{employeeId}/offerings` | OWNER, EMPLOYEE | Assignments at the authenticated session company |
+| PATCH | `/api/employees/{employeeId}/offering-eligibility` | OWNER | Explicit ALL_SERVICES / SPECIFIC_SERVICES mode |
 | POST | `/api/employees/{employeeId}/offerings/{offeringId}` | OWNER | Idempotent |
 | DELETE | `/api/employees/{employeeId}/offerings/{offeringId}` | OWNER | |
 
@@ -50,7 +72,7 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
 | GET | `/api/offerings/public/company/{companyId}` | Public | Cached (`companyServices`) |
-| GET | `/api/offerings/public/company/{companyId}/employee/{employeeId}` | Public | Active offerings the employee performs at that salon: assigned ones, or all active company offerings if the employee has no assignments there; 404 if not employed there |
+| GET | `/api/offerings/public/company/{companyId}/employee/{employeeId}` | Public | Active offerings following explicit qualification; SPECIFIC_SERVICES with no assignments returns []; disabled/foreign employee is 404 |
 | GET | `/api/offerings` | Authenticated | |
 | GET | `/api/offerings/{id}` | Authenticated | |
 | POST | `/api/offerings` | OWNER | |
@@ -65,6 +87,7 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
+| GET | `/api/offering-categories/public/company/{companyId}` | Public | Tenant-scoped public category names |
 | GET | `/api/offering-categories` | Authenticated | |
 | POST | `/api/offering-categories` | OWNER | |
 | DELETE | `/api/offering-categories/{id}` | OWNER | Offerings keep existing with `category_id = null` |
@@ -75,24 +98,27 @@ See [reservations](../reservations.md).
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| POST | `/api/reservations` | Authenticated | Books for the caller (`customerId` = JWT user); only slots availability would list; 201, or 200 for an identical active booking |
-| POST | `/api/reservations/staff` | OWNER, EMPLOYEE | Books for a client by phone; may create the user; 201 or 200 as above |
-| PATCH | `/api/reservations/{id}/cancel` | Authenticated | Owning customer only; before `startTime` |
-| PATCH | `/api/reservations/{id}/cancel-by-staff` | OWNER, EMPLOYEE | Any active reservation of the company, also after start; 204 |
-| PATCH | `/api/reservations/{id}/complete` | OWNER, EMPLOYEE | |
-| PATCH | `/api/reservations/{id}/no-show` | OWNER, EMPLOYEE | From `startTime`; `COMPLETED` until `endTime + 24 h` |
-| DELETE | `/api/reservations/{id}` | OWNER | Hard delete |
-| GET | `/api/reservations/me` | Authenticated | Caller's reservations |
-| GET | `/api/reservations/employee?start&end` | OWNER, EMPLOYEE | Caller's schedule at the JWT's company |
-| GET | `/api/reservations?employeeId&start&end` | OWNER, EMPLOYEE | EMPLOYEE only for self |
+| POST | `/api/reservations` | CUSTOMER | Required Idempotency-Key; optional employee means atomic any-employee allocation; first local profile requires names; 201 or current replay 200 |
+| POST | `/api/reservations/staff` | OWNER, EMPLOYEE | Required Idempotency-Key; manual regular-price booking, explicit duration/price/block override and SMS opt-in |
+| PUT | `/api/reservations/{id}` | OWNER, EMPLOYEE | Direct edit, required If-Match; preserves ID/creation time/customer |
+| PATCH | `/api/reservations/{id}/cancel` | CUSTOMER | Required If-Match; own booking strictly before start; optional reason |
+| PATCH | `/api/reservations/{id}/cancel-by-staff` | OWNER, EMPLOYEE | Required If-Match and private reason; optional separate customer explanation |
+| PATCH | `/api/reservations/{id}/complete` | OWNER, EMPLOYEE | Required If-Match; from scheduled start; supports no-show correction |
+| PATCH | `/api/reservations/{id}/no-show` | OWNER, EMPLOYEE | Required If-Match; from start; employee deadline end +24 elapsed hours; owner unlimited |
+| PATCH | `/api/reservations/{id}/restore` | OWNER, EMPLOYEE | Required If-Match; cancelled future/ongoing or mistaken ongoing no-show; current hard rules |
+| PATCH | `/api/reservations/{id}/archive` | OWNER | Required If-Match; only CANCELLED; no permanent deletion |
+| PATCH | `/api/reservations/{id}/unarchive` | OWNER | Required If-Match; required before restoration |
+| GET | `/api/reservations/me` | CUSTOMER | Own unarchived history; no private staff reasons |
+| GET | `/api/reservations/employee?start&end` | OWNER, EMPLOYEE | Caller's company-local schedule |
+| GET | `/api/reservations?employeeId&start&end` | OWNER, EMPLOYEE | Either staff role may read a company employee calendar; foreign/nonexistent target 404 |
 
 ## Schedule blocks — `ScheduleBlockController`
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| POST | `/api/schedule-blocks` | OWNER, EMPLOYEE | OWNER may set `employeeId` |
+| POST | `/api/schedule-blocks` | OWNER, EMPLOYEE | OWNER may target any company employee; EMPLOYEE only own, explicit unauthorized target rejected |
 | DELETE | `/api/schedule-blocks/{id}` | OWNER, EMPLOYEE | EMPLOYEE only own blocks |
-| GET | `/api/schedule-blocks/employee?start&end[&employeeId]` | OWNER, EMPLOYEE | `employeeId` honoured for OWNER only |
+| GET | `/api/schedule-blocks/employee?start&end[&employeeId]` | OWNER, EMPLOYEE | Either staff role may read coworkers’ intervals/reasons within company |
 
 ## Customers — `CustomerController`
 
@@ -100,16 +126,17 @@ See [reservations](../reservations.md).
 | ------ | ---- | ------ | ----- |
 | GET | `/api/customers` | OWNER, EMPLOYEE | Customers of the caller's company |
 | GET | `/api/customers/{id}` | OWNER, EMPLOYEE | Company-scoped status (no-shows, blocked) |
-| PUT | `/api/customers/{id}/notes` | OWNER, EMPLOYEE | |
+| PUT | `/api/customers/{id}/notes` | OWNER, EMPLOYEE | Existing local profile required; never creates a relationship |
+| PUT | `/api/customers/{id}/profile` | OWNER, EMPLOYEE | Updates local names and optional contact email |
+| GET | `/api/customers/{id}/visits` | OWNER, EMPLOYEE | Company-scoped visit history, existing relationship required |
 | PATCH | `/api/customers/{id}/block` | OWNER | |
-| PATCH | `/api/customers/{id}/unblock` | OWNER | Resets no-show count |
+| PATCH | `/api/customers/{id}/unblock` | OWNER | Preserves penalty history; clears manual/automatic block, never restores appointments |
 
 ## Users — `UserController`
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| GET | `/api/users/me` | Authenticated | |
-| PUT | `/api/users/me` | Authenticated | |
+| GET | `/api/users/me` | CUSTOMER | Global canonical phone identity only |
 
 ## API docs
 
@@ -117,4 +144,6 @@ See [reservations](../reservations.md).
 
 ## Actuator
 
-Public: `/actuator/health/**`, `/actuator/info`, `/actuator/metrics/**`, `/actuator/prometheus`. The `dev` profile exposes more (`env`, `threaddump`, `loggers`, ...) but they still require a JWT.
+Only `/actuator/health` is public and returns aggregate status without details/components. Every other `/actuator/**` route is denied through the application HTTP interface, including metrics, Prometheus, info and readiness/liveness groups. Operator telemetry must use a separately secured deployment channel. Company staff and customers have no diagnostics permission.
+
+Generated OpenAPI marks public operations explicitly and describes `sessionAuth` (HttpOnly `SESSION` cookie) separately from `csrfToken` (`X-XSRF-TOKEN` header). Every unsafe operation requires CSRF, including anonymous login/OTP/logout.

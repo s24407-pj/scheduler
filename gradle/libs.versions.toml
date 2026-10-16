@@ -14,9 +14,6 @@ spotless = "8.10.4"
 ktfmt = "0.65"
 
 [libraries]
-jjwt-api = { module = "io.jsonwebtoken:jjwt-api", version.ref = "jjwt" }
-jjwt-impl = { module = "io.jsonwebtoken:jjwt-impl", version.ref = "jjwt" }
-jjwt-jackson = { module = "io.jsonwebtoken:jjwt-jackson", version.ref = "jjwt" }
 aws-s3 = { module = "software.amazon.awssdk:s3", version.ref = "awsSdk" }
 springdoc-openapi-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }

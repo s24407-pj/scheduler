@@ -7,6 +7,8 @@
 | [deployment.md](./deployment.md) | deploy to the VPS (Dokploy + Cloudflare): client IP, origin lockdown, production compose |
 | [architecture.md](./architecture.md) | need the module map, auth, authorization, notifications, caching, storage, or schema overview |
 | [reservations.md](./reservations.md) | touch booking, cancellation, status changes, pricing, or concurrency |
+| [notifications.md](./notifications.md) | touch after-commit SMS, durable delivery, provider outcomes or reminder runs |
+| [pricing.md](./pricing.md) | touch whole-złoty rounding, elapsed discount windows or durable commercial quotes |
 | [availability.md](./availability.md) | touch slot calculation, work schedules, schedule blocks, offering assignments, or company settings |
 | [time-handling.md](./time-handling.md) | work with dates, times, "now", or scheduled jobs |
 | [api/endpoints.md](./api/endpoints.md) | need the list of endpoints and who can call them |
@@ -14,3 +16,7 @@
 | [adr/](./adr/README.md) | want to know why something is built the way it is, or need to change a recorded decision |
 
 Docs describe the code as it is. Where an accepted decision is not implemented yet, the text says **Pending** and links the ADR.
+
+- [Identity and staff administration](./identity.md) — separate realms, salon profiles and password lifecycle.
+
+Final implementation and evidence: [revised scheduler contract](./implementation-report.md).

@@ -1,5 +1,6 @@
 import http from 'k6/http';
 import { check } from 'k6';
+import { loginStaff, authHeaders } from './auth.js';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 
@@ -35,12 +36,9 @@ export function getAvailability(employeeId, offeringId, date) {
 /**
  * Fetches the employee list for the authenticated user's company.
  */
-export function getEmployees(token) {
-  const res = http.get(`${BASE_URL}/api/company/employees`, {
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+export function getEmployees(session) {
+  const res = http.get(`${BASE_URL}/api/employees`, {
+    ...authHeaders(session),
     timeout: '10s',
   });
   check(res, {
@@ -53,12 +51,9 @@ export function getEmployees(token) {
 /**
  * Fetches authenticated offerings list for a given company.
  */
-export function getAuthOfferings(token, companyId) {
-  const res = http.get(`${BASE_URL}/api/offerings/company/${companyId}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+export function getAuthOfferings(session) {
+  const res = http.get(`${BASE_URL}/api/offerings`, {
+    ...authHeaders(session),
     timeout: '10s',
   });
   check(res, {
@@ -70,7 +65,7 @@ export function getAuthOfferings(token, companyId) {
 /**
  * Creates a staff booking. Returns the response (may be 201 or 409 on conflict).
  */
-export function createStaffBooking(token, employeeId, offeringId, startTime, phone) {
+export function createStaffBooking(session, employeeId, offeringId, startTime, phone) {
   const res = http.post(
     `${BASE_URL}/api/reservations/staff`,
     JSON.stringify({
@@ -82,9 +77,10 @@ export function createStaffBooking(token, employeeId, offeringId, startTime, pho
       customerLastName: 'Test',
     }),
     {
+      ...authHeaders(session),
       headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        ...authHeaders(session).headers,
+        'Idempotency-Key': `perf:${__VU}:${__ITER}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
       },
       timeout: '10s',
     }
@@ -109,27 +105,17 @@ export function futureDate(daysFromNow) {
  * Returns null if login fails.
  */
 export function loadSetupData() {
-  const loginRes = http.post(
-    `${BASE_URL}/api/auth/login-staff`,
-    JSON.stringify({
-      email: __ENV.STAFF_EMAIL || 'tomek@barbershop.pl',
-      password: __ENV.STAFF_PASSWORD || 'admin123',
-    }),
-    {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: '10s',
-    }
-  );
-
-  if (loginRes.status !== 200) {
-    console.error(`Setup failed: login returned ${loginRes.status}`);
+  const session = loginStaff();
+  if (!session) {
+    console.error('Setup failed: staff authentication requires valid company ID and staff credentials');
     return null;
   }
-
-  const token = loginRes.json('token');
+  const me = http.get(`${BASE_URL}/api/auth/me`, { ...authHeaders(session), timeout: '10s' });
+  if (me.status !== 200) return null;
+  const companyId = me.json('companyId');
 
   // Fetch real offering and employee IDs
-  const offeringsRes = http.get(`${BASE_URL}/api/offerings/public/company/1`, {
+  const offeringsRes = http.get(`${BASE_URL}/api/offerings/public/company/${companyId}`, {
     timeout: '10s',
   });
   let offeringIds = [1, 2, 3];
@@ -140,11 +126,8 @@ export function loadSetupData() {
     }
   }
 
-  const employeesRes = http.get(`${BASE_URL}/api/company/employees`, {
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+  const employeesRes = http.get(`${BASE_URL}/api/employees`, {
+    ...authHeaders(session),
     timeout: '10s',
   });
   let employeeIds = [1];
@@ -155,7 +138,7 @@ export function loadSetupData() {
     }
   }
 
-  return { token, offeringIds, employeeIds };
+  return { session, companyId, offeringIds, employeeIds };
 }
 
 /**

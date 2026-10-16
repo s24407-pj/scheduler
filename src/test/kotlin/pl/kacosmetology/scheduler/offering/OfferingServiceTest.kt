@@ -9,17 +9,24 @@ import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.mock.web.MockMultipartFile
+import pl.kacosmetology.scheduler.company.Company
+import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.company.EmployeeEligibilityMode
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignment
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 
 @ExtendWith(MockKExtension::class)
 class OfferingServiceTest {
+
+    @MockK private lateinit var companies: CompanyRepository
 
     @MockK private lateinit var offeringRepository: OfferingRepository
 
@@ -37,9 +44,20 @@ class OfferingServiceTest {
     private val manicure = Offering(id = 1, companyId = companyId, name = "Manicure", durationMinutes = 60, price = 100)
     private val pedicure = Offering(id = 2, companyId = companyId, name = "Pedicure", durationMinutes = 60, price = 120)
 
+    @BeforeEach
+    fun companyLock() {
+        every { companies.findByIdForUpdate(companyId) } returns Company(id = companyId, name = "Salon")
+    }
+
     @Test
     fun `getPublicEmployeeOfferings should return only active offerings assigned at the company`() {
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
+        every { companyEmployeeRepository.findByCompanyIdAndUserId(companyId, employeeId) } returns
+            CompanyEmployee(
+                companyId = companyId,
+                userId = employeeId,
+                role = "EMPLOYEE",
+                eligibilityMode = EmployeeEligibilityMode.SPECIFIC_SERVICES,
+            )
         every { assignmentRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId) } returns
             listOf(
                 EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = 1),
@@ -54,8 +72,9 @@ class OfferingServiceTest {
     }
 
     @Test
-    fun `getPublicEmployeeOfferings should return every active company offering when the employee has no assignments there`() {
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
+    fun `getPublicEmployeeOfferings should return every active company offering in explicit ALL_SERVICES mode`() {
+        every { companyEmployeeRepository.findByCompanyIdAndUserId(companyId, employeeId) } returns
+            CompanyEmployee(companyId = companyId, userId = employeeId, role = "EMPLOYEE")
         every { assignmentRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId) } returns emptyList()
         every { offeringRepository.findAllByCompanyIdAndActiveTrue(companyId) } returns listOf(manicure, pedicure)
 
@@ -66,7 +85,7 @@ class OfferingServiceTest {
 
     @Test
     fun `getPublicEmployeeOfferings should throw when the employee is not employed at the company`() {
-        every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns false
+        every { companyEmployeeRepository.findByCompanyIdAndUserId(companyId, employeeId) } returns null
 
         assertThrows<NoSuchElementException> {
             offeringService.getPublicEmployeeOfferings(companyId, employeeId)
@@ -112,10 +131,10 @@ class OfferingServiceTest {
 
         // WHEN & THEN
         val exception =
-            assertThrows<IllegalArgumentException> {
+            assertThrows<NoSuchElementException> {
                 offeringService.getOfferingById(999L)
             }
-        assertEquals("Usługa o ID 999 nie istnieje", exception.message)
+        assertEquals("Usługa nie istnieje", exception.message)
     }
 
     @Test
@@ -164,10 +183,10 @@ class OfferingServiceTest {
 
         // WHEN & THEN
         val exception =
-            assertThrows<IllegalStateException> {
+            assertThrows<NoSuchElementException> {
                 offeringService.updateOffering(1L, companyId, request)
             }
-        assertEquals("Brak dostępu do tej usługi", exception.message)
+        assertEquals("Usługa nie istnieje", exception.message)
         verify(exactly = 0) { offeringRepository.save(any()) }
     }
 
@@ -192,7 +211,7 @@ class OfferingServiceTest {
         every { offeringRepository.findById(1L) } returns Optional.of(existing)
 
         // WHEN & THEN
-        assertThrows<IllegalStateException> {
+        assertThrows<NoSuchElementException> {
             offeringService.deleteOffering(1L, companyId)
         }
         verify(exactly = 0) { offeringRepository.save(any()) }
@@ -204,7 +223,7 @@ class OfferingServiceTest {
         every { offeringRepository.findById(999L) } returns Optional.empty()
 
         // WHEN & THEN
-        assertThrows<IllegalArgumentException> {
+        assertThrows<NoSuchElementException> {
             offeringService.deleteOffering(999L, companyId)
         }
     }
@@ -234,7 +253,7 @@ class OfferingServiceTest {
         every { offeringRepository.findById(1L) } returns Optional.of(offering)
 
         // WHEN & THEN
-        assertThrows<IllegalStateException> {
+        assertThrows<NoSuchElementException> {
             offeringService.uploadImage(1L, companyId, file)
         }
         verify(exactly = 0) { offeringImageService.upload(any(), any(), any()) }
@@ -262,7 +281,7 @@ class OfferingServiceTest {
         every { offeringRepository.findById(1L) } returns Optional.of(offering)
 
         // WHEN & THEN
-        assertThrows<IllegalStateException> {
+        assertThrows<NoSuchElementException> {
             offeringService.deleteImage(1L, 42L, companyId)
         }
         verify(exactly = 0) { offeringImageService.delete(any(), any()) }

@@ -2,6 +2,8 @@
 
 **Status:** Accepted — implemented
 
+Authentication references below describe the original credential scheme. [ADR-0011](./0011-spring-session-redis.md) replaces it with cookie sessions and CSRF; the error contract/generated documentation decision remains accepted.
+
 ## Context
 
 Errors used to be returned as `ApiError { message }` or `ValidationError { message, errors }`, with status codes derived from generic exception types (`IllegalArgumentException` → 400, `IllegalStateException` → 409, `NoSuchElementException` → 404). That produced inconsistencies:

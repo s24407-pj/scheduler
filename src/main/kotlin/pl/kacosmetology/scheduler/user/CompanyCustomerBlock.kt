@@ -11,6 +11,8 @@ class CompanyCustomerBlock(
     @Column(name = "customer_id", nullable = false) val customerId: Long,
     @Column(name = "no_show_count", nullable = false) var noShowCount: Int = 0,
     @Column(nullable = false) var blocked: Boolean = false,
+    @Column(name = "manual_blocked", nullable = false) var manualBlocked: Boolean = false,
+    @Column(name = "automatic_blocked", nullable = false) var automaticBlocked: Boolean = false,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

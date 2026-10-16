@@ -8,4 +8,7 @@ data class CompanyEmployeeResponse(
     val lastName: String,
     val role: String,
     val photoUrl: String?,
+    val loginEmail: String? = null,
+    val contactPhone: String? = null,
+    val enabled: Boolean = true,
 )
