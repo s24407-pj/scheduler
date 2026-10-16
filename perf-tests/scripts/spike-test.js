@@ -48,11 +48,11 @@ export default function (data) {
   const thinkTime = Math.random() * 1.2 + 0.1;
 
   if (rand < 0.50) {
-    getPublicOfferings(1);
+    getPublicOfferings(data.companyId);
   } else if (rand < 0.75) {
     getAvailability(randomFrom(data.employeeIds), randomFrom(data.offeringIds), date);
   } else if (rand < 0.90) {
-    getAuthOfferings(data.session, data.companyId);
+    getAuthOfferings(data.session);
   } else {
     const hour = 10 + Math.floor(Math.random() * 8);
     const minute = Math.random() < 0.5 ? '00' : '30';

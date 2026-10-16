@@ -35,7 +35,7 @@ export default function (data) {
   if (!data) return;
 
   // 1. Public offerings
-  getPublicOfferings(1);
+  getPublicOfferings(data.companyId);
   sleep(0.5);
 
   // 2. Availability
@@ -44,7 +44,7 @@ export default function (data) {
   sleep(0.5);
 
   // 3. Authenticated offerings
-  getAuthOfferings(data.session, data.companyId);
+  getAuthOfferings(data.session);
   sleep(0.5);
 
   // 4. Employee list

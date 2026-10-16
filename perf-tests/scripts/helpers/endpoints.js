@@ -37,7 +37,7 @@ export function getAvailability(employeeId, offeringId, date) {
  * Fetches the employee list for the authenticated user's company.
  */
 export function getEmployees(session) {
-  const res = http.get(`${BASE_URL}/api/company/employees`, {
+  const res = http.get(`${BASE_URL}/api/employees`, {
     ...authHeaders(session),
     timeout: '10s',
   });
@@ -51,8 +51,8 @@ export function getEmployees(session) {
 /**
  * Fetches authenticated offerings list for a given company.
  */
-export function getAuthOfferings(session, companyId) {
-  const res = http.get(`${BASE_URL}/api/offerings/company/${companyId}`, {
+export function getAuthOfferings(session) {
+  const res = http.get(`${BASE_URL}/api/offerings`, {
     ...authHeaders(session),
     timeout: '10s',
   });
@@ -78,6 +78,10 @@ export function createStaffBooking(session, employeeId, offeringId, startTime, p
     }),
     {
       ...authHeaders(session),
+      headers: {
+        ...authHeaders(session).headers,
+        'Idempotency-Key': `perf:${__VU}:${__ITER}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+      },
       timeout: '10s',
     }
   );
@@ -103,7 +107,7 @@ export function futureDate(daysFromNow) {
 export function loadSetupData() {
   const session = loginStaff();
   if (!session) {
-    console.error('Setup failed: staff authentication requires valid credentials and an employment selection');
+    console.error('Setup failed: staff authentication requires valid company ID and staff credentials');
     return null;
   }
   const me = http.get(`${BASE_URL}/api/auth/me`, { ...authHeaders(session), timeout: '10s' });
@@ -122,7 +126,7 @@ export function loadSetupData() {
     }
   }
 
-  const employeesRes = http.get(`${BASE_URL}/api/company/employees`, {
+  const employeesRes = http.get(`${BASE_URL}/api/employees`, {
     ...authHeaders(session),
     timeout: '10s',
   });

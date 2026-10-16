@@ -51,15 +51,15 @@ export default function (data) {
   const thinkTime = Math.random() * 2.5 + 0.3;
 
   if (rand < 0.35) {
-    getPublicOfferings(1);
+    getPublicOfferings(data.companyId);
   } else if (rand < 0.60) {
     getAvailability(randomFrom(data.employeeIds), randomFrom(data.offeringIds), date);
   } else if (rand < 0.75) {
-    getAuthOfferings(data.session, data.companyId);
+    getAuthOfferings(data.session);
   } else if (rand < 0.85) {
     getEmployees(data.session);
   } else if (rand < 0.95) {
-    // Staff booking — write operation with optimistic locking contention
+    // Staff booking — write operation with company/employee locking and database exclusions
     const hour = 10 + Math.floor(Math.random() * 8);
     const minute = Math.random() < 0.5 ? '00' : '30';
     const startTime = `${date}T${hour}:${minute}:00`;

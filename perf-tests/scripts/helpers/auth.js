@@ -2,17 +2,17 @@ import http from 'k6/http';
 import { check } from 'k6';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
-const STAFF_EMAIL = __ENV.STAFF_EMAIL || 'tomek@barbershop.pl';
+const STAFF_EMAIL = __ENV.STAFF_EMAIL || 'gabinet@kacosmetology.pl';
 const STAFF_PASSWORD = __ENV.STAFF_PASSWORD || 'admin123';
+const STAFF_COMPANY_ID = Number(__ENV.STAFF_COMPANY_ID || 1);
 
 /** Standard cookie/CSRF login. k6's cookie jar retains HttpOnly cookies as an HTTP client. */
 export function loginStaff() {
   const before = http.get(`${BASE_URL}/api/auth/csrf`, { timeout: '10s' });
   if (before.status !== 200) return null;
-  const employmentId = __ENV.STAFF_EMPLOYMENT_ID ? Number(__ENV.STAFF_EMPLOYMENT_ID) : undefined;
   const res = http.post(
     `${BASE_URL}/api/auth/login-staff`,
-    JSON.stringify({ email: STAFF_EMAIL, password: STAFF_PASSWORD, employmentId }),
+    JSON.stringify({ email: STAFF_EMAIL, password: STAFF_PASSWORD, companyId: STAFF_COMPANY_ID }),
     {
       headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': before.json('token') },
       timeout: '10s',

@@ -45,7 +45,8 @@ Zmienne środowiskowe:
 | Zmienna    | Domyślnie                  | Opis              |
 |------------|----------------------------|--------------------|
 | `BASE_URL` | `http://localhost:8080`    | URL backendu       |
-| `STAFF_EMAIL` | `tomek@barbershop.pl`  | Email pracownika   |
+| `STAFF_EMAIL` | `gabinet@kacosmetology.pl`  | Email pracownika   |
+| `STAFF_COMPANY_ID` | `1` | Company owning the staff account |
 | `STAFF_PASSWORD` | `admin123`           | Hasło pracownika   |
 
 Przykład:
@@ -72,4 +73,6 @@ Każdy scenariusz ma zdefiniowane progi akceptacji:
 - **Spike**: p95 < 2s, error rate < 10%
 
 
-Authentication uses normal session cookies and CSRF. Setup logs in with `STAFF_EMAIL` / `STAFF_PASSWORD` (and `STAFF_EMPLOYMENT_ID` when multiple employments exist), refreshes CSRF after login, and obtains company scope from `/api/auth/me`. k6 setup and VUs have separate cookie jars, so setup passes the test client's cookie values to request parameters. Never log setup data or cookies. These scripts do not model browser SameSite/CORS enforcement; session/security integration tests cover those boundaries.
+Authentication uses normal session cookies and CSRF. Setup logs in with `STAFF_EMAIL` / `STAFF_PASSWORD` and `STAFF_COMPANY_ID`, refreshes CSRF after login, and obtains company scope from `/api/auth/me`. k6 setup and VUs have separate cookie jars, so setup passes the test client's cookie values to request parameters. Never log setup data or cookies. These scripts do not model browser SameSite/CORS enforcement; session/security integration tests cover those boundaries.
+
+Booking writes include a fresh Idempotency-Key. Shared-account load profiles remain subject to 10 booking requests/account/minute and 60/IP/minute; 429 is an admission-control result and may fail their existing success-rate thresholds. These profiles are optional load experiments, separate from the complete Gradle unit/integration/concurrency suite.
