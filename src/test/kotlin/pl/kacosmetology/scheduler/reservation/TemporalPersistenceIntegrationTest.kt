@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
@@ -18,6 +19,7 @@ import software.amazon.awssdk.services.s3.S3Client
 
 /** SQL TIME stays local while TIMESTAMPTZ round-trips Warsaw instants with the whole JVM configured UTC. */
 @SpringBootTest
+@AutoConfigureMockMvc
 @Import(TestcontainersConfiguration::class)
 class TemporalPersistenceIntegrationTest {
     @Autowired private lateinit var fixtures: ContractFixtures
@@ -26,8 +28,8 @@ class TemporalPersistenceIntegrationTest {
     @Autowired private lateinit var policy: BookableSlotPolicy
     @Autowired private lateinit var jdbc: JdbcTemplate
     @Autowired private lateinit var reservations: ReservationRepository
-    @MockkBean private lateinit var sms: SmsSender
-    @MockkBean private lateinit var storage: S3Client
+    @MockkBean private lateinit var smsSender: SmsSender
+    @MockkBean private lateinit var s3Client: S3Client
 
     @Test
     fun `Warsaw timestamps and local shift hours preserve exact values under UTC JVM`() {
