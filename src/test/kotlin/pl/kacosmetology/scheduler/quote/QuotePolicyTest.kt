@@ -18,6 +18,7 @@ import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.testId
 
 class QuotePolicyTest {
     private val quotes = mockk<BookingQuoteRepository>()
@@ -27,27 +28,39 @@ class QuotePolicyTest {
     private val id = UUID.randomUUID()
     private val now = Instant.parse("2026-06-01T08:00:00Z")
     private val start = LocalDateTime.parse("2026-06-01T14:00:00")
-    private val company = Company(id = 1, name = "Salon", lastMinuteDiscountPercent = 15)
+    private val company = Company(id = testId(1), name = "Salon", lastMinuteDiscountPercent = 15)
     private lateinit var service: Offering
     private lateinit var quote: BookingQuote
 
     @BeforeEach
     fun setup() {
-        service = Offering(id = 2, companyId = 1, name = "Original", durationMinutes = 30, price = 101)
-        quote = BookingQuote(id, 3, 1, 2, quoteStartInstant(start), "Original", 86, 30, now.plusSeconds(600), now)
-        every { offerings.findById(2) } returns Optional.of(service)
-        every { companies.findById(1) } returns Optional.of(company)
-        every { quotes.findByIdAndCustomerId(id, 3) } answers { quote }
+        service = Offering(id = testId(2), companyId = testId(1), name = "Original", durationMinutes = 30, price = 101)
+        quote =
+            BookingQuote(
+                id,
+                testId(3),
+                testId(1),
+                testId(2),
+                quoteStartInstant(start),
+                "Original",
+                86,
+                30,
+                now.plusSeconds(600),
+                now,
+            )
+        every { offerings.findById(testId(2)) } returns Optional.of(service)
+        every { companies.findById(testId(1)) } returns Optional.of(company)
+        every { quotes.findByIdAndCustomerId(id, testId(3)) } answers { quote }
     }
 
     @Test
     fun `without quote current active service gets effective customer price`() {
-        assertEquals(CommercialAgreement("Original", 86, 30), policy.resolve(3, 2, start, null, now))
+        assertEquals(CommercialAgreement("Original", 86, 30), policy.resolve(testId(3), testId(2), start, null, now))
         verify(exactly = 0) { quotes.findByIdAndCustomerId(any(), any()) }
         service.active = false
         assertEquals(
             ErrorCode.OFFERING_UNAVAILABLE,
-            assertThrows<ApiException> { policy.resolve(3, 2, start, null, now) }.code,
+            assertThrows<ApiException> { policy.resolve(testId(3), testId(2), start, null, now) }.code,
         )
     }
 
@@ -57,7 +70,10 @@ class QuotePolicyTest {
         service.name = "Renamed"
         service.durationMinutes = 90
         service.price = 1
-        assertEquals(CommercialAgreement("Original", 86, 30), policy.resolve(3, 2, start, id, now.plusSeconds(599)))
+        assertEquals(
+            CommercialAgreement("Original", 86, 30),
+            policy.resolve(testId(3), testId(2), start, id, now.plusSeconds(599)),
+        )
         verify(exactly = 0) { companies.findById(any()) }
     }
 
@@ -68,9 +84,9 @@ class QuotePolicyTest {
         quote =
             BookingQuote(
                 id,
-                3,
-                1,
-                2,
+                testId(3),
+                testId(1),
+                testId(2),
                 quoteStartInstant(laterStart),
                 "Original",
                 86,
@@ -79,16 +95,22 @@ class QuotePolicyTest {
                 beforeTransition,
             )
         service.active = false
-        assertEquals(86, policy.resolve(3, 2, laterStart, id, beforeTransition.plusSeconds(599)).price)
+        assertEquals(86, policy.resolve(testId(3), testId(2), laterStart, id, beforeTransition.plusSeconds(599)).price)
         assertEquals(
             ErrorCode.QUOTE_RECONFIRMATION_REQUIRED,
-            assertThrows<ApiException> { policy.resolve(3, 2, laterStart, id, beforeTransition.plusSeconds(600)) }.code,
+            assertThrows<ApiException> {
+                    policy.resolve(testId(3), testId(2), laterStart, id, beforeTransition.plusSeconds(600))
+                }
+                .code,
         )
     }
 
     @Test
     fun `expired quote proceeds only if active service effective terms match all accepted values`() {
-        assertEquals(CommercialAgreement("Original", 86, 30), policy.resolve(3, 2, start, id, now.plusSeconds(600)))
+        assertEquals(
+            CommercialAgreement("Original", 86, 30),
+            policy.resolve(testId(3), testId(2), start, id, now.plusSeconds(600)),
+        )
         listOf<(Offering) -> Unit>(
                 { it.name = "Renamed" },
                 { it.durationMinutes = 31 },
@@ -98,7 +120,8 @@ class QuotePolicyTest {
             .forEach { change ->
                 setup()
                 change(service)
-                val failure = assertThrows<ApiException> { policy.resolve(3, 2, start, id, now.plusSeconds(600)) }
+                val failure =
+                    assertThrows<ApiException> { policy.resolve(testId(3), testId(2), start, id, now.plusSeconds(600)) }
                 assertEquals(ErrorCode.QUOTE_RECONFIRMATION_REQUIRED, failure.code)
             }
     }
@@ -108,20 +131,23 @@ class QuotePolicyTest {
         service.price = 102 // 86.70 -> 87: changed effective agreement
         assertEquals(
             ErrorCode.QUOTE_RECONFIRMATION_REQUIRED,
-            assertThrows<ApiException> { policy.resolve(3, 2, start, id, now.plusSeconds(600)) }.code,
+            assertThrows<ApiException> { policy.resolve(testId(3), testId(2), start, id, now.plusSeconds(600)) }.code,
         )
         service.price = 101
         company.lastMinuteDiscountPercent = 0
         assertEquals(
             ErrorCode.QUOTE_RECONFIRMATION_REQUIRED,
-            assertThrows<ApiException> { policy.resolve(3, 2, start, id, now.plusSeconds(600)) }.code,
+            assertThrows<ApiException> { policy.resolve(testId(3), testId(2), start, id, now.plusSeconds(600)) }.code,
         )
     }
 
     @Test
     fun `foreign or absent quote is opaque missing before any service disclosure`() {
-        every { quotes.findByIdAndCustomerId(id, 99) } returns null
-        assertEquals(ErrorCode.NOT_FOUND, assertThrows<ApiException> { policy.resolve(99, 2, start, id, now) }.code)
+        every { quotes.findByIdAndCustomerId(id, testId(99)) } returns null
+        assertEquals(
+            ErrorCode.NOT_FOUND,
+            assertThrows<ApiException> { policy.resolve(testId(99), testId(2), start, id, now) }.code,
+        )
         verify(exactly = 0) { offerings.findById(any()) }
     }
 
@@ -129,11 +155,16 @@ class QuotePolicyTest {
     fun `owned quote cannot be tampered onto another service company or start`() {
         assertEquals(
             ErrorCode.BAD_REQUEST,
-            assertThrows<ApiException> { policy.resolve(3, 2, start.plusMinutes(1), id, now) }.code,
+            assertThrows<ApiException> { policy.resolve(testId(3), testId(2), start.plusMinutes(1), id, now) }.code,
         )
-        every { offerings.findById(4) } returns
-            Optional.of(Offering(id = 4, companyId = 9, name = "Foreign", durationMinutes = 30, price = 100))
-        assertEquals(ErrorCode.BAD_REQUEST, assertThrows<ApiException> { policy.resolve(3, 4, start, id, now) }.code)
+        every { offerings.findById(testId(4)) } returns
+            Optional.of(
+                Offering(id = testId(4), companyId = testId(9), name = "Foreign", durationMinutes = 30, price = 100),
+            )
+        assertEquals(
+            ErrorCode.BAD_REQUEST,
+            assertThrows<ApiException> { policy.resolve(testId(3), testId(4), start, id, now) }.code,
+        )
     }
 
     @Test
@@ -141,7 +172,7 @@ class QuotePolicyTest {
         listOf(LocalDateTime.parse("2026-03-29T02:30:00"), LocalDateTime.parse("2026-10-25T02:30:00")).forEach {
             assertEquals(
                 ErrorCode.INVALID_LOCAL_TIME,
-                assertThrows<ApiException> { policy.resolve(3, 2, it, null, now) }.code,
+                assertThrows<ApiException> { policy.resolve(testId(3), testId(2), it, null, now) }.code,
             )
         }
     }

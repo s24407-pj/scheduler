@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.availability
 import com.ninjasquad.springmockk.MockkBean
 import java.time.LocalDate
 import java.time.LocalTime
+import java.util.UUID
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -27,6 +28,7 @@ import pl.kacosmetology.scheduler.reservation.ReservationStatus
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
@@ -60,18 +62,18 @@ class AvailabilityIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private var employeeId: Long = 0
-    private var serviceId: Long = 0
-    private var companyId: Long = 0
-    private var customerId: Long = 0
+    private var employeeId: UUID = testId(0)
+    private var serviceId: UUID = testId(0)
+    private var companyId: UUID = testId(0)
+    private var customerId: UUID = testId(0)
     private val testDate = LocalDate.now().plusDays(2) // Za dwa dni, by uniknąć filtrów przeszłości
 
     @Test
     fun `malformed date should return bad request`() {
         mockMvc
             .get("/api/availability") {
-                param("employeeId", "1")
-                param("serviceId", "1")
+                param("employeeId", testId(1).toString())
+                param("serviceId", testId(1).toString())
                 param("date", "bad-date")
             }
             .andExpect {
@@ -394,7 +396,7 @@ class AvailabilityIntegrationTest {
 
     @Test
     fun `authenticated customer conflicts annotate free coworker slots without hiding salon capacity`() {
-        val otherEmployeeId = 9000L
+        val otherEmployeeId = testId(9000)
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = companyId,
@@ -434,7 +436,7 @@ class AvailabilityIntegrationTest {
 
     @Test
     fun `missing and inactive public availability service is opaque 404`() {
-        mockMvc.get("/api/availability?employeeId=$employeeId&serviceId=99999999&date=$testDate").andExpect {
+        mockMvc.get("/api/availability?employeeId=$employeeId&serviceId=${testId(99999999)}&date=$testDate").andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("NOT_FOUND") }
         }

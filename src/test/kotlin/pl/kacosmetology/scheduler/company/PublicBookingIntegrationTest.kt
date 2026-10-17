@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.company
 
 import com.ninjasquad.springmockk.MockkBean
+import java.util.UUID
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -14,6 +15,7 @@ import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignment
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -37,9 +39,9 @@ class PublicBookingIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private var companyId: Long = 0
-    private var employeeId: Long = 0
-    private var offeringId: Long = 0
+    private var companyId: UUID = testId(0)
+    private var employeeId: UUID = testId(0)
+    private var offeringId: UUID = testId(0)
 
     @BeforeEach
     fun setup() {
@@ -93,7 +95,7 @@ class PublicBookingIntegrationTest {
     fun `GET public company profile should return salon info without auth`() {
         mockMvc.get("/api/company/public/$companyId").andExpect {
             status { isOk() }
-            jsonPath("$.id") { value(companyId) }
+            jsonPath("$.id") { value(companyId.toString()) }
             jsonPath("$.name") { value("Salon Test") }
             jsonPath("$.lastMinuteDiscountPercent") { value(10) }
             jsonPath("$.lastMinuteDiscountHours") { value(24) }
@@ -103,7 +105,7 @@ class PublicBookingIntegrationTest {
 
     @Test
     fun `GET public company profile should return 404 for unknown company`() {
-        mockMvc.get("/api/company/public/99999").andExpect {
+        mockMvc.get("/api/company/public/${testId(99999)}").andExpect {
             status { isNotFound() }
         }
     }
@@ -117,7 +119,7 @@ class PublicBookingIntegrationTest {
             .andExpect {
                 status { isOk() }
                 jsonPath("$.length()") { value(1) }
-                jsonPath("$[0].id") { value(employeeId) }
+                jsonPath("$[0].id") { value(employeeId.toString()) }
                 jsonPath("$[0].firstName") { value("Anna") }
                 jsonPath("$[0].photoUrl") { value("https://example.com/a.jpg") }
             }

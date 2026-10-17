@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
+import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.services.s3.S3Client
 
 @SpringBootTest
@@ -88,7 +89,7 @@ class ErrorContractIntegrationTest {
 
     @Test
     fun `query parameter of the wrong type should return INVALID_PARAMETER`() {
-        mockMvc.get("/api/availability?employeeId=abc&serviceId=1&date=2030-01-01").andExpect {
+        mockMvc.get("/api/availability?employeeId=abc&serviceId=${testId(1)}&date=2030-01-01").andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("INVALID_PARAMETER") }
         }
@@ -96,7 +97,7 @@ class ErrorContractIntegrationTest {
 
     @Test
     fun `unknown offering in availability query is an opaque missing resource`() {
-        mockMvc.get("/api/availability?employeeId=1&serviceId=999999&date=2030-01-01").andExpect {
+        mockMvc.get("/api/availability?employeeId=${testId(1)}&serviceId=${testId(999999)}&date=2030-01-01").andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("NOT_FOUND") }
         }

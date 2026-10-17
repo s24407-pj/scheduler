@@ -144,7 +144,10 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
             results.map { it.response.status }.sorted(),
             results.joinToString { it.response.contentAsString },
         )
-        assertEquals(setOf(salon.employee, other), results.map { tree(it)["employeeId"].longValue() }.toSet())
+        assertEquals(
+            setOf(salon.employee, other),
+            results.map { UUID.fromString(tree(it)["employeeId"].asString()) }.toSet(),
+        )
         assertEquals(2L, count("reservations"))
     }
 
@@ -172,7 +175,7 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
         block(start = future.withHour(16), end = future.withHour(20))
         val created = book(customerBody(employee = null))
         assertEquals(201, created.response.status, created.response.contentAsString)
-        assertEquals(salon.employee, tree(created)["employeeId"].longValue())
+        assertEquals(salon.employee, UUID.fromString(tree(created)["employeeId"].asString()))
     }
 
     @Test
@@ -216,7 +219,7 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
                 org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult {
                     jdbc.queryForObject(
                         "SELECT id FROM companies WHERE id=? FOR UPDATE",
-                        Long::class.java,
+                        UUID::class.java,
                         salon.company,
                     )
                     jdbc.update("UPDATE companies SET min_booking_advance_minutes=120 WHERE id=?", salon.company)

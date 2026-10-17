@@ -13,14 +13,15 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
 import org.springframework.session.FindByIndexNameSessionRepository
 import org.springframework.session.Session
+import pl.kacosmetology.scheduler.testId
 
 class AccountSessionRegistryTest {
     private val redis = mockk<StringRedisTemplate>()
     private val values = mockk<ValueOperations<String, String>>()
     private val sessions = mockk<FindByIndexNameSessionRepository<Session>>()
     private val login = Instant.parse("2026-10-15T10:00:00Z")
-    private val customer = CustomUserDetails(12, "+48500100200", "ROLE_CUSTOMER")
-    private val staff = CustomUserDetails(12, "+48500100200", "ROLE_EMPLOYEE", 8, 31)
+    private val customer = CustomUserDetails(testId(12), "+48500100200", "ROLE_CUSTOMER")
+    private val staff = CustomUserDetails(testId(12), "+48500100200", "ROLE_EMPLOYEE", testId(8), testId(31))
     private var generation = 0L
 
     init {
@@ -44,8 +45,14 @@ class AccountSessionRegistryTest {
         val registry = registry(login)
         val customerAttributes = registry.sessionAttributes(customer)
         val staffAttributes = registry.sessionAttributes(staff)
-        assertEquals("customer:12:0", customerAttributes[FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME])
-        assertEquals("staff:31:0", staffAttributes[FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME])
+        assertEquals(
+            "customer:${testId(12)}:0",
+            customerAttributes[FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME],
+        )
+        assertEquals(
+            "staff:${testId(31)}:0",
+            staffAttributes[FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME],
+        )
         assertFalse(registry.isAuthorized(staff, customerAttributes::get))
         assertFalse(staffAttributes.containsKey(AccountSessionRegistry.CUSTOMER_DEADLINE_ATTRIBUTE))
         assertTrue(registry(login.plus(Duration.ofDays(2))).isAuthorized(staff, staffAttributes::get))
@@ -55,7 +62,7 @@ class AccountSessionRegistryTest {
     fun `revocation precedes cleanup and prevents old generation authorization`() {
         val registry = registry(login)
         val old = registry.sessionAttributes(staff)
-        every { sessions.findByPrincipalName("staff:31:0") } answers
+        every { sessions.findByPrincipalName("staff:${testId(31)}:0") } answers
             {
                 assertFalse(registry.isAuthorized(staff, old::get))
                 emptyMap()
@@ -63,8 +70,8 @@ class AccountSessionRegistryTest {
         registry.revokeAccount(staff.accountKey())
         val fresh = registry.sessionAttributes(staff)
         assertTrue(registry.isAuthorized(staff, fresh::get))
-        assertEquals("staff:31:1", fresh[FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME])
-        verify(exactly = 1) { sessions.findByPrincipalName("staff:31:0") }
+        assertEquals("staff:${testId(31)}:1", fresh[FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME])
+        verify(exactly = 1) { sessions.findByPrincipalName("staff:${testId(31)}:0") }
     }
 
     @Test

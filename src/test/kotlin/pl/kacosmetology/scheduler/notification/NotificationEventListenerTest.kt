@@ -6,6 +6,7 @@ import io.mockk.verify
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
 import pl.kacosmetology.scheduler.reservation.ReservationChangedEvent
+import pl.kacosmetology.scheduler.testId
 
 class NotificationEventListenerTest {
     @Test
@@ -14,7 +15,7 @@ class NotificationEventListenerTest {
         val dispatcher = mockk<NotificationService>()
         every { dispatcher.dispatchDue() } throws IllegalStateException("DB temporarily unavailable")
         val listener = NotificationEventListener(outbox, dispatcher)
-        assertDoesNotThrow { listener.afterReservationChanged(ReservationChangedEvent(1, "EDIT", false)) }
+        assertDoesNotThrow { listener.afterReservationChanged(ReservationChangedEvent(testId(1), "EDIT", false)) }
         verify(exactly = 1) { dispatcher.dispatchDue() }
     }
 }

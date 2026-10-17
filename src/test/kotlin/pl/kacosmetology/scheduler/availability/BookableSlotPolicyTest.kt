@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.workschedule.EmployeeScheduleOverride
 import pl.kacosmetology.scheduler.workschedule.EmployeeScheduleOverrideRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
@@ -26,8 +27,8 @@ class BookableSlotPolicyTest {
 
     @InjectMockKs private lateinit var policy: BookableSlotPolicy
 
-    private val companyId = 1L
-    private val employeeId = 10L
+    private val companyId = testId(1)
+    private val employeeId = testId(10)
     private val date = LocalDate.of(2030, 1, 7)
 
     @BeforeEach
@@ -44,7 +45,7 @@ class BookableSlotPolicyTest {
                 endTime = LocalTime.of(11, 0),
             )
         every {
-            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(2L, employeeId, any())
+            workScheduleRepository.findByCompanyIdAndEmployeeIdAndDayOfWeek(testId(2), employeeId, any())
         } returns null
     }
 
@@ -57,7 +58,7 @@ class BookableSlotPolicyTest {
 
     @Test
     fun `slotStarts should be empty without a schedule entry at that company`() {
-        assertTrue(policy.slotStarts(2L, employeeId, date, durationMinutes = 60, intervalMinutes = 30).isEmpty())
+        assertTrue(policy.slotStarts(testId(2), employeeId, date, durationMinutes = 60, intervalMinutes = 30).isEmpty())
     }
 
     @Test
@@ -72,7 +73,7 @@ class BookableSlotPolicyTest {
         assertFalse(policy.isOnGrid(companyId, employeeId, date.atTime(8, 30), 60, 30), "before start")
         assertFalse(policy.isOnGrid(companyId, employeeId, date.atTime(10, 30), 60, 30), "ends after 11:00")
         assertFalse(policy.isOnGrid(companyId, employeeId, date.atTime(9, 0, 30), 60, 30), "seconds off grid")
-        assertFalse(policy.isOnGrid(2L, employeeId, date.atTime(9, 0), 60, 30), "no schedule at company 2")
+        assertFalse(policy.isOnGrid(testId(2), employeeId, date.atTime(9, 0), 60, 30), "no schedule at company 2")
     }
 
     @Test

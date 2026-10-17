@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.scheduleblock.dto
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
 import java.time.LocalDateTime
+import java.util.UUID
 
 /**
  * Request body for creating a new schedule block. Blocks may be ongoing or span multiple days; [endTime] must be
@@ -14,5 +15,5 @@ data class CreateScheduleBlockRequest(
     @field:Size(max = 255, message = "Powód nie może być dłuższy niż 255 znaków") val reason: String? = null,
 
     /** OWNER may supply a target employee ID; EMPLOYEE may only specify their own identifier. */
-    val employeeId: Long? = null,
+    val employeeId: UUID? = null,
 )

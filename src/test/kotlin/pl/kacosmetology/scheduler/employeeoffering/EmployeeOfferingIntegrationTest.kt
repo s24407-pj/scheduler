@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.employeeoffering
 import com.ninjasquad.springmockk.MockkBean
 import jakarta.servlet.http.Cookie
 import java.time.LocalDateTime
+import java.util.UUID
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -29,6 +30,7 @@ import pl.kacosmetology.scheduler.offering.OfferingImageRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -61,9 +63,9 @@ class EmployeeOfferingIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private var companyId: Long = 0
-    private var employeeId: Long = 0
-    private var offeringId: Long = 0
+    private var companyId: UUID = testId(0)
+    private var employeeId: UUID = testId(0)
+    private var offeringId: UUID = testId(0)
     private lateinit var ownerSession: Cookie
     private lateinit var employeeSession: Cookie
 
@@ -111,8 +113,8 @@ class EmployeeOfferingIntegrationTest {
             }
             .andExpect {
                 status { isCreated() }
-                jsonPath("$.offeringId") { value(offeringId) }
-                jsonPath("$.employeeId") { value(employeeId) }
+                jsonPath("$.offeringId") { value(offeringId.toString()) }
+                jsonPath("$.employeeId") { value(employeeId.toString()) }
             }
 
         assertEquals(1, assignmentRepository.findAllByEmployeeId(employeeId).size)
@@ -191,8 +193,8 @@ class EmployeeOfferingIntegrationTest {
             .andExpect {
                 status { isOk() }
                 jsonPath("$.length()") { value(1) }
-                jsonPath("$[0].offeringId") { value(offeringId) }
-                jsonPath("$[0].employeeId") { value(employeeId) }
+                jsonPath("$[0].offeringId") { value(offeringId.toString()) }
+                jsonPath("$[0].employeeId") { value(employeeId.toString()) }
             }
     }
 
@@ -260,7 +262,7 @@ class EmployeeOfferingIntegrationTest {
         mockMvc.get("/api/offerings/public/company/$companyId/employee/$employeeId").andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].id") { value(offeringId) }
+            jsonPath("$[0].id") { value(offeringId.toString()) }
             jsonPath("$[0].images[0].imageUrl") { value("https://cdn.test/cut.jpg") }
         }
     }
@@ -315,12 +317,12 @@ class EmployeeOfferingIntegrationTest {
         mockMvc.get("/api/offerings/public/company/$companyId/employee/$employeeId").andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].id") { value(offeringId) }
+            jsonPath("$[0].id") { value(offeringId.toString()) }
         }
         mockMvc.get("/api/offerings/public/company/${otherCompany.id!!}/employee/$employeeId").andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].id") { value(otherOffering.id!!) }
+            jsonPath("$[0].id") { value(otherOffering.id!!.toString()) }
         }
     }
 
@@ -426,7 +428,7 @@ class EmployeeOfferingIntegrationTest {
                 cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
                 content =
-                    """{"employeeId":$employeeId.5,"serviceId":$offeringId,"startTime":"2030-01-01T10:00:00","customerPhone":"+48123456789"}"""
+                    """{"employeeId":$employeeId.5,"serviceId":"$offeringId","startTime":"2030-01-01T10:00:00","customerPhone":"+48123456789"}"""
             }
             .andExpect {
                 status { isBadRequest() }
@@ -443,7 +445,7 @@ class EmployeeOfferingIntegrationTest {
                     cookie(ownerSession)
                     contentType = MediaType.APPLICATION_JSON
                     content =
-                        """{"employeeId":$employeeId,"serviceId":$offeringId,"startTime":"2030-01-01T10:00:00$offset","customerPhone":"+48123456789"}"""
+                        """{"employeeId":"$employeeId","serviceId":"$offeringId","startTime":"2030-01-01T10:00:00$offset","customerPhone":"+48123456789"}"""
                 }
                 .andExpect {
                     status { isBadRequest() }
@@ -471,12 +473,14 @@ class EmployeeOfferingIntegrationTest {
                 header("Idempotency-Key", "staff-customer-realm")
                 cookie(employeeSession)
                 contentType = MediaType.APPLICATION_JSON
-                content = """{"employeeId":$employeeId,"serviceId":$offeringId,"startTime":"2030-01-01T10:00:00"}"""
+                content = """{"employeeId":"$employeeId","serviceId":"$offeringId","startTime":"2030-01-01T10:00:00"}"""
             }
             .andExpect { status { isForbidden() } }
         mockMvc
             .perform(
-                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/reservations/1/cancel")
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch(
+                        "/api/reservations/${testId(1)}/cancel",
+                    )
                     .with(csrf())
                     .header("If-Match", "0")
                     .cookie(employeeSession),
@@ -509,11 +513,11 @@ class EmployeeOfferingIntegrationTest {
                 }
                 .andExpect { status { isCreated() } }
                 .andReturn()
-        val categoryId = objectMapper.readTree(category.response.contentAsString)["id"].asLong()
+        val categoryId = UUID.fromString(objectMapper.readTree(category.response.contentAsString)["id"].asString())
         val foreignCompany = companyRepository.save(Company(name = "Inny salon"))
         mockMvc.get("/api/offering-categories/public/company/$companyId").andExpect {
             status { isOk() }
-            jsonPath("$[0].id") { value(categoryId) }
+            jsonPath("$[0].id") { value(categoryId.toString()) }
             jsonPath("$[0].name") { value("Pielęgnacja") }
         }
         mockMvc.get("/api/offering-categories/public/company/${foreignCompany.id!!}").andExpect {
@@ -540,7 +544,7 @@ class EmployeeOfferingIntegrationTest {
             .get("/api/employees/public/company/$companyId") { param("offeringId", offeringId.toString()) }
             .andExpect {
                 status { isOk() }
-                jsonPath("$[?(@.id == $employeeId)]") { doesNotExist() }
+                jsonPath("$[?(@.id == '$employeeId')]") { doesNotExist() }
             }
         mockMvc
             .patch("/api/employees/$employeeId/offering-eligibility") {

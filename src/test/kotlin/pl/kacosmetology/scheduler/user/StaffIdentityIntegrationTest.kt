@@ -7,6 +7,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import java.util.Base64
+import java.util.UUID
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -34,6 +35,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
@@ -77,7 +79,7 @@ class StaffIdentityIntegrationTest {
             accounts.save(
                 CompanyEmployee(
                     companyId = company.id!!,
-                    userId = 101L,
+                    userId = testId(101),
                     role = "OWNER",
                     loginEmail = "owner@example.test",
                     passwordHash = passwords.encode("password123"),
@@ -113,7 +115,7 @@ class StaffIdentityIntegrationTest {
     @Test
     fun `replacement expiry and disable invalidate old password links`() {
         val created = create()
-        val id = created["employee"]["id"].asLong()
+        val id = UUID.fromString(created["employee"]["id"].asString())
         val old = created["passwordSetup"]["token"].asString()
         val fresh =
             mapper
@@ -328,7 +330,7 @@ class StaffIdentityIntegrationTest {
         assertEquals(200, response.response.status)
         val warnings = mapper.readTree(response.response.contentAsString)["affectedFutureBookings"]
         assertEquals(1, warnings.size())
-        assertEquals(future.id, warnings[0]["reservationId"].asLong())
+        assertEquals(future.id, UUID.fromString(warnings[0]["reservationId"].asString()))
         assertEquals(2L, bookings.count())
         assertTrue(
             bookings.findAll().all { it.status == pl.kacosmetology.scheduler.reservation.ReservationStatus.BOOKED },
@@ -359,7 +361,7 @@ class StaffIdentityIntegrationTest {
         }
     }
 
-    private fun employee(companyId: Long) =
+    private fun employee(companyId: UUID) =
         accounts.save(
             CompanyEmployee(
                 companyId = companyId,
@@ -391,7 +393,7 @@ class StaffIdentityIntegrationTest {
     private fun consume(token: String, password: String = "password123") =
         postJson("/api/auth/staff-password", mapOf("token" to token, "newPassword" to password)).response.status
 
-    private fun login(companyId: Long, email: String, password: String = "password123"): Cookie =
+    private fun login(companyId: UUID, email: String, password: String = "password123"): Cookie =
         requireNotNull(
             postJson("/api/auth/login-staff", mapOf("companyId" to companyId, "email" to email, "password" to password))
                 .also { assertEquals(200, it.response.status, it.response.contentAsString) }

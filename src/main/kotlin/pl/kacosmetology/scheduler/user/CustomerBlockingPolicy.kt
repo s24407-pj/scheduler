@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.user
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.util.UUID
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Component
@@ -29,7 +30,7 @@ class CustomerBlockingPolicy(
 ) {
     /** Manual blocking cancels future bookings atomically and preserves ongoing visits. */
     @Transactional
-    fun block(companyId: Long, customerId: Long) {
+    fun block(companyId: UUID, customerId: UUID) {
         lockAndValidate(companyId, customerId)
         jdbc.update(
             "INSERT INTO company_customer_blocks(company_id,customer_id,blocked,manual_blocked) VALUES(?,?,true,true) ON CONFLICT(company_id,customer_id) DO UPDATE SET blocked=true,manual_blocked=true",
@@ -41,7 +42,7 @@ class CustomerBlockingPolicy(
 
     /** Owner reprieve clears both block sources without erasing no-show history or restoring visits. */
     @Transactional
-    fun unblock(companyId: Long, customerId: Long) {
+    fun unblock(companyId: UUID, customerId: UUID) {
         lockAndValidate(companyId, customerId)
         jdbc.update(
             "UPDATE company_customer_blocks SET blocked=false,manual_blocked=false,automatic_blocked=false WHERE company_id=? AND customer_id=?",
@@ -51,7 +52,7 @@ class CustomerBlockingPolicy(
     }
 
     /** Current counts age out by Warsaw calendar date; aging alone never clears a persisted block. */
-    fun currentCount(companyId: Long, customerId: Long): Int {
+    fun currentCount(companyId: UUID, customerId: UUID): Int {
         val today = LocalDate.ofInstant(clock.instant(), BUSINESS_ZONE)
         return jdbc.queryForObject(
             "SELECT count(*) FROM no_show_penalties WHERE company_id=? AND customer_id=? AND active AND appointment_date BETWEEN ? AND ?",
@@ -64,7 +65,7 @@ class CustomerBlockingPolicy(
     }
 
     /** Caller holds the company lock; every cancellation passes through audit and optimistic versioning. */
-    fun cancelFuture(companyId: Long, customerId: Long) {
+    fun cancelFuture(companyId: UUID, customerId: UUID) {
         val now = LocalDateTime.ofInstant(clock.instant(), BUSINESS_ZONE)
         val future =
             reservations.findAllByCustomerIdAndArchivedFalseOrderByStartTimeDesc(customerId).filter {
@@ -82,7 +83,7 @@ class CustomerBlockingPolicy(
             )
     }
 
-    private fun lockAndValidate(companyId: Long, customerId: Long) {
+    private fun lockAndValidate(companyId: UUID, customerId: UUID) {
         if (
             companies.findByIdForUpdate(companyId) == null ||
                 profiles.findByCompanyIdAndUserId(companyId, customerId) == null

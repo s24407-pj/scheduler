@@ -4,6 +4,7 @@ import com.ninjasquad.springmockk.MockkBean
 import jakarta.servlet.http.Cookie
 import java.time.Clock
 import java.time.LocalDateTime
+import java.util.UUID
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -25,6 +26,7 @@ import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.services.s3.S3Client
 
 @SpringBootTest
@@ -49,8 +51,8 @@ class CustomerListIntegrationTest {
     private lateinit var owner: User
     private lateinit var employee: User
     private lateinit var customer: User
-    private var companyId: Long = 0
-    private var offeringId: Long = 0
+    private var companyId: UUID = testId(0)
+    private var offeringId: UUID = testId(0)
     private lateinit var ownerSession: Cookie
     private lateinit var employeeSession: Cookie
     private lateinit var customerSession: Cookie
@@ -122,7 +124,7 @@ class CustomerListIntegrationTest {
             .andExpect {
                 status { isOk() }
                 jsonPath("$.length()") { value(1) }
-                jsonPath("$[0].id") { value(customer.id!!) }
+                jsonPath("$[0].id") { value(customer.id!!.toString()) }
                 jsonPath("$[0].firstName") { value("Anna") }
                 jsonPath("$[0].lastName") { value("Kowalska") }
                 jsonPath("$[0].phoneNumber") { value("+48811333001") }
@@ -276,7 +278,7 @@ class CustomerListIntegrationTest {
             .andExpect {
                 status { isOk() }
                 jsonPath("$.length()") { value(1) }
-                jsonPath("$[0].id") { value(customer.id!!) }
+                jsonPath("$[0].id") { value(customer.id!!.toString()) }
             }
     }
 }

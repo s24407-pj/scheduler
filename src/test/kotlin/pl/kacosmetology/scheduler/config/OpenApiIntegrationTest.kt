@@ -95,6 +95,15 @@ class OpenApiIntegrationTest {
             assertNotNull(multipart)
             assertEquals("binary", multipart["schema"]["properties"][field]["format"].asString())
         }
+        for (field in listOf("id", "companyId", "employeeId", "serviceId")) {
+            val schema = api["components"]["schemas"]["ReservationResponse"]["properties"][field]
+            assertEquals("string", schema["type"].asString())
+            assertEquals("uuid", schema["format"].asString())
+        }
+        assertEquals(
+            "int64",
+            api["components"]["schemas"]["ReservationResponse"]["properties"]["revision"]["format"].asString(),
+        )
         java.nio.file.Files.createDirectories(java.nio.file.Path.of("build/generated"))
         java.nio.file.Files.writeString(java.nio.file.Path.of("build/generated/openapi.json"), response.contentAsString)
     }

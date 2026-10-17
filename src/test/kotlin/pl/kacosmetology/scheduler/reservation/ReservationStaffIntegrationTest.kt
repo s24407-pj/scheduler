@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.reservation
 
+import java.util.UUID
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
@@ -186,7 +187,7 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
         val service =
             jdbc.queryForObject(
                 "INSERT INTO offerings(company_id,name,duration_minutes,price) VALUES(?,'New service',45,222) RETURNING id",
-                Long::class.java,
+                UUID::class.java,
                 salon.company,
             )!!
         val result = edit(id, mapOf("serviceId" to service))

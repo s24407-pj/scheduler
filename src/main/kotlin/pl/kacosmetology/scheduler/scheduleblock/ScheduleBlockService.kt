@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.scheduleblock
 
 import java.time.LocalDateTime
+import java.util.UUID
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityConflictSource
@@ -26,8 +27,8 @@ class ScheduleBlockService(
      */
     @Transactional
     fun createBlock(
-        employeeId: Long,
-        companyId: Long,
+        employeeId: UUID,
+        companyId: UUID,
         startTime: LocalDateTime,
         endTime: LocalDateTime,
         reason: String?,
@@ -74,7 +75,7 @@ class ScheduleBlockService(
      * by [requesterId]).
      */
     @Transactional
-    fun deleteBlock(blockId: Long, requesterId: Long, isOwner: Boolean, companyId: Long) {
+    fun deleteBlock(blockId: UUID, requesterId: UUID, isOwner: Boolean, companyId: UUID) {
         companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val block =
             scheduleBlockRepository.findByIdAndCompanyId(blockId, companyId)
@@ -91,8 +92,8 @@ class ScheduleBlockService(
     /** Returns all schedule blocks for an employee in [companyId] that overlap [start, end). */
     @Transactional(readOnly = true)
     fun getEmployeeBlocks(
-        companyId: Long,
-        employeeId: Long,
+        companyId: UUID,
+        employeeId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
     ): List<ScheduleBlock> {
@@ -100,13 +101,13 @@ class ScheduleBlockService(
         return scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end)
     }
 
-    private fun requireCompanyMembership(companyId: Long, employeeId: Long) {
+    private fun requireCompanyMembership(companyId: UUID, employeeId: UUID) {
         if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
             throw NoSuchElementException("Pracownik nie należy do tej firmy")
         }
     }
 
-    private fun lockCompanyMembership(companyId: Long, employeeId: Long) {
+    private fun lockCompanyMembership(companyId: UUID, employeeId: UUID) {
         companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         if (companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId) == null) {
             throw NoSuchElementException("Pracownik nie należy do tej firmy")

@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.security
 
+import java.util.UUID
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.security.core.userdetails.UsernameNotFoundException
@@ -28,7 +29,7 @@ class CustomUserDetailsService(
     }
 
     /** Loads a principal from one employment and grants only that employment's role. */
-    fun loadStaffByEmployment(username: String, employmentId: Long): CustomUserDetails {
+    fun loadStaffByEmployment(username: String, employmentId: UUID): CustomUserDetails {
         val employment =
             companyEmployeeRepository.findById(employmentId).orElseThrow {
                 UsernameNotFoundException("Staff account not found")

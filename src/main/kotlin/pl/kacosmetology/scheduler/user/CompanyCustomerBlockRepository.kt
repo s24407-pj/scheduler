@@ -1,21 +1,22 @@
 package pl.kacosmetology.scheduler.user
 
+import java.util.UUID
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.jdbc.core.JdbcTemplate
 
 /** Repository for company-scoped customer block records. */
 interface CompanyCustomerBlockRepository :
-    JpaRepository<CompanyCustomerBlock, Long>, CompanyCustomerBlockRepositoryCustom {
+    JpaRepository<CompanyCustomerBlock, UUID>, CompanyCustomerBlockRepositoryCustom {
     /** Returns the block record for the given company/customer pair, or null if none exists. */
-    fun findByCompanyIdAndCustomerId(companyId: Long, customerId: Long): CompanyCustomerBlock?
+    fun findByCompanyIdAndCustomerId(companyId: UUID, customerId: UUID): CompanyCustomerBlock?
 
-    fun findByCompanyId(companyId: Long): List<CompanyCustomerBlock>
+    fun findByCompanyId(companyId: UUID): List<CompanyCustomerBlock>
 }
 
 /** Custom atomic operations for company-scoped customer block records. */
 interface CompanyCustomerBlockRepositoryCustom {
     /** Atomically increments the no-show count and applies the company's automatic blocking threshold. */
-    fun incrementNoShowCountAndApplyBlock(companyId: Long, customerId: Long): Int
+    fun incrementNoShowCountAndApplyBlock(companyId: UUID, customerId: UUID): Int
 }
 
 /** PostgreSQL implementation of the custom customer block operations. */
@@ -26,7 +27,7 @@ class CompanyCustomerBlockRepositoryImpl(
      * Creates the tracking row if necessary or increments the existing row under PostgreSQL's conflict-row lock. The
      * returned value is the count after the increment.
      */
-    override fun incrementNoShowCountAndApplyBlock(companyId: Long, customerId: Long): Int =
+    override fun incrementNoShowCountAndApplyBlock(companyId: UUID, customerId: UUID): Int =
         requireNotNull(
             jdbcTemplate.queryForObject(
                 """

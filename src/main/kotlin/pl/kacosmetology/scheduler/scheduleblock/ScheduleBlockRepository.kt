@@ -1,15 +1,16 @@
 package pl.kacosmetology.scheduler.scheduleblock
 
 import java.time.LocalDateTime
+import java.util.UUID
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.stereotype.Repository
 
 /** JPA repository for [ScheduleBlock] entities. */
 @Repository
-interface ScheduleBlockRepository : JpaRepository<ScheduleBlock, Long> {
+interface ScheduleBlockRepository : JpaRepository<ScheduleBlock, UUID> {
     /** Loads only a block belonging to the authenticated tenant. */
-    fun findByIdAndCompanyId(id: Long, companyId: Long): ScheduleBlock?
+    fun findByIdAndCompanyId(id: UUID, companyId: UUID): ScheduleBlock?
 
     /**
      * Checks whether an employee has any schedule block in a company that overlaps the given time range. Uses the
@@ -23,7 +24,7 @@ interface ScheduleBlockRepository : JpaRepository<ScheduleBlock, Long> {
         AND (:start < b.endTime AND :end > b.startTime)
         """,
     )
-    fun existsOverlapping(companyId: Long, employeeId: Long, start: LocalDateTime, end: LocalDateTime): Boolean
+    fun existsOverlapping(companyId: UUID, employeeId: UUID, start: LocalDateTime, end: LocalDateTime): Boolean
 
     /**
      * Returns schedule blocks for an employee in a company that overlap the given time range. Uses the standard
@@ -39,8 +40,8 @@ interface ScheduleBlockRepository : JpaRepository<ScheduleBlock, Long> {
         """,
     )
     fun findOverlapping(
-        companyId: Long,
-        employeeId: Long,
+        companyId: UUID,
+        employeeId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
     ): List<ScheduleBlock>

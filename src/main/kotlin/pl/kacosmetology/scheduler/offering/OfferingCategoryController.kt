@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.offering
 
 import jakarta.validation.Valid
+import java.util.UUID
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -19,7 +20,7 @@ class OfferingCategoryController(
 
     /** Returns public category names only within the requested company. */
     @GetMapping("/public/company/{companyId}")
-    fun getPublicCategories(@PathVariable companyId: Long): List<OfferingCategoryResponse> =
+    fun getPublicCategories(@PathVariable companyId: UUID): List<OfferingCategoryResponse> =
         offeringCategoryService.getCategories(companyId).map { it.toOfferingCategoryResponse() }
 
     /** Returns all categories for the authenticated user's company. */
@@ -42,7 +43,7 @@ class OfferingCategoryController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('OWNER')")
     fun deleteCategory(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) = offeringCategoryService.deleteCategory(id, userDetails.requireCompanyId())
 }

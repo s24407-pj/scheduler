@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.reservation
 
 import java.security.MessageDigest
 import java.sql.SQLException
+import java.util.UUID
 import org.springframework.dao.CannotAcquireLockException
 import org.springframework.dao.DataAccessException
 import org.springframework.jdbc.core.JdbcTemplate
@@ -104,7 +105,7 @@ class BookingSubmissionService(
                             "Ten klucz został już powiązany z innym żądaniem",
                         )
                     }
-                    val reservationId = (submission["reservation_id"] as? Number)?.toLong()
+                    val reservationId = submission["reservation_id"] as? UUID
                     if (reservationId != null) {
                         BookingResult(reservations.findById(reservationId).orElseThrow(), created = false)
                     } else {

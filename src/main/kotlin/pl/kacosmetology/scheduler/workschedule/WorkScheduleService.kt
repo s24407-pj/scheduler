@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.workschedule
 
 import java.time.LocalDate
+import java.util.UUID
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
@@ -25,7 +26,7 @@ class WorkScheduleService(
      * employee does not belong to [companyId].
      */
     @Transactional(readOnly = true)
-    fun getSchedule(companyId: Long, employeeId: Long): List<WorkScheduleEntryResponse> {
+    fun getSchedule(companyId: UUID, employeeId: UUID): List<WorkScheduleEntryResponse> {
         if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) {
             throw NoSuchElementException("Pracownik nie należy do tej firmy")
         }
@@ -40,8 +41,8 @@ class WorkScheduleService(
      */
     @Transactional
     fun setSchedule(
-        companyId: Long,
-        employeeId: Long,
+        companyId: UUID,
+        employeeId: UUID,
         request: SetWeeklyScheduleRequest,
     ): List<WorkScheduleEntryResponse> {
         lockPolicies(companyId, employeeId)
@@ -84,8 +85,8 @@ class WorkScheduleService(
     /** Lists tenant-owned overrides for an employee within an inclusive date range. */
     @Transactional(readOnly = true)
     fun getOverrides(
-        companyId: Long,
-        employeeId: Long,
+        companyId: UUID,
+        employeeId: UUID,
         start: LocalDate,
         end: LocalDate,
     ): List<ScheduleOverrideResponse> {
@@ -100,8 +101,8 @@ class WorkScheduleService(
     /** Sets a date's replacement shift or day off under the same policy lock as booking. */
     @Transactional
     fun setOverride(
-        companyId: Long,
-        employeeId: Long,
+        companyId: UUID,
+        employeeId: UUID,
         date: LocalDate,
         request: ScheduleOverrideRequest,
     ): ScheduleOverrideResponse {
@@ -123,14 +124,14 @@ class WorkScheduleService(
 
     /** Removes an override, restoring the weekly schedule's behavior for that date. */
     @Transactional
-    fun deleteOverride(companyId: Long, employeeId: Long, date: LocalDate) {
+    fun deleteOverride(companyId: UUID, employeeId: UUID, date: LocalDate) {
         lockPolicies(companyId, employeeId)
         val override =
             overrideRepository.findByCompanyIdAndEmployeeIdAndScheduleDate(companyId, employeeId, date) ?: return
         overrideRepository.delete(override)
     }
 
-    private fun lockPolicies(companyId: Long, employeeId: Long) {
+    private fun lockPolicies(companyId: UUID, employeeId: UUID) {
         companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId)
             ?: throw NoSuchElementException("Pracownik nie istnieje")

@@ -8,5 +8,5 @@ import org.springframework.stereotype.Repository
 @Repository
 interface BookingQuoteRepository : JpaRepository<BookingQuote, UUID> {
     /** Foreign and missing quote identifiers are indistinguishable. */
-    fun findByIdAndCustomerId(id: UUID, customerId: Long): BookingQuote?
+    fun findByIdAndCustomerId(id: UUID, customerId: UUID): BookingQuote?
 }

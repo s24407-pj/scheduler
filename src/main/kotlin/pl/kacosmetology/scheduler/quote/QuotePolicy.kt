@@ -25,8 +25,8 @@ class QuotePolicy(
      */
     @Transactional(readOnly = true)
     fun resolve(
-        customerId: Long,
-        serviceId: Long,
+        customerId: UUID,
+        serviceId: UUID,
         startTime: LocalDateTime,
         quoteId: UUID?,
         now: Instant,

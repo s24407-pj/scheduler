@@ -12,23 +12,23 @@ import org.springframework.stereotype.Repository
 @Repository
 class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
     /** Returns pending work without claiming it; each claim subsequently locks and verifies the current row. */
-    fun due(now: Instant): List<Long> =
+    fun due(now: Instant): List<UUID> =
         jdbc
             .queryForList(
                 "SELECT id FROM notification_deliveries WHERE state IN ('PENDING','TEMPORARY_FAILURE') AND next_attempt_at<=? ORDER BY CASE WHEN kind='REMINDER' THEN 0 ELSE 1 END,id LIMIT 100",
-                Long::class.java,
+                UUID::class.java,
                 Timestamp.from(now),
             )
             .filterNotNull()
 
     /** Locks one delivery so a provider attempt can be durably claimed once. */
-    fun lock(id: Long): Delivery? =
+    fun lock(id: UUID): Delivery? =
         jdbc
             .query("SELECT * FROM notification_deliveries WHERE id=? FOR UPDATE", { rs, _ -> read(rs) }, id)
             .singleOrNull()
 
     /** A duplicated application event must not invalidate its original successful or pending delivery. */
-    fun hasStaffRevision(reservationId: Long, revision: Long, kind: String): Boolean =
+    fun hasStaffRevision(reservationId: UUID, revision: Long, kind: String): Boolean =
         jdbc.queryForObject(
             "SELECT EXISTS(SELECT 1 FROM notification_deliveries WHERE reservation_id=? AND reservation_revision=? AND kind=?)",
             Boolean::class.java,
@@ -44,7 +44,7 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
         now: Instant,
         deadline: Instant,
         runToken: UUID? = null,
-    ): Long? =
+    ): UUID? =
         jdbc
             .query(
                 """
@@ -53,7 +53,7 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
                 VALUES (?,?,?,?,?,?,'PENDING',?,?,?,?,?) ON CONFLICT DO NOTHING RETURNING id
                 """
                     .trimIndent(),
-                { rs, _ -> rs.getLong(1) },
+                { rs, _ -> rs.getObject(1, UUID::class.java) },
                 kind,
                 reservation.id,
                 reservation.companyId,
@@ -69,7 +69,7 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
             .singleOrNull()
 
     /** Persists one mandatory summary and its original affected reservation identifiers. */
-    fun insertSummary(companyId: Long, customerId: Long, ids: List<Long>, now: Instant) {
+    fun insertSummary(companyId: UUID, customerId: UUID, ids: List<UUID>, now: Instant) {
         if (ids.isEmpty()) return
         val id =
             jdbc.queryForObject(
@@ -78,7 +78,7 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
                 VALUES ('BLOCK_SUMMARY',?,?,'PENDING',?,?,?,?) RETURNING id
                 """
                     .trimIndent(),
-                Long::class.java,
+                UUID::class.java,
                 companyId,
                 customerId,
                 Timestamp.from(now),
@@ -96,7 +96,7 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
     }
 
     /** Removes only unsent obsolete staff notifications; an already claimed provider request may finish. */
-    fun invalidateStaff(reservationId: Long, now: Instant) {
+    fun invalidateStaff(reservationId: UUID, now: Instant) {
         jdbc.update(
             "UPDATE notification_deliveries SET state='DISCARDED',updated_at=? WHERE reservation_id=? AND kind IN ('CREATE','EDIT','RESTORE','CANCEL') AND state IN ('PENDING','TEMPORARY_FAILURE','PAUSED')",
             Timestamp.from(now),
@@ -105,7 +105,7 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
     }
 
     /** Updates state after preparation or a provider outcome. */
-    fun state(id: Long, state: DeliveryState, now: Instant, retry: Instant = now, deadline: Instant? = null) {
+    fun state(id: UUID, state: DeliveryState, now: Instant, retry: Instant = now, deadline: Instant? = null) {
         jdbc.update(
             "UPDATE notification_deliveries SET state=?,updated_at=?,next_attempt_at=?,deadline=coalesce(?,deadline) WHERE id=?",
             state.name,
@@ -117,7 +117,7 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
     }
 
     /** Commits an attempt marker before the provider is called; crashes leave evidence instead of a retryable row. */
-    fun sending(id: Long, now: Instant, deadline: Instant) {
+    fun sending(id: UUID, now: Instant, deadline: Instant) {
         jdbc.update(
             "UPDATE notification_deliveries SET state='SENDING',attempts=attempts+1,updated_at=?,deadline=? WHERE id=?",
             Timestamp.from(now),
@@ -129,7 +129,7 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
     /**
      * Applies accepted/ambiguous reminder suppression to pending commercial confirmations for this appointment date.
      */
-    fun suppressConfirmations(reservationId: Long, date: LocalDate, revision: Long, ambiguous: Boolean, now: Instant) {
+    fun suppressConfirmations(reservationId: UUID, date: LocalDate, revision: Long, ambiguous: Boolean, now: Instant) {
         jdbc.update(
             """
             UPDATE notification_deliveries SET state=?,updated_at=? WHERE reservation_id=? AND appointment_date=?
@@ -147,7 +147,7 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
     }
 
     /** A previously accepted reminder supersedes older confirmations; an ambiguous one pauses same-date messages. */
-    fun reminderEffect(reservationId: Long, date: LocalDate, revision: Long): DeliveryState? =
+    fun reminderEffect(reservationId: UUID, date: LocalDate, revision: Long): DeliveryState? =
         jdbc
             .query(
                 """
@@ -165,11 +165,11 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
             .singleOrNull()
 
     /** Reads summary members; dispatch checks each member's latest tenant, status and start before every attempt. */
-    fun summaryMembers(id: Long): List<Long> =
+    fun summaryMembers(id: UUID): List<UUID> =
         jdbc
             .queryForList(
                 "SELECT reservation_id FROM notification_delivery_reservations WHERE delivery_id=?",
-                Long::class.java,
+                UUID::class.java,
                 id,
             )
             .filterNotNull()
@@ -188,7 +188,7 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
             .query(
                 "SELECT reservation_id,appointment_date,reservation_revision FROM notification_deliveries WHERE kind='REMINDER' AND state='AMBIGUOUS'",
                 { rs, _ ->
-                    Triple(rs.getLong(1), rs.getDate(2).toLocalDate(), rs.getLong(3))
+                    Triple(rs.getObject(1, UUID::class.java), rs.getDate(2).toLocalDate(), rs.getLong(3))
                 },
             )
             .forEach { suppressConfirmations(it.first, it.second, it.third, true, now) }
@@ -196,11 +196,11 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
 
     private fun read(rs: ResultSet) =
         Delivery(
-            rs.getLong("id"),
+            rs.getObject("id", UUID::class.java),
             rs.getString("kind"),
-            rs.getObject("reservation_id", Long::class.javaObjectType),
-            rs.getLong("company_id"),
-            rs.getLong("customer_id"),
+            rs.getObject("reservation_id", UUID::class.java),
+            rs.getObject("company_id", UUID::class.java),
+            rs.getObject("customer_id", UUID::class.java),
             rs.getObject("reservation_revision", Long::class.javaObjectType),
             rs.getDate("appointment_date")?.toLocalDate(),
             DeliveryState.valueOf(rs.getString("state")),
@@ -223,11 +223,11 @@ enum class DeliveryState {
 
 /** Scalar durable work item, independent of mutable ORM entities and sessions. */
 data class Delivery(
-    val id: Long,
+    val id: UUID,
     val kind: String,
-    val reservationId: Long?,
-    val companyId: Long,
-    val customerId: Long,
+    val reservationId: UUID?,
+    val companyId: UUID,
+    val customerId: UUID,
     val revision: Long?,
     val date: LocalDate?,
     val state: DeliveryState,

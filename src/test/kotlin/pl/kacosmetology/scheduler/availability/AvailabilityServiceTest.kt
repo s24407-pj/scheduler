@@ -27,6 +27,7 @@ import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRep
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.workschedule.EmployeeScheduleOverrideRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
@@ -52,9 +53,9 @@ class AvailabilityServiceTest {
 
     private lateinit var availabilityService: AvailabilityService
 
-    private val companyId = 1L
-    private val employeeId = 1L
-    private val serviceId = 99L
+    private val companyId = testId(1)
+    private val employeeId = testId(1)
+    private val serviceId = testId(99)
     private val testDate = LocalDate.now().plusDays(1)
 
     private val defaultCompany = Company(id = companyId, name = "Test Salon")
@@ -515,7 +516,7 @@ class AvailabilityServiceTest {
 
     @Test
     fun `should read the work schedule and assignments of the offering's company only`() {
-        val otherCompanyId = 2L
+        val otherCompanyId = testId(2)
         val service =
             Offering(
                 id = serviceId,

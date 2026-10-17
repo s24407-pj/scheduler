@@ -3,8 +3,8 @@ package pl.kacosmetology.scheduler.auth.dto
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Pattern
-import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
+import java.util.UUID
 
 private const val PHONE_REGEXP = "^\\s*\\+?[0-9]{9,15}\\s*$"
 
@@ -34,9 +34,7 @@ data class StaffLoginRequest(
     @field:NotBlank(message = "Hasło jest wymagane")
     @field:Size(min = 8, message = "Hasło musi mieć co najmniej 8 znaków")
     val password: String,
-    @field:NotNull(message = "Firma jest wymagana")
-    @field:Positive(message = "Identyfikator firmy musi być dodatni")
-    val companyId: Long? = null,
+    @field:NotNull(message = "Firma jest wymagana") val companyId: UUID? = null,
 )
 
 data class AuthResponse(
@@ -55,9 +53,9 @@ data class StaffLoginResponse(
 
 /** Safe identity and exact authorization scope; the credential is never included. */
 data class AuthenticatedSessionResponse(
-    val userId: Long,
+    val userId: UUID,
     val username: String,
     val authorities: List<String>,
-    val companyId: Long?,
-    val employmentId: Long?,
+    val companyId: UUID?,
+    val employmentId: UUID?,
 )

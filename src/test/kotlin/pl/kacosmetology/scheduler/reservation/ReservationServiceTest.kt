@@ -5,6 +5,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDateTime
 import java.util.Optional
+import java.util.UUID
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -22,6 +23,7 @@ import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.quote.CommercialAgreement
 import pl.kacosmetology.scheduler.quote.QuotePolicy
 import pl.kacosmetology.scheduler.reservation.dto.*
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.*
 
 /** Unit boundaries complement HTTP/DB tests for lock order, agreement snapshots, edits and revision protection. */
@@ -69,16 +71,16 @@ class ReservationServiceTest {
     @BeforeEach
     fun setup() {
         SecurityContextHolder.clearContext()
-        company = Company(id = 1, name = "Salon")
-        employee = CompanyEmployee(id = 7, companyId = 1, userId = 20, role = "EMPLOYEE")
-        offering = Offering(id = 30, companyId = 1, name = "Catalog", price = 101, durationMinutes = 30)
+        company = Company(id = testId(1), name = "Salon")
+        employee = CompanyEmployee(id = testId(7), companyId = testId(1), userId = testId(20), role = "EMPLOYEE")
+        offering = Offering(id = testId(30), companyId = testId(1), name = "Catalog", price = 101, durationMinutes = 30)
         existing =
             Reservation(
-                id = 50,
-                companyId = 1,
-                customerId = 10,
-                employeeId = 20,
-                serviceId = 30,
+                id = testId(50),
+                companyId = testId(1),
+                customerId = testId(10),
+                employeeId = testId(20),
+                serviceId = testId(30),
                 price = 77,
                 startTime = start,
                 endTime = start.plusMinutes(30),
@@ -87,28 +89,28 @@ class ReservationServiceTest {
             )
         every { clock.instant() } returns now
         every { clock.zone } returns BUSINESS_ZONE
-        every { jdbc.queryForList(any<String>(), Long::class.java, any<Long>()) } returns listOf(1L)
-        every { jdbc.queryForList(any<String>(), any<Long>(), any<String>(), any<String>()) } returns emptyList()
+        every { jdbc.queryForList(any<String>(), UUID::class.java, any<UUID>()) } returns listOf(testId(1))
+        every { jdbc.queryForList(any<String>(), any<UUID>(), any<String>(), any<String>()) } returns emptyList()
         every { jdbc.queryForObject(any<String>(), Long::class.java, *anyVararg()) } returns 0L
         every { jdbc.queryForObject(any<String>(), Int::class.java, *anyVararg()) } returns 0
         every { jdbc.update(any<String>(), *anyVararg()) } returns 1
-        every { companies.findByIdForUpdate(1L) } returns company
-        every { companies.findById(1L) } returns Optional.of(company)
-        every { users.existsById(10L) } returns true
-        every { employees.findByCompanyIdAndUserIdForUpdate(1L, 20L) } returns employee
+        every { companies.findByIdForUpdate(testId(1)) } returns company
+        every { companies.findById(testId(1)) } returns Optional.of(company)
+        every { users.existsById(testId(10)) } returns true
+        every { employees.findByCompanyIdAndUserIdForUpdate(testId(1), testId(20)) } returns employee
         every { quotes.resolve(any(), any(), any(), any(), any()) } returns CommercialAgreement("Accepted", 77, 30)
         every { grid.isOnGrid(any(), any(), any(), any(), any()) } returns true
-        every { blocks.findByCompanyIdAndCustomerId(1L, 10L) } returns null
-        every { reservations.countFutureCustomerBookings(1L, 10L, any()) } returns 0
+        every { blocks.findByCompanyIdAndCustomerId(testId(1), testId(10)) } returns null
+        every { reservations.countFutureCustomerBookings(testId(1), testId(10), any()) } returns 0
         every { reservations.existsCustomerOverlapping(any(), any(), any(), any(), any()) } returns false
-        every { reservations.findByIdAndCompanyIdForUpdate(50L, 1L) } answers { existing }
+        every { reservations.findByIdAndCompanyIdForUpdate(testId(50), testId(1)) } answers { existing }
         every { reservations.saveAndFlush(any()) } answers
             {
                 val r = firstArg<Reservation>()
                 if (r.id != null) r
                 else
                     Reservation(
-                        id = 51,
+                        id = testId(51),
                         companyId = r.companyId,
                         customerId = r.customerId,
                         employeeId = r.employeeId,
@@ -121,24 +123,25 @@ class ReservationServiceTest {
                         creationSource = r.creationSource,
                     )
             }
-        every { profiles.findByCompanyIdAndUserId(1L, 10L) } returns
-            CompanyCustomer(companyId = 1, userId = 10, firstName = "Local", lastName = "Name")
+        every { profiles.findByCompanyIdAndUserId(testId(1), testId(10)) } returns
+            CompanyCustomer(companyId = testId(1), userId = testId(10), firstName = "Local", lastName = "Name")
         every { profiles.save(any()) } answers { firstArg() }
-        every { offerings.findByIdAndCompanyId(30L, 1L) } returns offering
-        every { users.findByPhoneNumber("+48500100200") } returns User(id = 10, phoneNumber = "+48500100200")
+        every { offerings.findByIdAndCompanyId(testId(30), testId(1)) } returns offering
+        every { users.findByPhoneNumber("+48500100200") } returns User(id = testId(10), phoneNumber = "+48500100200")
     }
 
-    private fun customer(startAt: LocalDateTime = start) = service.createReservation(10, 20, 30, startAt)
+    private fun customer(startAt: LocalDateTime = start) =
+        service.createReservation(testId(10), testId(20), testId(30), startAt)
 
     private fun manual(startAt: LocalDateTime = start, owner: Boolean = false, override: Boolean = false) =
         service.createReservationByStaff(
-            20,
-            30,
+            testId(20),
+            testId(30),
             startAt,
             "+48500100200",
             "Local",
             "Name",
-            1,
+            testId(1),
             overrideEmployeeBlock = override,
             owner = owner,
         )
@@ -162,30 +165,30 @@ class ReservationServiceTest {
     fun `authoritative time and quote lookup happen after company and employee locks`() {
         customer()
         verifyOrder {
-            companies.findByIdForUpdate(1L)
-            employees.findByCompanyIdAndUserIdForUpdate(1L, 20L)
+            companies.findByIdForUpdate(testId(1))
+            employees.findByCompanyIdAndUserIdForUpdate(testId(1), testId(20))
             clock.instant()
-            quotes.resolve(10, 30, start, null, now)
+            quotes.resolve(testId(10), testId(30), start, null, now)
         }
     }
 
     @Test
     fun `missing catalog resource cannot reveal a foreign company`() {
-        every { jdbc.queryForList(any<String>(), Long::class.java, 30L) } returns emptyList()
+        every { jdbc.queryForList(any<String>(), UUID::class.java, testId(30)) } returns emptyList()
         fails(ErrorCode.RESERVATION_NOT_FOUND) { customer() }
     }
 
     @Test
     fun `unknown global customer cannot create booking`() {
-        every { users.existsById(10L) } returns false
+        every { users.existsById(testId(10)) } returns false
         fails(ErrorCode.CUSTOMER_NOT_FOUND) { customer() }
     }
 
     @Test
     fun `missing company employee and disabled employee fail before persistence`() {
-        every { employees.findByCompanyIdAndUserIdForUpdate(1L, 20L) } returns null
+        every { employees.findByCompanyIdAndUserIdForUpdate(testId(1), testId(20)) } returns null
         fails(ErrorCode.RESERVATION_NOT_FOUND) { customer() }
-        every { employees.findByCompanyIdAndUserIdForUpdate(1L, 20L) } returns employee
+        every { employees.findByCompanyIdAndUserIdForUpdate(testId(1), testId(20)) } returns employee
         employee.enabled = false
         fails(ErrorCode.EMPLOYEE_OFFERING_NOT_ASSIGNED) { customer() }
         verify(exactly = 0) { reservations.saveAndFlush(any()) }
@@ -194,7 +197,8 @@ class ReservationServiceTest {
     @Test
     fun `specific mode with empty assignments qualifies for no services`() {
         employee.eligibilityMode = EmployeeEligibilityMode.SPECIFIC_SERVICES
-        every { assignments.existsByCompanyIdAndEmployeeIdAndOfferingId(1, 20, 30) } returns false
+        every { assignments.existsByCompanyIdAndEmployeeIdAndOfferingId(testId(1), testId(20), testId(30)) } returns
+            false
         fails(ErrorCode.EMPLOYEE_OFFERING_NOT_ASSIGNED) { customer() }
         verify(exactly = 0) { assignments.existsByEmployeeIdAndOfferingId(any(), any()) }
     }
@@ -208,9 +212,9 @@ class ReservationServiceTest {
 
     @Test
     fun `company customer cap and overlap are hard checks`() {
-        every { reservations.countFutureCustomerBookings(1L, 10L, any()) } returns 10
+        every { reservations.countFutureCustomerBookings(testId(1), testId(10), any()) } returns 10
         fails(ErrorCode.BOOKING_LIMIT_REACHED) { customer() }
-        every { reservations.countFutureCustomerBookings(1L, 10L, any()) } returns 0
+        every { reservations.countFutureCustomerBookings(testId(1), testId(10), any()) } returns 0
         every { reservations.existsCustomerOverlapping(any(), any(), any(), any(), any()) } returns true
         fails(ErrorCode.SLOT_UNAVAILABLE) { customer() }
     }
@@ -255,10 +259,10 @@ class ReservationServiceTest {
 
     @Test
     fun `first salon booking needs both names and does not create profile on failure`() {
-        every { profiles.findByCompanyIdAndUserId(1L, 10L) } returns null
+        every { profiles.findByCompanyIdAndUserId(testId(1), testId(10)) } returns null
         fails(ErrorCode.CUSTOMER_NAME_REQUIRED) { customer() }
         verify(exactly = 0) { profiles.save(any()) }
-        service.createReservation(10, 20, 30, start, firstName = " Jan ", lastName = " Klient ")
+        service.createReservation(testId(10), testId(20), testId(30), start, firstName = " Jan ", lastName = " Klient ")
         verify { profiles.save(match { it.firstName == "Jan" && it.lastName == "Klient" }) }
     }
 
@@ -284,7 +288,7 @@ class ReservationServiceTest {
     fun `staff cannot create inactive or foreign service bookings`() {
         offering.active = false
         fails(ErrorCode.OFFERING_UNAVAILABLE) { manual() }
-        every { offerings.findByIdAndCompanyId(30L, 1L) } returns null
+        every { offerings.findByIdAndCompanyId(testId(30), testId(1)) } returns null
         fails(ErrorCode.RESERVATION_NOT_FOUND) { manual() }
     }
 
@@ -302,26 +306,40 @@ class ReservationServiceTest {
         offering.active = false
         offering.price = 999
         offering.durationMinutes = 90
-        val result = service.editReservation(50, 1, 0, EditReservationRequest(startTime = start.plusHours(1)), true)
+        val result =
+            service.editReservation(
+                testId(50),
+                testId(1),
+                0,
+                EditReservationRequest(startTime = start.plusHours(1)),
+                true,
+            )
         assertEquals(77, result.price)
         assertEquals(30, result.agreedDurationMinutes)
         assertEquals("Accepted", result.acceptedServiceName)
-        assertEquals(50, result.id)
+        assertEquals(testId(50), result.id)
     }
 
     @Test
     fun `explicit edit overrides commercial terms but stale revisions fail`() {
         fails(ErrorCode.CONCURRENT_MODIFICATION) {
-            service.editReservation(50, 1, 5, EditReservationRequest(price = 88), true)
+            service.editReservation(testId(50), testId(1), 5, EditReservationRequest(price = 88), true)
         }
-        val result = service.editReservation(50, 1, 0, EditReservationRequest(price = 88, durationMinutes = 45), true)
+        val result =
+            service.editReservation(
+                testId(50),
+                testId(1),
+                0,
+                EditReservationRequest(price = 88, durationMinutes = 45),
+                true,
+            )
         assertEquals(88, result.price)
         assertEquals(45, result.agreedDurationMinutes)
     }
 
     @Test
     fun `no op edit creates no new audit event or notification`() {
-        service.editReservation(50, 1, 0, EditReservationRequest(notifyCustomer = true), true)
+        service.editReservation(testId(50), testId(1), 0, EditReservationRequest(notifyCustomer = true), true)
         verify(exactly = 0) {
             audit.capture()
             reservations.saveAndFlush(any())
@@ -333,21 +351,27 @@ class ReservationServiceTest {
     fun `current scheduled end and BOOKED status control edit eligibility`() {
         existing.status = ReservationStatus.COMPLETED
         fails(ErrorCode.INVALID_STATUS_TRANSITION) {
-            service.editReservation(50, 1, 0, EditReservationRequest(price = 88), true)
+            service.editReservation(testId(50), testId(1), 0, EditReservationRequest(price = 88), true)
         }
         existing.status = ReservationStatus.BOOKED
         every { clock.instant() } returns existing.endTime.atZone(BUSINESS_ZONE).toInstant()
         fails(ErrorCode.INVALID_STATUS_TRANSITION) {
-            service.editReservation(50, 1, 0, EditReservationRequest(startTime = start.plusDays(1)), true)
+            service.editReservation(
+                testId(50),
+                testId(1),
+                0,
+                EditReservationRequest(startTime = start.plusDays(1)),
+                true,
+            )
         }
     }
 
     @Test
     fun `staff cancellation requires private reason but elapsed completed records remain cancellable`() {
-        fails(ErrorCode.VALIDATION_FAILED) { service.cancelReservationByStaff(50, 1, 0) }
+        fails(ErrorCode.VALIDATION_FAILED) { service.cancelReservationByStaff(testId(50), testId(1), 0) }
         existing.status = ReservationStatus.COMPLETED
         every { clock.instant() } returns start.plusYears(2).atZone(BUSINESS_ZONE).toInstant()
-        service.cancelReservationByStaff(50, 1, 0, ReservationActionRequest(reason = "Private"), true)
+        service.cancelReservationByStaff(testId(50), testId(1), 0, ReservationActionRequest(reason = "Private"), true)
         assertEquals(ReservationStatus.CANCELLED, existing.status)
         assertEquals("Private", existing.internalCancellationReason)
     }
@@ -355,23 +379,23 @@ class ReservationServiceTest {
     @Test
     fun `employee no show deadline is inclusive owner has unlimited correction`() {
         every { clock.instant() } returns existing.endTime.atZone(BUSINESS_ZONE).toInstant().plusSeconds(86400)
-        service.markNoShow(50, 1, 0)
+        service.markNoShow(testId(50), testId(1), 0)
         assertEquals(ReservationStatus.NO_SHOW, existing.status)
         existing.status = ReservationStatus.BOOKED
         every { clock.instant() } returns existing.endTime.atZone(BUSINESS_ZONE).toInstant().plusSeconds(86401)
-        fails(ErrorCode.INVALID_STATUS_TRANSITION) { service.markNoShow(50, 1, 0) }
-        service.markNoShow(50, 1, 0, owner = true)
+        fails(ErrorCode.INVALID_STATUS_TRANSITION) { service.markNoShow(testId(50), testId(1), 0) }
+        service.markNoShow(testId(50), testId(1), 0, owner = true)
         assertEquals(ReservationStatus.NO_SHOW, existing.status)
     }
 
     @Test
     fun `foreign lifecycle target is opaque and archive requires cancelled status`() {
-        every { reservations.findByIdAndCompanyIdForUpdate(50L, 1L) } returns null
-        fails(ErrorCode.RESERVATION_NOT_FOUND) { service.completeReservation(50, 1, 0) }
-        every { reservations.findByIdAndCompanyIdForUpdate(50L, 1L) } returns existing
-        fails(ErrorCode.INVALID_STATUS_TRANSITION) { service.archiveReservation(50, 1, 0, true) }
+        every { reservations.findByIdAndCompanyIdForUpdate(testId(50), testId(1)) } returns null
+        fails(ErrorCode.RESERVATION_NOT_FOUND) { service.completeReservation(testId(50), testId(1), 0) }
+        every { reservations.findByIdAndCompanyIdForUpdate(testId(50), testId(1)) } returns existing
+        fails(ErrorCode.INVALID_STATUS_TRANSITION) { service.archiveReservation(testId(50), testId(1), 0, true) }
         existing.status = ReservationStatus.CANCELLED
-        service.archiveReservation(50, 1, 0, true)
+        service.archiveReservation(testId(50), testId(1), 0, true)
         assertTrue(existing.archived)
     }
 }

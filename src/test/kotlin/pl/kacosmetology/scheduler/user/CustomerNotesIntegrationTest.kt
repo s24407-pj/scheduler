@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.user
 
 import com.ninjasquad.springmockk.MockkBean
 import jakarta.servlet.http.Cookie
+import java.util.UUID
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
@@ -22,6 +23,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
@@ -53,7 +55,7 @@ class CustomerNotesIntegrationTest {
     private lateinit var owner: User
     private lateinit var employee: User
     private lateinit var customer: User
-    private var companyId: Long = 0
+    private var companyId: UUID = testId(0)
     private lateinit var ownerSession: Cookie
     private lateinit var employeeSession: Cookie
     private lateinit var customerSession: Cookie
@@ -256,7 +258,7 @@ class CustomerNotesIntegrationTest {
     @Test
     fun `PUT notes for non-existent customer should return 404`() {
         mockMvc
-            .put("/api/customers/999999/notes") {
+            .put("/api/customers/${testId(999999)}/notes") {
                 with(csrf())
                 cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON

@@ -1,11 +1,12 @@
 package pl.kacosmetology.scheduler.scheduleblock.dto
 
 import java.time.LocalDateTime
+import java.util.UUID
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 
 /** Response DTO for a [ScheduleBlock]. */
 data class ScheduleBlockResponse(
-    val id: Long,
+    val id: UUID,
     val startTime: LocalDateTime,
     val endTime: LocalDateTime,
     val reason: String?,

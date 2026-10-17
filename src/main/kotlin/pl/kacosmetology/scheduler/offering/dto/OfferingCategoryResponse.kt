@@ -1,10 +1,11 @@
 package pl.kacosmetology.scheduler.offering.dto
 
+import java.util.UUID
 import pl.kacosmetology.scheduler.offering.OfferingCategory
 
 /** Response body for an offering category. */
 data class OfferingCategoryResponse(
-    val id: Long,
+    val id: UUID,
     val name: String,
 )
 

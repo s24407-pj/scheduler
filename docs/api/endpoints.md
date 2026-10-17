@@ -147,3 +147,5 @@ See [reservations](../reservations.md).
 Only `/actuator/health` is public and returns aggregate status without details/components. Every other `/actuator/**` route is denied through the application HTTP interface, including metrics, Prometheus, info and readiness/liveness groups. Operator telemetry must use a separately secured deployment channel. Company staff and customers have no diagnostics permission.
 
 Generated OpenAPI marks public operations explicitly and describes `sessionAuth` (HttpOnly `SESSION` cookie) separately from `csrfToken` (`X-XSRF-TOKEN` header). Every unsafe operation requires CSRF, including anonymous login/OTP/logout.
+
+Resource IDs in paths, queries and JSON are UUID strings (`format: uuid`); newly generated persisted IDs are UUIDv7. Revision/If-Match remains numeric.

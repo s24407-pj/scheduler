@@ -5,6 +5,7 @@ import jakarta.servlet.http.Cookie
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -34,6 +35,7 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import pl.kacosmetology.scheduler.workschedule.dto.SetWeeklyScheduleRequest
@@ -66,8 +68,8 @@ class WorkScheduleIntegrationTest {
         overrideRepository.deleteAll()
     }
 
-    private var companyId: Long = 0
-    private var employeeId: Long = 0
+    private var companyId: UUID = testId(0)
+    private var employeeId: UUID = testId(0)
     private lateinit var ownerSession: Cookie
     private lateinit var employeeSession: Cookie
 
@@ -491,7 +493,7 @@ class WorkScheduleIntegrationTest {
             }
             .andExpect { status { isForbidden() } }
         mockMvc
-            .put("/api/employees/99999999/schedule-overrides/2030-01-07") {
+            .put("/api/employees/${testId(99999999)}/schedule-overrides/2030-01-07") {
                 with(csrf())
                 cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON

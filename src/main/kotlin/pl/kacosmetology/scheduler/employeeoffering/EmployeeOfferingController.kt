@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.employeeoffering
 
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
+import java.util.UUID
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -24,7 +25,7 @@ class EmployeeOfferingController(
     @GetMapping("/api/employees/{employeeId}/offerings")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getAssignments(
-        @PathVariable employeeId: Long,
+        @PathVariable employeeId: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): List<EmployeeOfferingAssignmentResponse> =
         employeeOfferingService.getAssignments(userDetails.requireCompanyId(), employeeId)
@@ -34,8 +35,8 @@ class EmployeeOfferingController(
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('OWNER')")
     fun assignOffering(
-        @PathVariable employeeId: Long,
-        @PathVariable offeringId: Long,
+        @PathVariable employeeId: UUID,
+        @PathVariable offeringId: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): EmployeeOfferingAssignmentResponse =
         employeeOfferingService.assignOffering(userDetails.requireCompanyId(), employeeId, offeringId)
@@ -45,8 +46,8 @@ class EmployeeOfferingController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('OWNER')")
     fun removeAssignment(
-        @PathVariable employeeId: Long,
-        @PathVariable offeringId: Long,
+        @PathVariable employeeId: UUID,
+        @PathVariable offeringId: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) = employeeOfferingService.removeAssignment(userDetails.requireCompanyId(), employeeId, offeringId)
 
@@ -55,7 +56,7 @@ class EmployeeOfferingController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('OWNER')")
     fun setEligibility(
-        @PathVariable employeeId: Long,
+        @PathVariable employeeId: UUID,
         @Valid @RequestBody request: EmployeeEligibilityRequest,
         @AuthenticationPrincipal principal: CustomUserDetails,
     ) = employeeOfferingService.setEligibility(principal.requireCompanyId(), employeeId, requireNotNull(request.mode))

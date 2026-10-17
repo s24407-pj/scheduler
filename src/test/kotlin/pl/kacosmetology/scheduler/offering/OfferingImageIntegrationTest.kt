@@ -5,6 +5,7 @@ import io.mockk.every
 import io.mockk.verify
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
+import java.util.UUID
 import java.util.concurrent.Callable
 import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executors
@@ -33,6 +34,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.core.sync.RequestBody
@@ -76,7 +78,7 @@ class OfferingImageIntegrationTest {
     private lateinit var employee: User
     private lateinit var ownerEmployment: CompanyEmployee
     private lateinit var employeeEmployment: CompanyEmployee
-    private var companyId: Long = 0
+    private var companyId: UUID = testId(0)
 
     @BeforeEach
     fun setup() {
@@ -164,7 +166,7 @@ class OfferingImageIntegrationTest {
 
         mockMvc
             .perform(
-                multipart("/api/offerings/99999/image").file(file).with(csrf()).cookie(ownerSession()),
+                multipart("/api/offerings/${testId(99999)}/image").file(file).with(csrf()).cookie(ownerSession()),
             )
             .andExpect(status().isNotFound)
     }
@@ -237,7 +239,7 @@ class OfferingImageIntegrationTest {
             )
 
         mockMvc
-            .delete("/api/offerings/${offering.id!!}/image/99999") {
+            .delete("/api/offerings/${offering.id!!}/image/${testId(99999)}") {
                 with(csrf())
                 cookie(ownerSession())
             }

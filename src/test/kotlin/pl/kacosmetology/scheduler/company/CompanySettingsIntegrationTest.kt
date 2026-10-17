@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.company
 
 import com.ninjasquad.springmockk.MockkBean
 import jakarta.servlet.http.Cookie
+import java.util.UUID
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -17,6 +18,7 @@ import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -45,7 +47,7 @@ class CompanySettingsIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private var companyId: Long = 0
+    private var companyId: UUID = testId(0)
     private lateinit var ownerSession: Cookie
     private lateinit var employeeSession: Cookie
 
@@ -84,7 +86,7 @@ class CompanySettingsIntegrationTest {
             }
             .andExpect {
                 status { isOk() }
-                jsonPath("$.id") { value(companyId) }
+                jsonPath("$.id") { value(companyId.toString()) }
                 jsonPath("$.openingTime") { exists() }
                 jsonPath("$.closingTime") { exists() }
                 jsonPath("$.slotIntervalMinutes") { exists() }

@@ -2,6 +2,8 @@ package pl.kacosmetology.scheduler.reservation
 
 import jakarta.persistence.*
 import java.time.LocalDateTime
+import java.util.UUID
+import org.hibernate.annotations.UuidGenerator
 
 /** Lifecycle states supported by a reservation. */
 @io.swagger.v3.oas.annotations.media.Schema(enumAsRef = true)
@@ -16,11 +18,11 @@ enum class ReservationStatus {
 @Entity
 @Table(name = "reservations")
 class Reservation(
-    id: Long? = null,
-    @Column(name = "company_id", nullable = false) val companyId: Long,
-    @Column(name = "customer_id", nullable = false) val customerId: Long,
-    @Column(name = "employee_id", nullable = false) var employeeId: Long,
-    @Column(name = "service_id", nullable = false) var serviceId: Long,
+    id: UUID? = null,
+    @Column(name = "company_id", nullable = false) val companyId: UUID,
+    @Column(name = "customer_id", nullable = false) val customerId: UUID,
+    @Column(name = "employee_id", nullable = false) var employeeId: UUID,
+    @Column(name = "service_id", nullable = false) var serviceId: UUID,
     @Column(nullable = false) var price: Int,
     @Column(name = "start_time", nullable = false) var startTime: LocalDateTime,
     @Column(name = "end_time", nullable = false) var endTime: LocalDateTime,
@@ -41,7 +43,7 @@ class Reservation(
     val createdAt: LocalDateTime? = null,
 ) {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    var id: Long? = id
+    @UuidGenerator(style = UuidGenerator.Style.VERSION_7)
+    var id: UUID? = id
         protected set
 }

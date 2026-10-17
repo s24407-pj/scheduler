@@ -4,6 +4,7 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.util.UUID
 import org.springframework.stereotype.Service
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
@@ -21,7 +22,7 @@ class BookableSlotPolicy(
     private val overrideRepository: EmployeeScheduleOverrideRepository,
 ) {
     /** A date override replaces the weekly schedule; an explicit day off overrides every weekly shift. */
-    fun effectiveShift(companyId: Long, employeeId: Long, date: LocalDate): EffectiveShift? {
+    fun effectiveShift(companyId: UUID, employeeId: UUID, date: LocalDate): EffectiveShift? {
         overrideRepository.findByCompanyIdAndEmployeeIdAndScheduleDate(companyId, employeeId, date)?.let { override ->
             return if (override.dayOff) null
             else shift(date, requireNotNull(override.startTime), requireNotNull(override.endTime))
@@ -34,8 +35,8 @@ class BookableSlotPolicy(
 
     /** Grid begins at effective shift start, with the full duration fitting through the inclusive shift end. */
     fun slotStarts(
-        companyId: Long,
-        employeeId: Long,
+        companyId: UUID,
+        employeeId: UUID,
         date: LocalDate,
         durationMinutes: Int,
         intervalMinutes: Int,
@@ -51,8 +52,8 @@ class BookableSlotPolicy(
 
     /** Accepts precisely the customer's effective shift grid, with valid unambiguous Warsaw time. */
     fun isOnGrid(
-        companyId: Long,
-        employeeId: Long,
+        companyId: UUID,
+        employeeId: UUID,
         startTime: LocalDateTime,
         durationMinutes: Int,
         intervalMinutes: Int,

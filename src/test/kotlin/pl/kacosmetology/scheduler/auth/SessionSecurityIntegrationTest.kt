@@ -12,6 +12,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.util.Base64
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -144,8 +145,8 @@ class SessionSecurityIntegrationTest {
     fun `staff session is scoped to exactly one employment and cookie is HttpOnly host only Lax`() {
         val browser = login(owner.id!!)
         val me = me(browser)
-        assertEquals(owner.companyId, me["companyId"].asLong())
-        assertEquals(owner.id, me["employmentId"].asLong())
+        assertEquals(owner.companyId, UUID.fromString(me["companyId"].asString()))
+        assertEquals(owner.id, UUID.fromString(me["employmentId"].asString()))
         assertEquals("ROLE_OWNER", me["authorities"][0].asString())
         assertTrue(browser.session!!.isHttpOnly)
         assertEquals("/", browser.session.path)
@@ -351,7 +352,7 @@ class SessionSecurityIntegrationTest {
     @Test
     fun `deleted customer account is rejected and its session is invalidated`() {
         val browser = customer("+48500222222")
-        users.deleteById(me(browser)["userId"].asLong())
+        users.deleteById(UUID.fromString(me(browser)["userId"].asString()))
         assertEquals(401, meStatus(browser))
         assertNull(sessions.findById(id(browser.session!!)))
     }
@@ -398,7 +399,7 @@ class SessionSecurityIntegrationTest {
     fun `authenticated browser cannot switch employment through login request input`() {
         val browser = login(employee.id!!)
         assertEquals(409, post(browser, "/api/auth/login-staff", credentials(owner.id!!)).response.status)
-        assertEquals(employee.id, me(browser)["employmentId"].asLong())
+        assertEquals(employee.id, UUID.fromString(me(browser)["employmentId"].asString()))
         assertEquals("ROLE_EMPLOYEE", me(browser)["authorities"][0].asString())
     }
 
@@ -435,7 +436,7 @@ class SessionSecurityIntegrationTest {
         val validRequest =
             post(browser, "/api/offerings", mapOf("name" to "Test", "price" to 50, "durationMinutes" to 30))
         assertEquals(403, validRequest.response.status)
-        assertEquals(employee.companyId, me(browser)["companyId"].asLong())
+        assertEquals(employee.companyId, UUID.fromString(me(browser)["companyId"].asString()))
     }
 
     @Test
@@ -484,7 +485,7 @@ class SessionSecurityIntegrationTest {
     @Test
     fun `recycled phone number cannot bind an old account session to a new user`() {
         val browser = customer("+48500888888")
-        val userId = me(browser)["userId"].asLong()
+        val userId = UUID.fromString(me(browser)["userId"].asString())
         jdbc.update("update customer_accounts set phone_number = ? where id = ?", "+48500888889", userId)
         users.save(User(phoneNumber = "+48500888888", firstName = "New", lastName = "Identity"))
         assertRevoked(browser)
@@ -530,7 +531,10 @@ class SessionSecurityIntegrationTest {
                 .build()
         val result = anotherPipeline.perform(get("/api/auth/me").cookie(browser.session!!)).andReturn()
         assertEquals(200, result.response.status)
-        assertEquals(owner.id, mapper.readTree(result.response.contentAsString)["employmentId"].asLong())
+        assertEquals(
+            owner.id,
+            UUID.fromString(mapper.readTree(result.response.contentAsString)["employmentId"].asString()),
+        )
         sessions.deleteById(id(browser.session))
         assertEquals(
             401,
@@ -597,7 +601,7 @@ class SessionSecurityIntegrationTest {
 
     private fun id(cookie: Cookie) = String(Base64.getDecoder().decode(cookie.value))
 
-    private fun credentials(employmentId: Long? = null) =
+    private fun credentials(employmentId: UUID? = null) =
         mapOf(
             "email" to staff.email,
             "password" to password,
@@ -623,7 +627,7 @@ class SessionSecurityIntegrationTest {
         return mvc.perform(builder).andReturn()
     }
 
-    private fun login(employmentId: Long, original: Cookie? = null): Browser {
+    private fun login(employmentId: UUID, original: Cookie? = null): Browser {
         val result = post(csrf(original), "/api/auth/login-staff", credentials(employmentId))
         assertEquals(200, result.response.status)
         assertFalse(mapper.readTree(result.response.contentAsString).has("token"))

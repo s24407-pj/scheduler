@@ -5,6 +5,7 @@ import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
 import jakarta.servlet.http.Cookie
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -34,6 +35,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -233,7 +235,7 @@ class AuthFlowIntegrationTest {
     @Test
     fun `login-staff should return 429 after exceeding rate limit`() {
         // GIVEN - 10 attempts allowed per minute (application.yaml default)
-        val loginDto = StaffLoginRequest(email = "test@salon.pl", password = "jakiesHaslo1", companyId = 1L)
+        val loginDto = StaffLoginRequest(email = "test@salon.pl", password = "jakiesHaslo1", companyId = testId(1))
 
         repeat(10) {
             mockMvc.post("/api/auth/login-staff") {
@@ -528,7 +530,7 @@ class AuthFlowIntegrationTest {
             .andExpect { status { isNoContent() } }
     }
 
-    private fun loginForEmployment(password: String, employmentId: Long): Cookie {
+    private fun loginForEmployment(password: String, employmentId: UUID): Cookie {
         val result =
             mockMvc
                 .post("/api/auth/login-staff") {

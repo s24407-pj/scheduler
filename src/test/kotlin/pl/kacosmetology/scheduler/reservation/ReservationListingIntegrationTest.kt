@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.reservation
 
+import java.util.UUID
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
@@ -15,7 +16,7 @@ class ReservationListingIntegrationTest : ReservationContractTestSupport() {
         jdbc.update("UPDATE reservations SET archived=true WHERE id=?", hidden)
         val response = mvc.perform(get("/api/reservations/me").cookie(customerCookie())).andReturn()
         assertEquals(200, response.response.status)
-        assertEquals(listOf(second, first), tree(response).values().map { it["id"].longValue() })
+        assertEquals(listOf(second, first), tree(response).values().map { UUID.fromString(it["id"].asString()) })
     }
 
     @Test
@@ -39,7 +40,7 @@ class ReservationListingIntegrationTest : ReservationContractTestSupport() {
                 )
                 .andReturn()
         assertEquals(200, response.response.status)
-        assertEquals(listOf(first, second), tree(response).values().map { it["id"].longValue() })
+        assertEquals(listOf(first, second), tree(response).values().map { UUID.fromString(it["id"].asString()) })
     }
 
     @Test

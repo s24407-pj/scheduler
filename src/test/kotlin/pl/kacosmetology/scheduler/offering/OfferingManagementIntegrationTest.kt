@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.offering
 
 import com.ninjasquad.springmockk.MockkBean
+import java.util.UUID
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -20,6 +21,7 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -53,8 +55,8 @@ class OfferingManagementIntegrationTest {
     private lateinit var employmentA: CompanyEmployee
     private lateinit var employmentB: CompanyEmployee
 
-    private var companyA_Id: Long = 0
-    private var companyB_Id: Long = 0
+    private var companyA_Id: UUID = testId(0)
+    private var companyB_Id: UUID = testId(0)
 
     @BeforeEach
     fun setup() {
@@ -113,7 +115,7 @@ class OfferingManagementIntegrationTest {
             .andExpect {
                 status { isCreated() }
                 jsonPath("$.name") { value("Masaż") }
-                jsonPath("$.companyId") { value(companyA_Id) }
+                jsonPath("$.companyId") { value(companyA_Id.toString()) }
             }
     }
 
@@ -173,7 +175,7 @@ class OfferingManagementIntegrationTest {
             }
             .andExpect {
                 status { isOk() }
-                jsonPath("$.id") { value(offering.id!!) }
+                jsonPath("$.id") { value(offering.id!!.toString()) }
                 jsonPath("$.name") { value("Masaż") }
             }
     }

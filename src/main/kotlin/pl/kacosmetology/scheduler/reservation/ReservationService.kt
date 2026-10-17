@@ -48,9 +48,9 @@ class ReservationService(
      */
     @Transactional
     fun createReservation(
-        customerId: Long,
-        employeeId: Long?,
-        offeringId: Long,
+        customerId: UUID,
+        employeeId: UUID?,
+        offeringId: UUID,
         startTime: LocalDateTime,
         enforceAdvanceCheck: Boolean = true,
         enforceSlotGrid: Boolean = true,
@@ -127,13 +127,13 @@ class ReservationService(
      */
     @Transactional
     fun createReservationByStaff(
-        employeeId: Long,
-        serviceId: Long,
+        employeeId: UUID,
+        serviceId: UUID,
         startTime: LocalDateTime,
         customerPhone: String,
         customerFirstName: String?,
         customerLastName: String?,
-        requesterCompanyId: Long,
+        requesterCompanyId: UUID,
         price: Int? = null,
         durationMinutes: Int? = null,
         overrideEmployeeBlock: Boolean = false,
@@ -191,8 +191,8 @@ class ReservationService(
     /** Edits the same row and original creation time, retaining commercial terms for an unchanged service. */
     @Transactional
     fun editReservation(
-        id: Long,
-        companyId: Long,
+        id: UUID,
+        companyId: UUID,
         revision: Long,
         request: EditReservationRequest,
         owner: Boolean,
@@ -255,12 +255,12 @@ class ReservationService(
 
     /** Customer cancellation is allowed strictly before start and never exposes a private staff reason. */
     @Transactional
-    fun cancelReservation(reservationId: Long, customerId: Long, revision: Long? = null, reason: String? = null) {
+    fun cancelReservation(reservationId: UUID, customerId: UUID, revision: Long? = null, reason: String? = null) {
         val companyId =
             jdbc
                 .queryForList(
                     "SELECT company_id FROM reservations WHERE id=? AND customer_id=?",
-                    Long::class.java,
+                    UUID::class.java,
                     reservationId,
                     customerId,
                 )
@@ -280,8 +280,8 @@ class ReservationService(
      */
     @Transactional
     fun cancelReservationByStaff(
-        reservationId: Long,
-        companyId: Long,
+        reservationId: UUID,
+        companyId: UUID,
         revision: Long? = null,
         request: ReservationActionRequest = ReservationActionRequest(),
         owner: Boolean = false,
@@ -292,8 +292,8 @@ class ReservationService(
     /** Staff completion begins at scheduled start. */
     @Transactional
     fun completeReservation(
-        reservationId: Long,
-        companyId: Long,
+        reservationId: UUID,
+        companyId: UUID,
         revision: Long? = null,
         request: ReservationActionRequest = ReservationActionRequest(),
         owner: Boolean = false,
@@ -304,8 +304,8 @@ class ReservationService(
     /** Marks a counted no-show; owner corrections are unlimited and employee corrections have an elapsed deadline. */
     @Transactional
     fun markNoShow(
-        reservationId: Long,
-        companyId: Long,
+        reservationId: UUID,
+        companyId: UUID,
         revision: Long? = null,
         request: ReservationActionRequest = ReservationActionRequest(),
         owner: Boolean = false,
@@ -316,8 +316,8 @@ class ReservationService(
     /** Restores a cancelled visit or corrects a no-show to BOOKED, preserving the agreement and identity. */
     @Transactional
     fun restoreReservation(
-        id: Long,
-        companyId: Long,
+        id: UUID,
+        companyId: UUID,
         revision: Long,
         request: ReservationActionRequest,
         owner: Boolean,
@@ -329,7 +329,7 @@ class ReservationService(
      * Archive/unarchive retains all data, submission identity and durable history; only cancelled rows can be archived.
      */
     @Transactional
-    fun archiveReservation(id: Long, companyId: Long, revision: Long, archived: Boolean) {
+    fun archiveReservation(id: UUID, companyId: UUID, revision: Long, archived: Boolean) {
         lockCompany(companyId)
         val reservation = locked(id, companyId)
         checkRevision(reservation, revision)
@@ -344,14 +344,14 @@ class ReservationService(
 
     /** Returns normal customer history, excluding archived appointments. */
     @Transactional(readOnly = true)
-    fun getCustomerReservations(customerId: Long): List<Reservation> =
+    fun getCustomerReservations(customerId: UUID): List<Reservation> =
         reservationRepository.findAllByCustomerIdAndArchivedFalseOrderByStartTimeDesc(customerId)
 
     /** Both staff roles can read company visit history with local customer names. */
     @Transactional(readOnly = true)
     fun getCompanyReservations(
-        companyId: Long,
-        employeeId: Long,
+        companyId: UUID,
+        employeeId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
     ): List<DashboardReservationResponse> {
@@ -366,8 +366,8 @@ class ReservationService(
     /** Reads a company employee calendar without archived rows. */
     @Transactional(readOnly = true)
     fun getEmployeeSchedule(
-        companyId: Long,
-        employeeId: Long,
+        companyId: UUID,
+        employeeId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
     ): List<Reservation> = reservationRepository.findEmployeeSchedule(companyId, employeeId, start, end)
@@ -413,13 +413,13 @@ class ReservationService(
     }
 
     private fun transition(
-        id: Long,
-        companyId: Long,
+        id: UUID,
+        companyId: UUID,
         target: ReservationStatus,
         revision: Long?,
         request: ReservationActionRequest,
         owner: Boolean = false,
-        customerId: Long? = null,
+        customerId: UUID? = null,
     ) {
         lockCompany(companyId)
         val reservation = locked(id, companyId)
@@ -577,13 +577,13 @@ class ReservationService(
             invalidTransition("Minął termin korekty wyniku wizyty")
     }
 
-    private fun offeringCompany(id: Long): Long =
-        jdbc.queryForList("SELECT company_id FROM offerings WHERE id=?", Long::class.java, id).firstOrNull()
+    private fun offeringCompany(id: UUID): UUID =
+        jdbc.queryForList("SELECT company_id FROM offerings WHERE id=?", UUID::class.java, id).firstOrNull()
             ?: missingReservation()
 
-    private fun lockCompany(id: Long): Company = companyRepository.findByIdForUpdate(id) ?: missingReservation()
+    private fun lockCompany(id: UUID): Company = companyRepository.findByIdForUpdate(id) ?: missingReservation()
 
-    private fun locked(id: Long, company: Long): Reservation =
+    private fun locked(id: UUID, company: UUID): Reservation =
         reservationRepository.findByIdAndCompanyIdForUpdate(id, company) ?: missingReservation()
 
     private fun checkRevision(reservation: Reservation, expected: Long) {
@@ -591,7 +591,7 @@ class ReservationService(
             conflict(ErrorCode.CONCURRENT_MODIFICATION, "Dane wizyty zmieniły się; odśwież widok")
     }
 
-    private fun checkEmployee(companyId: Long, employeeId: Long, serviceId: Long): CompanyEmployee {
+    private fun checkEmployee(companyId: UUID, employeeId: UUID, serviceId: UUID): CompanyEmployee {
         val employee =
             companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId) ?: missingReservation()
         if (
@@ -612,15 +612,15 @@ class ReservationService(
             conflict(ErrorCode.BOOKING_WINDOW_EXCEEDED, "Termin wykracza poza horyzont rezerwacji")
     }
 
-    private fun isBlocked(companyId: Long, customerId: Long) =
+    private fun isBlocked(companyId: UUID, customerId: UUID) =
         companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId)?.blocked == true
 
-    private fun checkBlocked(companyId: Long, customerId: Long, start: LocalDateTime, now: LocalDateTime) {
+    private fun checkBlocked(companyId: UUID, customerId: UUID, start: LocalDateTime, now: LocalDateTime) {
         if (start.isAfter(now) && isBlocked(companyId, customerId))
             conflict(ErrorCode.CUSTOMER_BLOCKED, "Klient jest zablokowany w tym salonie")
     }
 
-    private fun ensureProfile(companyId: Long, customerId: Long, first: String?, last: String?, email: String?) {
+    private fun ensureProfile(companyId: UUID, customerId: UUID, first: String?, last: String?, email: String?) {
         if (companyCustomers.findByCompanyIdAndUserId(companyId, customerId) != null) return
         if (first.isNullOrBlank() || last.isNullOrBlank())
             throw ApiException(
@@ -639,22 +639,22 @@ class ReservationService(
     }
 
     private fun checkCustomerConflict(
-        companyId: Long,
-        customerId: Long,
+        companyId: UUID,
+        customerId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
-        exclude: Long = -1,
+        exclude: UUID = UUID(0, 0),
     ) {
         if (reservationRepository.existsCustomerOverlapping(companyId, customerId, start, end, exclude))
             slotUnavailable()
     }
 
     private fun checkEmployeeConflict(
-        companyId: Long,
-        employeeId: Long,
+        companyId: UUID,
+        employeeId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
-        exclude: Long = -1,
+        exclude: UUID = UUID(0, 0),
         overrideBlock: Boolean = false,
         owner: Boolean = false,
     ) {
@@ -685,11 +685,11 @@ class ReservationService(
 
     private fun allocate(
         company: Company,
-        serviceId: Long,
+        serviceId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
         duration: Int,
-    ): Long {
+    ): UUID {
         val options =
             companyEmployeeRepository
                 .findAllByCompanyId(requireNotNull(company.id))
@@ -778,7 +778,7 @@ class ReservationService(
     }
 
     /** Current penalty count uses an inclusive rolling Warsaw calendar year. */
-    fun noShowCount(companyId: Long, customerId: Long): Int {
+    fun noShowCount(companyId: UUID, customerId: UUID): Int {
         val today = LocalDate.ofInstant(clock.instant(), BUSINESS_ZONE)
         return jdbc.queryForObject(
             "SELECT count(*) FROM no_show_penalties WHERE company_id=? AND customer_id=? AND active AND appointment_date BETWEEN ? AND ?",
@@ -791,7 +791,7 @@ class ReservationService(
     }
 
     /** Cancels only future booked visits; callers hold the company lock and preserve ongoing appointments. */
-    fun cancelFutureForBlock(companyId: Long, customerId: Long) {
+    fun cancelFutureForBlock(companyId: UUID, customerId: UUID) {
         val future =
             reservationRepository.findAllByCustomerIdAndArchivedFalseOrderByStartTimeDesc(customerId).filter {
                 it.companyId == companyId &&

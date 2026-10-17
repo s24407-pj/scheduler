@@ -65,7 +65,7 @@ class BookingContractIntegrationTest {
             sessions.staff(User(id = it.userId, phoneNumber = "+48999000111"), it)
         }
 
-    private fun payload(employee: Long? = salon.employee) =
+    private fun payload(employee: UUID? = salon.employee) =
         mapOf(
             "employeeId" to employee,
             "serviceId" to salon.service,
@@ -85,7 +85,7 @@ class BookingContractIntegrationTest {
             )
             .andReturn()
 
-    private fun action(id: Long, operation: String, revision: Long, body: Any = emptyMap<String, String>()): MvcResult =
+    private fun action(id: UUID, operation: String, revision: Long, body: Any = emptyMap<String, String>()): MvcResult =
         mvc.perform(
                 patch("/api/reservations/$id/$operation")
                     .cookie(staff())
@@ -96,7 +96,7 @@ class BookingContractIntegrationTest {
             )
             .andReturn()
 
-    private fun id(result: MvcResult) = json.readTree(result.response.contentAsString)["id"].longValue()
+    private fun id(result: MvcResult) = UUID.fromString(json.readTree(result.response.contentAsString)["id"].asString())
 
     @Test
     fun `failed submission binds payload and creates profile only when later same request succeeds`() {
@@ -114,7 +114,7 @@ class BookingContractIntegrationTest {
         assertEquals("BOOKED", body["status"].stringValue())
         assertEquals("Strzyżenie", body["serviceName"].stringValue())
         assertFalse(body["createdAt"].isNull)
-        assertEquals(salon.company, body["companyId"].longValue())
+        assertEquals(salon.company, UUID.fromString(body["companyId"].asString()))
         assertEquals(1L, jdbc.queryForObject("SELECT count(*) FROM company_customers", Long::class.java))
     }
 
@@ -172,7 +172,7 @@ class BookingContractIntegrationTest {
     @Test
     fun `simultaneous different employee requests cannot overlap the same customer`() {
         fixtures.shift(salon, start)
-        val other = jdbc.queryForObject("SELECT nextval('staff_public_id_seq')", Long::class.java)!!
+        val other = jdbc.queryForObject("SELECT uuidv7()", UUID::class.java)!!
         jdbc.update(
             "INSERT INTO company_employees(company_id,user_id,role,first_name,last_name) VALUES(?,?,'EMPLOYEE','Inny','Pracownik')",
             salon.company,
@@ -230,7 +230,7 @@ class BookingContractIntegrationTest {
     fun `missing idempotency key fractional id and unknown field are rejected`() {
         val cookie = customer()
         listOf(
-                json.writeValueAsString(payload()).replace(salon.service.toString() + ",", "100.9,"),
+                json.writeValueAsString(payload()).replace("\"${salon.service}\"", "100.9,"),
                 json.writeValueAsString(payload() + mapOf("unexpected" to true)),
             )
             .forEach { body ->

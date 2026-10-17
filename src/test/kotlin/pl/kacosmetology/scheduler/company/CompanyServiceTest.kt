@@ -15,6 +15,7 @@ import pl.kacosmetology.scheduler.company.dto.UpdateCompanySettingsRequest
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.testId
 
 @ExtendWith(MockKExtension::class)
 class CompanyServiceTest {
@@ -29,7 +30,7 @@ class CompanyServiceTest {
 
     @InjectMockKs private lateinit var companyService: CompanyService
 
-    private val companyId = 1L
+    private val companyId = testId(1)
     private val company = Company(id = companyId, name = "Test Salon")
 
     @Test
@@ -105,18 +106,18 @@ class CompanyServiceTest {
     fun `getEmployees should return mapped employee responses`() {
         val ce1 =
             CompanyEmployee(
-                id = 1L,
+                id = testId(1),
                 companyId = companyId,
-                userId = 10L,
+                userId = testId(10),
                 role = "OWNER",
                 firstName = "Anna",
                 lastName = "Kowalska",
             )
         val ce2 =
             CompanyEmployee(
-                id = 2L,
+                id = testId(2),
                 companyId = companyId,
-                userId = 11L,
+                userId = testId(11),
                 role = "EMPLOYEE",
                 firstName = "Bartek",
                 lastName = "Nowak",
@@ -128,11 +129,14 @@ class CompanyServiceTest {
         val result = companyService.getEmployees(companyId)
 
         assertEquals(2, result.size)
-        assertEquals("Anna", result.find { it.userId == 10L }?.firstName)
-        assertEquals("OWNER", result.find { it.userId == 10L }?.role)
-        assertEquals("Bartek", result.find { it.userId == 11L }?.firstName)
-        assertEquals("EMPLOYEE", result.find { it.userId == 11L }?.role)
-        assertEquals(EmployeeEligibilityMode.SPECIFIC_SERVICES, result.find { it.userId == 11L }?.eligibilityMode)
+        assertEquals("Anna", result.find { it.userId == testId(10) }?.firstName)
+        assertEquals("OWNER", result.find { it.userId == testId(10) }?.role)
+        assertEquals("Bartek", result.find { it.userId == testId(11) }?.firstName)
+        assertEquals("EMPLOYEE", result.find { it.userId == testId(11) }?.role)
+        assertEquals(
+            EmployeeEligibilityMode.SPECIFIC_SERVICES,
+            result.find { it.userId == testId(11) }?.eligibilityMode,
+        )
     }
 
     @Test
@@ -160,7 +164,7 @@ class CompanyServiceTest {
 
     @Test
     fun `getPublicBookableEmployees should filter by offering assignment`() {
-        val offeringId = 5L
+        val offeringId = testId(5)
         val offering =
             Offering(
                 id = offeringId,
@@ -172,9 +176,9 @@ class CompanyServiceTest {
             )
         val ce =
             CompanyEmployee(
-                id = 1L,
+                id = testId(1),
                 companyId = companyId,
-                userId = 10L,
+                userId = testId(10),
                 role = "EMPLOYEE",
                 firstName = "Anna",
                 lastName = "Kowalska",
@@ -184,14 +188,15 @@ class CompanyServiceTest {
         every { companyRepository.findById(companyId) } returns Optional.of(company)
         every { offeringRepository.findById(offeringId) } returns Optional.of(offering)
         every { companyEmployeeRepository.findAllByCompanyId(companyId) } returns listOf(ce)
-        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, 10L) } returns true
-        every { assignmentRepository.existsByCompanyIdAndEmployeeIdAndOfferingId(companyId, 10L, offeringId) } returns
-            true
+        every { assignmentRepository.existsByCompanyIdAndEmployeeId(companyId, testId(10)) } returns true
+        every {
+            assignmentRepository.existsByCompanyIdAndEmployeeIdAndOfferingId(companyId, testId(10), offeringId)
+        } returns true
 
         val result = companyService.getPublicBookableEmployees(companyId, offeringId)
 
         assertEquals(1, result.size)
-        assertEquals(10L, result.first().id)
+        assertEquals(testId(10), result.first().id)
         assertEquals("Anna", result.first().firstName)
     }
 

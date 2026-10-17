@@ -26,7 +26,7 @@ class OfferingImageService(
 
     /** Uploads validated bytes; a rolled-back insertion compensates the newly uploaded object. */
     @Transactional
-    fun upload(companyId: Long, offeringId: Long, file: MultipartFile): OfferingImage {
+    fun upload(companyId: UUID, offeringId: UUID, file: MultipartFile): OfferingImage {
         offeringRepository.findByIdAndCompanyIdForUpdate(offeringId, companyId)
             ?: throw NoSuchElementException("Usługa nie istnieje")
         check(offeringImageRepository.countByOfferingId(offeringId) < 5) { "Usługa może mieć maksymalnie 5 zdjęć" }
@@ -55,7 +55,7 @@ class OfferingImageService(
 
     /** Removes the database reference first; object deletion runs only after commit. */
     @Transactional
-    fun delete(imageId: Long, offeringId: Long) {
+    fun delete(imageId: UUID, offeringId: UUID) {
         val image =
             offeringImageRepository.findById(imageId).orElseThrow { NoSuchElementException("Zdjęcie nie istnieje") }
         if (image.offeringId != offeringId) throw NoSuchElementException("Zdjęcie nie istnieje")
@@ -69,7 +69,7 @@ class OfferingImageService(
     }
 
     /** Batch-fetches images for the given offering IDs. */
-    fun findByOfferingIds(offeringIds: List<Long>): List<OfferingImage> =
+    fun findByOfferingIds(offeringIds: List<UUID>): List<OfferingImage> =
         if (offeringIds.isEmpty()) emptyList() else offeringImageRepository.findAllByOfferingIdIn(offeringIds)
 
     private fun deleteObject(key: String) {

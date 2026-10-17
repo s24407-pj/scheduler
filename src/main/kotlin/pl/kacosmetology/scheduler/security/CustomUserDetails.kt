@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.security
 
+import java.util.UUID
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.userdetails.UserDetails
@@ -7,15 +8,15 @@ import org.springframework.web.server.ResponseStatusException
 
 /** Immutable, session-safe identity. No domain entity, password, or session identifier is retained. */
 data class CustomUserDetails(
-    val id: Long,
+    val id: UUID,
     private val phoneNumber: String,
     val role: String,
-    val companyId: Long? = null,
-    val employmentId: Long? = null,
+    val companyId: UUID? = null,
+    val employmentId: UUID? = null,
     val authVersion: Long = 0,
 ) : UserDetails {
     /** Returns the exact staff company scope or rejects an unscoped principal. */
-    fun requireCompanyId(): Long = companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
+    fun requireCompanyId(): UUID = companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
 
     /** Separates global customer accounts from each company's independent staff account. */
     fun accountKey(): String =
@@ -41,6 +42,6 @@ data class CustomUserDetails(
     override fun isEnabled(): Boolean = true
 
     private companion object {
-        private const val serialVersionUID: Long = 1L
+        private const val serialVersionUID: Long = 2L
     }
 }

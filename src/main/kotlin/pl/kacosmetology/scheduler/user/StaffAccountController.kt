@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.user
 
 import jakarta.validation.Valid
+import java.util.UUID
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -24,7 +25,7 @@ class StaffAccountController(private val service: StaffAccountService) {
     /** Edits a company employee's profile and login address. */
     @PutMapping("/{id}")
     fun update(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @AuthenticationPrincipal principal: CustomUserDetails,
         @Valid @RequestBody request: UpdateEmployeeRequest,
     ) = service.update(principal.requireCompanyId(), id, request)
@@ -32,14 +33,14 @@ class StaffAccountController(private val service: StaffAccountService) {
     /** Changes access state and reports future appointments without cancelling them. */
     @PutMapping("/{id}/enabled")
     fun enabled(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @AuthenticationPrincipal principal: CustomUserDetails,
         @Valid @RequestBody request: SetEmployeeEnabledRequest,
     ) = service.setEnabled(principal.requireCompanyId(), id, request.enabled)
 
     /** Issues a replacement initial-setup/recovery link for secure handoff by the owner. */
     @PostMapping("/{id}/password-link")
-    fun issueLink(@PathVariable id: Long, @AuthenticationPrincipal principal: CustomUserDetails) =
+    fun issueLink(@PathVariable id: UUID, @AuthenticationPrincipal principal: CustomUserDetails) =
         service.issueLink(principal.requireCompanyId(), id)
 }
 

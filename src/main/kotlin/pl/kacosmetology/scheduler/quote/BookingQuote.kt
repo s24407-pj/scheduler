@@ -12,9 +12,9 @@ import java.util.UUID
 @Table(name = "booking_quotes")
 class BookingQuote(
     @Id val id: UUID,
-    @Column(name = "customer_id", nullable = false) val customerId: Long,
-    @Column(name = "company_id", nullable = false) val companyId: Long,
-    @Column(name = "service_id", nullable = false) val serviceId: Long,
+    @Column(name = "customer_id", nullable = false) val customerId: UUID,
+    @Column(name = "company_id", nullable = false) val companyId: UUID,
+    @Column(name = "service_id", nullable = false) val serviceId: UUID,
     @Column(name = "start_time", nullable = false) val startTime: Instant,
     @Column(name = "accepted_service_name", nullable = false) val acceptedServiceName: String,
     @Column(nullable = false) val price: Int,

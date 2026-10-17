@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.user
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
 import io.mockk.verify
+import java.util.UUID
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -23,6 +24,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
@@ -53,7 +55,7 @@ class EmployeePhotoIntegrationTest {
     private lateinit var employee: User
     private lateinit var ownerEmployment: CompanyEmployee
     private lateinit var employeeEmployment: CompanyEmployee
-    private var companyId: Long = 0
+    private var companyId: UUID = testId(0)
 
     @BeforeEach
     fun setup() {
@@ -96,7 +98,7 @@ class EmployeePhotoIntegrationTest {
             )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.photoUrl").isString)
-            .andExpect(jsonPath("$.id").value(employee.id!!))
+            .andExpect(jsonPath("$.id").value(employee.id!!.toString()))
     }
 
     @Test

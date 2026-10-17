@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.config
 
+import java.util.UUID
 import org.slf4j.LoggerFactory
 import org.springframework.boot.CommandLineRunner
 import org.springframework.context.annotation.Profile
@@ -40,14 +41,14 @@ class DataInitializer(
         }
     }
 
-    private fun ensureOwner(companyId: Long) =
+    private fun ensureOwner(companyId: UUID) =
         ensureStaff(companyId, "gabinet@kacosmetology.pl", "admin123", "Katarzyna", "Suwalska", "OWNER")
 
-    private fun ensureTestEmployee(companyId: Long) =
+    private fun ensureTestEmployee(companyId: UUID) =
         ensureStaff(companyId, "pracownik@kacosmetology.pl", "employee123", "Jan", "Kowalski", "EMPLOYEE")
 
     private fun ensureStaff(
-        companyId: Long,
+        companyId: UUID,
         email: String,
         password: String,
         firstName: String,
@@ -69,7 +70,7 @@ class DataInitializer(
         logger.info("Seeded {} account for company {}", role, companyId)
     }
 
-    private fun seedOfferings(cid: Long) {
+    private fun seedOfferings(cid: UUID) {
         logger.info("Seeding offerings...")
 
         val oprawaOka = offeringCategoryRepository.save(OfferingCategory(companyId = cid, name = "Oprawa oka"))

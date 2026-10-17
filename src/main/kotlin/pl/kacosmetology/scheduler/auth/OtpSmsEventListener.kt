@@ -5,9 +5,10 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.event.TransactionPhase
 import org.springframework.transaction.event.TransactionalEventListener
+import pl.kacosmetology.scheduler.config.EntityIds
 
 /** Secret-bearing internal event; deliberately avoids a generated toString that could expose the code. */
-class OtpIssuedEvent(val phoneNumber: String, val code: String, val id: UUID = UUID.randomUUID())
+class OtpIssuedEvent(val phoneNumber: String, val code: String, val id: UUID = EntityIds.next())
 
 /** Successful consumption invalidates pending delivery without exposing the consumed secret in diagnostic strings. */
 class OtpConsumedEvent(val phoneNumber: String, val code: String)

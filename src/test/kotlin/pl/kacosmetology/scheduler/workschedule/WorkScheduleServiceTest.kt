@@ -17,6 +17,7 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.workschedule.dto.SetWeeklyScheduleRequest
 import pl.kacosmetology.scheduler.workschedule.dto.WorkScheduleEntryRequest
 
@@ -33,8 +34,8 @@ class WorkScheduleServiceTest {
 
     @InjectMockKs private lateinit var workScheduleService: WorkScheduleService
 
-    private val companyId = 1L
-    private val employeeId = 10L
+    private val companyId = testId(1)
+    private val employeeId = testId(10)
 
     @BeforeEach
     fun mockPolicyLocks() {

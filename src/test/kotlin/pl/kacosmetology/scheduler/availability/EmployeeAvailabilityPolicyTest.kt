@@ -18,6 +18,7 @@ import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
+import pl.kacosmetology.scheduler.testId
 
 @ExtendWith(MockKExtension::class)
 class EmployeeAvailabilityPolicyTest {
@@ -28,8 +29,8 @@ class EmployeeAvailabilityPolicyTest {
 
     @InjectMockKs private lateinit var policy: EmployeeAvailabilityPolicy
 
-    private val companyId = 1L
-    private val employeeId = 10L
+    private val companyId = testId(1)
+    private val employeeId = testId(10)
     private val start = LocalDateTime.of(2030, 1, 1, 10, 0)
     private val end = LocalDateTime.of(2030, 1, 1, 11, 0)
 
@@ -53,10 +54,10 @@ class EmployeeAvailabilityPolicyTest {
         every { reservationRepository.findOverlapping(companyId, employeeId, start, end) } returns
             listOf(
                 Reservation(
-                    companyId = 1L,
-                    customerId = 2L,
+                    companyId = testId(1),
+                    customerId = testId(2),
                     employeeId = employeeId,
-                    serviceId = 3L,
+                    serviceId = testId(3),
                     price = 100,
                     startTime = start.plusMinutes(15),
                     endTime = end.plusMinutes(15),
@@ -85,7 +86,7 @@ class EmployeeAvailabilityPolicyTest {
         every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end) } returns
             listOf(
                 ScheduleBlock(
-                    companyId = 1L,
+                    companyId = testId(1),
                     employeeId = employeeId,
                     startTime = start.plusMinutes(30),
                     endTime = end.plusMinutes(30),
@@ -103,10 +104,10 @@ class EmployeeAvailabilityPolicyTest {
         every { reservationRepository.findOverlapping(companyId, employeeId, start, end) } returns
             listOf(
                 Reservation(
-                    companyId = 1L,
-                    customerId = 2L,
+                    companyId = testId(1),
+                    customerId = testId(2),
                     employeeId = employeeId,
-                    serviceId = 3L,
+                    serviceId = testId(3),
                     price = 100,
                     startTime = start,
                     endTime = end,
@@ -115,7 +116,7 @@ class EmployeeAvailabilityPolicyTest {
             )
         every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end) } returns
             listOf(
-                ScheduleBlock(companyId = 1L, employeeId = employeeId, startTime = start, endTime = end),
+                ScheduleBlock(companyId = testId(1), employeeId = employeeId, startTime = start, endTime = end),
             )
 
         val conflict = policy.findFirstConflict(companyId, employeeId, start, end)
@@ -128,7 +129,7 @@ class EmployeeAvailabilityPolicyTest {
         every { reservationRepository.findOverlapping(companyId, employeeId, start, end) } returns emptyList()
         every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end) } returns
             listOf(
-                ScheduleBlock(companyId = 1L, employeeId = employeeId, startTime = start, endTime = end),
+                ScheduleBlock(companyId = testId(1), employeeId = employeeId, startTime = start, endTime = end),
             )
 
         val exception =

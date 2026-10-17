@@ -64,27 +64,27 @@ abstract class ReservationContractTestSupport {
 
     protected fun setLocalNow(value: LocalDateTime) = setNow(value.atZone(BUSINESS_ZONE).toInstant())
 
-    protected fun customerCookie(id: Long = salon.customer): Cookie =
+    protected fun customerCookie(id: UUID = salon.customer): Cookie =
         sessions.customer(customers.findById(id).orElseThrow())
 
-    protected fun staffCookie(id: Long = salon.staff): Cookie =
+    protected fun staffCookie(id: UUID = salon.staff): Cookie =
         staffAccounts.findById(id).orElseThrow().let {
             sessions.staff(User(id = it.userId, phoneNumber = "+48999000111"), it)
         }
 
-    protected fun newCustomer(): Long =
+    protected fun newCustomer(): UUID =
         jdbc.queryForObject(
             "INSERT INTO customer_accounts(phone_number) VALUES(?) RETURNING id",
-            Long::class.java,
+            UUID::class.java,
             "+48" + (100000000..999999999).random(),
         )!!
 
-    protected fun newEmployee(companyId: Long = salon.company, role: String = "EMPLOYEE"): Pair<Long, Long> {
-        val public = jdbc.queryForObject("SELECT nextval('staff_public_id_seq')", Long::class.java)!!
+    protected fun newEmployee(companyId: UUID = salon.company, role: String = "EMPLOYEE"): Pair<UUID, UUID> {
+        val public = jdbc.queryForObject("SELECT uuidv7()", UUID::class.java)!!
         val account =
             jdbc.queryForObject(
                 "INSERT INTO company_employees(company_id,user_id,role,login_email,first_name,last_name) VALUES(?,?,?,?,'Other','Employee') RETURNING id",
-                Long::class.java,
+                UUID::class.java,
                 companyId,
                 public,
                 role,
@@ -94,7 +94,7 @@ abstract class ReservationContractTestSupport {
     }
 
     protected fun shift(
-        employee: Long = salon.employee,
+        employee: UUID = salon.employee,
         start: String = "08:00",
         end: String = "20:00",
         date: LocalDateTime = future,
@@ -111,8 +111,8 @@ abstract class ReservationContractTestSupport {
 
     protected fun customerBody(
         start: LocalDateTime = future,
-        employee: Long? = salon.employee,
-        service: Long = salon.service,
+        employee: UUID? = salon.employee,
+        service: UUID = salon.service,
     ): Map<String, Any?> =
         mapOf(
             "employeeId" to employee,
@@ -136,8 +136,8 @@ abstract class ReservationContractTestSupport {
 
     protected fun manualBody(
         start: LocalDateTime = future,
-        employee: Long = salon.employee,
-        service: Long = salon.service,
+        employee: UUID = salon.employee,
+        service: UUID = salon.service,
         phone: String = phone(salon.customer),
     ): Map<String, Any?> =
         mapOf(
@@ -149,7 +149,7 @@ abstract class ReservationContractTestSupport {
             "customerLastName" to "Klient",
         )
 
-    protected fun phone(customer: Long): String =
+    protected fun phone(customer: UUID): String =
         jdbc.queryForObject("SELECT phone_number FROM customer_accounts WHERE id=?", String::class.java, customer)!!
 
     protected fun postJson(path: String, body: Any, cookie: Cookie?, key: String? = null): MvcResult {
@@ -160,7 +160,7 @@ abstract class ReservationContractTestSupport {
     }
 
     protected fun action(
-        id: Long,
+        id: UUID,
         operation: String,
         revision: Long = version(id),
         body: Any = emptyMap<String, String>(),
@@ -176,7 +176,7 @@ abstract class ReservationContractTestSupport {
             )
             .andReturn()
 
-    protected fun edit(id: Long, body: Any, revision: Long = version(id), cookie: Cookie = staffCookie()): MvcResult =
+    protected fun edit(id: UUID, body: Any, revision: Long = version(id), cookie: Cookie = staffCookie()): MvcResult =
         mvc.perform(
                 put("/api/reservations/$id")
                     .with(csrf())
@@ -187,29 +187,29 @@ abstract class ReservationContractTestSupport {
             )
             .andReturn()
 
-    protected fun id(result: MvcResult): Long = tree(result)["id"].longValue()
+    protected fun id(result: MvcResult): UUID = UUID.fromString(tree(result)["id"].asString())
 
     protected fun tree(result: MvcResult): JsonNode = json.readTree(result.response.contentAsString)
 
-    protected fun version(id: Long): Long =
+    protected fun version(id: UUID): Long =
         jdbc.queryForObject("SELECT version FROM reservations WHERE id=?", Long::class.java, id)!!
 
-    protected fun state(id: Long): String =
+    protected fun state(id: UUID): String =
         jdbc.queryForObject("SELECT status FROM reservations WHERE id=?", String::class.java, id)!!
 
     protected fun count(table: String): Long = jdbc.queryForObject("SELECT count(*) FROM $table", Long::class.java)!!
 
-    protected fun profile(customer: Long = salon.customer) = fixtures.profile(salon, customer)
+    protected fun profile(customer: UUID = salon.customer) = fixtures.profile(salon, customer)
 
     protected fun reservation(
         start: LocalDateTime = future,
         status: String = "BOOKED",
-        customer: Long = salon.customer,
-        employee: Long = salon.employee,
-    ): Long = fixtures.reservation(salon, start, status, customer, employee)
+        customer: UUID = salon.customer,
+        employee: UUID = salon.employee,
+    ): UUID = fixtures.reservation(salon, start, status, customer, employee)
 
     protected fun block(
-        employee: Long = salon.employee,
+        employee: UUID = salon.employee,
         start: LocalDateTime = future,
         end: LocalDateTime = start.plusHours(1),
     ) {

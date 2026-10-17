@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.user
 
 import jakarta.validation.Valid
+import java.util.UUID
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -33,7 +34,7 @@ class CustomerController(
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getCustomerStatus(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): CustomerStatusResponse {
         val companyId =
@@ -46,7 +47,7 @@ class CustomerController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('OWNER')")
     fun blockCustomer(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
         val companyId =
@@ -59,7 +60,7 @@ class CustomerController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun setCustomerNotes(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @Valid @RequestBody request: UpdateCustomerNotesRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
@@ -71,7 +72,7 @@ class CustomerController(
     /** Both staff roles may read all visits in the company's existing customer relationship. */
     @GetMapping("/{id}/visits")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
-    fun visits(@PathVariable id: Long, @AuthenticationPrincipal principal: CustomUserDetails) =
+    fun visits(@PathVariable id: UUID, @AuthenticationPrincipal principal: CustomUserDetails) =
         customerService.getVisitHistory(id, principal.requireCompanyId())
 
     /** Edits the salon's customer profile; names and email are staff-managed. */
@@ -79,7 +80,7 @@ class CustomerController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun updateProfile(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @Valid @RequestBody request: pl.kacosmetology.scheduler.user.dto.UpdateCustomerProfileRequest,
         @AuthenticationPrincipal principal: CustomUserDetails,
     ) = customerService.updateProfile(id, principal.requireCompanyId(), request)
@@ -89,7 +90,7 @@ class CustomerController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('OWNER')")
     fun unblockCustomer(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
         val companyId =

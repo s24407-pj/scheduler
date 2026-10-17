@@ -24,6 +24,7 @@ import pl.kacosmetology.scheduler.auth.RedisRollingRateLimiter
 import pl.kacosmetology.scheduler.quote.dto.QuoteResponse
 import pl.kacosmetology.scheduler.reservation.BookingSubmissionService
 import pl.kacosmetology.scheduler.security.CustomUserDetails
+import pl.kacosmetology.scheduler.testId
 
 @WebMvcTest(QuoteController::class)
 @Import(QuoteEndpointTest.EndpointSecurity::class)
@@ -32,16 +33,16 @@ class QuoteEndpointTest {
     @MockkBean private lateinit var service: QuoteService
     @MockkBean private lateinit var limits: RedisRollingRateLimiter
     @MockkBean private lateinit var submissions: BookingSubmissionService
-    private val customer = CustomUserDetails(3, "+48111222333", "ROLE_CUSTOMER")
-    private val body = """{"serviceId":2,"startTime":"2026-06-01T14:00:00"}"""
+    private val customer = CustomUserDetails(testId(3), "+48111222333", "ROLE_CUSTOMER")
+    private val body = """{"serviceId":"${testId(2)}","startTime":"2026-06-01T14:00:00"}"""
 
     @Test
     fun `customer creates quote with CSRF using authenticated account identity`() {
-        every { service.create(3, any()) } returns
+        every { service.create(testId(3), any()) } returns
             QuoteResponse(
                 UUID.randomUUID(),
-                1,
-                2,
+                testId(1),
+                testId(2),
                 "Accepted",
                 86,
                 30,
@@ -59,7 +60,7 @@ class QuoteEndpointTest {
                 jsonPath("$.price") { value(86) }
                 jsonPath("$.quoteId") { exists() }
             }
-        verify(exactly = 1) { service.create(3, any()) }
+        verify(exactly = 1) { service.create(testId(3), any()) }
     }
 
     @Test
@@ -71,7 +72,7 @@ class QuoteEndpointTest {
             }
             .andExpect { status { isUnauthorized() } }
         mvc.post("/api/quotes") {
-                with(user(CustomUserDetails(3, "staff", "ROLE_OWNER", 1, 5)))
+                with(user(CustomUserDetails(testId(3), "staff", "ROLE_OWNER", testId(1), testId(5))))
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = body
@@ -87,17 +88,16 @@ class QuoteEndpointTest {
     }
 
     @Test
-    fun `quote endpoint validates positive service ID`() {
+    fun `quote endpoint rejects malformed UUID service ID`() {
         mvc.post("/api/quotes") {
                 with(user(customer))
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content = body.replace("\"serviceId\":2", "\"serviceId\":0")
+                content = body.replace("\"${testId(2)}\"", "100.9")
             }
             .andExpect {
                 status { isBadRequest() }
-                jsonPath("$.code") { value("VALIDATION_FAILED") }
-                jsonPath("$.errors.serviceId") { exists() }
+                jsonPath("$.code") { value("MALFORMED_REQUEST") }
             }
     }
 
