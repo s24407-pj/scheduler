@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.company
 
+import java.util.UUID
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -22,8 +23,8 @@ class CompanyEmployeeController(
     /** Returns employees eligible for [offeringId] at [companyId]. Public — no authentication required. */
     @GetMapping("/public/company/{companyId}")
     fun getPublicBookableEmployees(
-        @PathVariable companyId: Long,
-        @RequestParam offeringId: Long,
+        @PathVariable companyId: UUID,
+        @RequestParam offeringId: UUID,
     ): List<PublicEmployeeResponse> = companyService.getPublicBookableEmployees(companyId, offeringId)
 
     /**
@@ -38,6 +39,6 @@ class CompanyEmployeeController(
     ): List<CompanyEmployeeResponse> =
         companyService.getEmployees(requireCompanyId(userDetails)).map { it.copy(id = it.userId) }
 
-    private fun requireCompanyId(userDetails: CustomUserDetails): Long =
+    private fun requireCompanyId(userDetails: CustomUserDetails): UUID =
         userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisania do firmy")
 }

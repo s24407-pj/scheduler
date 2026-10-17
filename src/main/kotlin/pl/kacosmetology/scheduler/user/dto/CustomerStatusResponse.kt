@@ -1,8 +1,10 @@
 package pl.kacosmetology.scheduler.user.dto
 
+import java.util.UUID
+
 /** Response DTO with block/no-show status and company-scoped notes for a customer — visible to OWNER/EMPLOYEE. */
 data class CustomerStatusResponse(
-    val id: Long,
+    val id: UUID,
     val firstName: String,
     val lastName: String,
     val phoneNumber: String,
@@ -14,9 +16,9 @@ data class CustomerStatusResponse(
 
 /** Company visit history visible to both staff roles; archived records stay outside ordinary lists. */
 data class CustomerVisitResponse(
-    val reservationId: Long,
-    val employeeId: Long,
-    val serviceId: Long,
+    val reservationId: UUID,
+    val employeeId: UUID,
+    val serviceId: UUID,
     val acceptedServiceName: String,
     val price: Int,
     val start: java.time.LocalDateTime,

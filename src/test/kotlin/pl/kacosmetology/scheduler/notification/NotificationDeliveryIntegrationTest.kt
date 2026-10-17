@@ -11,6 +11,7 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
 import javax.sql.DataSource
 import org.junit.jupiter.api.Assertions.*
@@ -39,6 +40,7 @@ import pl.kacosmetology.scheduler.reservation.CustomerBlockedBookingsEvent
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationChangedEvent
 import pl.kacosmetology.scheduler.reservation.ReservationCreatedEvent
+import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.services.s3.S3Client
 
 /** End-to-end transaction, delivery-state and reminder-clock evidence against PostgreSQL and Redis. */
@@ -57,10 +59,10 @@ class NotificationDeliveryIntegrationTest {
     @MockkBean private lateinit var sender: SmsSender
     @MockkBean private lateinit var s3Client: S3Client
     private val nine = Instant.parse("2027-06-01T07:00:00Z")
-    private var companyId = 0L
-    private var customerId = 0L
-    private var offeringId = 0L
-    private var employeeId = 90001L
+    private var companyId = testId(0)
+    private var customerId = testId(0)
+    private var offeringId = testId(0)
+    private var employeeId = testId(90001)
     private lateinit var transactions: TransactionTemplate
 
     @BeforeEach
@@ -73,16 +75,16 @@ class NotificationDeliveryIntegrationTest {
         clearMocks(sender)
         every { sender.deliverMessage(any(), any()) } returns SmsDeliveryResult.ACCEPTED
         companyId =
-            jdbc.queryForObject("INSERT INTO companies(name) VALUES ('Local Salon') RETURNING id", Long::class.java)!!
+            jdbc.queryForObject("INSERT INTO companies(name) VALUES ('Local Salon') RETURNING id", UUID::class.java)!!
         customerId =
             jdbc.queryForObject(
                 "INSERT INTO customer_accounts(phone_number) VALUES ('+48880000001') RETURNING id",
-                Long::class.java,
+                UUID::class.java,
             )!!
         offeringId =
             jdbc.queryForObject(
                 "INSERT INTO offerings(company_id,name,duration_minutes,price) VALUES (?,'Current catalog',30,100) RETURNING id",
-                Long::class.java,
+                UUID::class.java,
                 companyId,
             )!!
         jdbc.update(
@@ -320,7 +322,7 @@ class NotificationDeliveryIntegrationTest {
         assertEquals(1L, count())
         assertEquals(
             sameDay,
-            jdbc.queryForObject("SELECT reservation_id FROM notification_deliveries", Long::class.java),
+            jdbc.queryForObject("SELECT reservation_id FROM notification_deliveries", UUID::class.java),
         )
     }
 
@@ -411,7 +413,7 @@ class NotificationDeliveryIntegrationTest {
         assertThrows<RateLimitExceededException> { capped.issueCode("+48882222222") }
     }
 
-    private fun booking(start: Instant, status: String = "BOOKED", created: Instant = nine.minusSeconds(86400)): Long =
+    private fun booking(start: Instant, status: String = "BOOKED", created: Instant = nine.minusSeconds(86400)): UUID =
         transactions.execute {
             jdbc.queryForObject(
                 "SELECT set_config('scheduler.audit_time',?,true)",
@@ -425,7 +427,7 @@ class NotificationDeliveryIntegrationTest {
                 VALUES (?,?,?,?,100,?,?,?,'Accepted name',30,'STAFF',?) RETURNING id
                 """
                     .trimIndent(),
-                Long::class.java,
+                UUID::class.java,
                 companyId,
                 customerId,
                 employeeId,
@@ -437,7 +439,7 @@ class NotificationDeliveryIntegrationTest {
             )!!
         }
 
-    private fun edit(id: Long, start: Instant? = null) {
+    private fun edit(id: UUID, start: Instant? = null) {
         transactions.executeWithoutResult {
             jdbc.queryForObject(
                 "SELECT set_config('scheduler.audit_time',?,true)",
@@ -455,11 +457,11 @@ class NotificationDeliveryIntegrationTest {
         }
     }
 
-    private fun changed(id: Long, kind: String = "CREATE", notify: Boolean = true) {
+    private fun changed(id: UUID, kind: String = "CREATE", notify: Boolean = true) {
         transactions.executeWithoutResult { events.publishEvent(ReservationChangedEvent(id, kind, notify)) }
     }
 
-    private fun queue(id: Long) {
+    private fun queue(id: UUID) {
         transactions.executeWithoutResult {
             repository.insert("CREATE", details.reservation(id)!!, clock.instant(), details.reservation(id)!!.start)
         }

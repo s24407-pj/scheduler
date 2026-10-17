@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.offering
 
 import jakarta.validation.Valid
+import java.util.UUID
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -23,7 +24,7 @@ class OfferingCategoryAssignmentController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('OWNER')")
     fun assignCategory(
-        @PathVariable offeringId: Long,
+        @PathVariable offeringId: UUID,
         @Valid @RequestBody request: AssignOfferingCategoryRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) = offeringCategoryService.assignCategory(offeringId, userDetails.requireCompanyId(), request.categoryId)

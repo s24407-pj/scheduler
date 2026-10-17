@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.offering
 
 import com.ninjasquad.springmockk.MockkBean
 import jakarta.servlet.http.Cookie
+import java.util.UUID
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
@@ -20,6 +21,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -50,8 +52,8 @@ class OfferingCategoryIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private var companyId: Long = 0
-    private var offeringId: Long = 0
+    private var companyId: UUID = testId(0)
+    private var offeringId: UUID = testId(0)
     private lateinit var ownerSession: Cookie
     private lateinit var employeeSession: Cookie
 
@@ -186,7 +188,7 @@ class OfferingCategoryIntegrationTest {
         // Populate the cache
         mockMvc.get("/api/offerings/public/company/$companyId").andExpect {
             status { isOk() }
-            jsonPath("$[0].categoryId") { value(category.id!!) }
+            jsonPath("$[0].categoryId") { value(category.id!!.toString()) }
         }
 
         // Delete the category
@@ -227,7 +229,7 @@ class OfferingCategoryIntegrationTest {
         // Cache must be evicted — public endpoint must return updated categoryId
         mockMvc.get("/api/offerings/public/company/$companyId").andExpect {
             status { isOk() }
-            jsonPath("$[0].categoryId") { value(category.id!!) }
+            jsonPath("$[0].categoryId") { value(category.id!!.toString()) }
         }
     }
 

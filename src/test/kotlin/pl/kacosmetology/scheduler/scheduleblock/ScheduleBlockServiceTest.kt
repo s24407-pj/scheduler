@@ -22,6 +22,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.ErrorCode
+import pl.kacosmetology.scheduler.testId
 
 @ExtendWith(MockKExtension::class)
 class ScheduleBlockServiceTest {
@@ -36,8 +37,8 @@ class ScheduleBlockServiceTest {
 
     @InjectMockKs private lateinit var scheduleBlockService: ScheduleBlockService
 
-    private val employeeId = 10L
-    private val companyId = 1L
+    private val employeeId = testId(10)
+    private val companyId = testId(1)
     private val startTime = LocalDateTime.of(2030, 6, 1, 10, 0)
     private val endTime = LocalDateTime.of(2030, 6, 1, 11, 0)
 
@@ -185,7 +186,7 @@ class ScheduleBlockServiceTest {
     @Test
     fun `deleteBlock should delete when employee owns the block`() {
         // GIVEN
-        val blockId = 99L
+        val blockId = testId(99)
         val block =
             ScheduleBlock(
                 id = blockId,
@@ -207,7 +208,7 @@ class ScheduleBlockServiceTest {
     @Test
     fun `deleteBlock should throw when block does not exist`() {
         // GIVEN
-        val blockId = 999L
+        val blockId = testId(999)
         every { scheduleBlockRepository.findByIdAndCompanyId(blockId, companyId) } returns null
 
         // WHEN & THEN
@@ -225,11 +226,11 @@ class ScheduleBlockServiceTest {
 
     @Test
     fun `deleteBlock should throw when employee owns block in another company`() {
-        val blockId = 99L
+        val blockId = testId(99)
         val block =
             ScheduleBlock(
                 id = blockId,
-                companyId = 999L,
+                companyId = testId(999),
                 employeeId = employeeId,
                 startTime = startTime,
                 endTime = endTime,
@@ -254,8 +255,8 @@ class ScheduleBlockServiceTest {
     @Test
     fun `deleteBlock should throw when employee does not own the block`() {
         // GIVEN
-        val blockId = 99L
-        val otherEmployeeId = 999L
+        val blockId = testId(99)
+        val otherEmployeeId = testId(999)
         val block =
             ScheduleBlock(
                 id = blockId,
@@ -284,8 +285,8 @@ class ScheduleBlockServiceTest {
     @Test
     fun `deleteBlock should allow owner to delete any block in their company`() {
         // GIVEN
-        val blockId = 99L
-        val otherEmployeeId = 999L
+        val blockId = testId(99)
+        val otherEmployeeId = testId(999)
         val block =
             ScheduleBlock(
                 id = blockId,
@@ -298,7 +299,7 @@ class ScheduleBlockServiceTest {
         every { scheduleBlockRepository.delete(block) } returns Unit
 
         // WHEN
-        scheduleBlockService.deleteBlock(blockId, requesterId = 1L, isOwner = true, companyId = companyId)
+        scheduleBlockService.deleteBlock(blockId, requesterId = testId(1), isOwner = true, companyId = companyId)
 
         // THEN
         verify(exactly = 1) { scheduleBlockRepository.delete(block) }
@@ -307,13 +308,13 @@ class ScheduleBlockServiceTest {
     @Test
     fun `deleteBlock should throw when owner tries to delete block from another company`() {
         // GIVEN
-        val blockId = 99L
-        val otherCompanyId = 999L
+        val blockId = testId(99)
+        val otherCompanyId = testId(999)
         val block =
             ScheduleBlock(
                 id = blockId,
                 companyId = otherCompanyId,
-                employeeId = 5L,
+                employeeId = testId(5),
                 startTime = startTime,
                 endTime = endTime,
             )
@@ -322,7 +323,12 @@ class ScheduleBlockServiceTest {
         // WHEN & THEN
         val exception =
             assertThrows<ApiException> {
-                scheduleBlockService.deleteBlock(blockId, requesterId = 1L, isOwner = true, companyId = companyId)
+                scheduleBlockService.deleteBlock(
+                    blockId,
+                    requesterId = testId(1),
+                    isOwner = true,
+                    companyId = companyId,
+                )
             }
         assertEquals("Blokada nie istnieje", exception.message)
         assertEquals(ErrorCode.SCHEDULE_BLOCK_NOT_FOUND, exception.code)

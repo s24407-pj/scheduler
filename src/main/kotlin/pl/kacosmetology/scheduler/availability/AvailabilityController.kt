@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.availability
 
 import java.time.LocalDate
+import java.util.UUID
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
@@ -19,8 +20,8 @@ class AvailabilityController(
     /** Returns available time slots with pricing for a given employee and service on a specific date. */
     @GetMapping
     fun getAvailableSlots(
-        @RequestParam employeeId: Long,
-        @RequestParam serviceId: Long,
+        @RequestParam employeeId: UUID,
+        @RequestParam serviceId: UUID,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) date: LocalDate,
         @AuthenticationPrincipal principal: CustomUserDetails?,
     ): List<AvailableSlotResponse> {

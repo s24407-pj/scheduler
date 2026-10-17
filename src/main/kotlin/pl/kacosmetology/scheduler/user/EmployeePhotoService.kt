@@ -27,7 +27,7 @@ class EmployeePhotoService(
 
     /** Replaces one company's photo; the former object remains until commit and until all legacy references end. */
     @Transactional
-    fun upload(companyId: Long, employeeId: Long, file: MultipartFile): CompanyEmployee {
+    fun upload(companyId: UUID, employeeId: UUID, file: MultipartFile): CompanyEmployee {
         val employee =
             companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId)
                 ?: throw NoSuchElementException("Pracownik nie istnieje")
@@ -55,7 +55,7 @@ class EmployeePhotoService(
 
     /** Removes only this company-local reference; a rollback retains the referenced object. */
     @Transactional
-    fun delete(companyId: Long, employeeId: Long): CompanyEmployee {
+    fun delete(companyId: UUID, employeeId: UUID): CompanyEmployee {
         val employee =
             companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId)
                 ?: throw NoSuchElementException("Pracownik nie istnieje")

@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.reservation
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import java.time.LocalDateTime
+import java.util.UUID
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
@@ -84,7 +85,7 @@ class ReservationController(
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
     fun edit(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @RequestHeader("If-Match") revision: String,
         @Valid @RequestBody request: EditReservationRequest,
         @AuthenticationPrincipal user: CustomUserDetails,
@@ -104,7 +105,7 @@ class ReservationController(
     @PreAuthorize("hasRole('CUSTOMER')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun cancelReservation(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @RequestHeader("If-Match") revision: String,
         @Valid @RequestBody(required = false) request: ReservationActionRequest?,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
@@ -117,7 +118,7 @@ class ReservationController(
     @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun cancelReservationByStaff(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @RequestHeader("If-Match") revision: String,
         @Valid @RequestBody request: ReservationActionRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
@@ -136,7 +137,7 @@ class ReservationController(
     @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun completeReservation(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @RequestHeader("If-Match") revision: String,
         @Valid @RequestBody(required = false) request: ReservationActionRequest?,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
@@ -155,7 +156,7 @@ class ReservationController(
     @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun markNoShow(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @RequestHeader("If-Match") revision: String,
         @Valid @RequestBody(required = false) request: ReservationActionRequest?,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
@@ -174,7 +175,7 @@ class ReservationController(
     @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun restore(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @RequestHeader("If-Match") revision: String,
         @Valid @RequestBody(required = false) request: ReservationActionRequest?,
         @AuthenticationPrincipal user: CustomUserDetails,
@@ -193,7 +194,7 @@ class ReservationController(
     @PreAuthorize("hasRole('OWNER')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun archive(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @RequestHeader("If-Match") revision: String,
         @AuthenticationPrincipal user: CustomUserDetails,
     ) {
@@ -205,7 +206,7 @@ class ReservationController(
     @PreAuthorize("hasRole('OWNER')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun unarchive(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @RequestHeader("If-Match") revision: String,
         @AuthenticationPrincipal user: CustomUserDetails,
     ) {
@@ -234,7 +235,7 @@ class ReservationController(
     @GetMapping
     @PreAuthorize("hasAnyRole('OWNER','EMPLOYEE')")
     fun getReservations(
-        @RequestParam employeeId: Long,
+        @RequestParam employeeId: UUID,
         @RequestParam start: LocalDateTime,
         @RequestParam end: LocalDateTime,
         @AuthenticationPrincipal userDetails: CustomUserDetails,

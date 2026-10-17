@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.user
 
+import java.util.UUID
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
@@ -20,7 +21,7 @@ class CustomerService(
      * block status and notes. Sorted by last name, then first name.
      */
     @Transactional(readOnly = true)
-    fun listCustomers(companyId: Long): List<CustomerStatusResponse> {
+    fun listCustomers(companyId: UUID): List<CustomerStatusResponse> {
         val profiles = companyCustomerRepository.findByCompanyId(companyId)
         val accounts = userRepository.findAllById(profiles.map { it.userId }).associateBy { it.id }
         val blocks = companyCustomerBlockRepository.findByCompanyId(companyId).associateBy { it.customerId }
@@ -47,7 +48,7 @@ class CustomerService(
      * if the user is not found.
      */
     @Transactional(readOnly = true)
-    fun getCustomerStatus(customerId: Long, companyId: Long): CustomerStatusResponse {
+    fun getCustomerStatus(customerId: UUID, companyId: UUID): CustomerStatusResponse {
         val companyCustomer =
             companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
                 ?: throw NoSuchElementException("Klient nie istnieje")
@@ -70,7 +71,7 @@ class CustomerService(
      * (cleared). Throws [NoSuchElementException] if the user is not found.
      */
     @Transactional
-    fun setCustomerNotes(customerId: Long, companyId: Long, notes: String?) {
+    fun setCustomerNotes(customerId: UUID, companyId: UUID, notes: String?) {
         val record =
             companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
                 ?: throw NoSuchElementException("Klient nie istnieje")
@@ -81,8 +82,8 @@ class CustomerService(
     /** Reads the company's visit history for either staff role, after checking the local relationship. */
     @Transactional(readOnly = true)
     fun getVisitHistory(
-        customerId: Long,
-        companyId: Long,
+        customerId: UUID,
+        companyId: UUID,
     ): List<pl.kacosmetology.scheduler.user.dto.CustomerVisitResponse> {
         companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
             ?: throw NoSuchElementException("Klient nie istnieje")
@@ -104,8 +105,8 @@ class CustomerService(
     /** Updates only an existing company profile; global phone identities remain unchanged. */
     @Transactional
     fun updateProfile(
-        customerId: Long,
-        companyId: Long,
+        customerId: UUID,
+        companyId: UUID,
         request: pl.kacosmetology.scheduler.user.dto.UpdateCustomerProfileRequest,
     ) {
         val profile =
@@ -117,8 +118,8 @@ class CustomerService(
     }
 
     /** Manually blocks only a legitimate local customer and cancels future visits atomically. */
-    @Transactional fun blockCustomer(customerId: Long, companyId: Long) = blocking.block(companyId, customerId)
+    @Transactional fun blockCustomer(customerId: UUID, companyId: UUID) = blocking.block(companyId, customerId)
 
     /** Gives a company-local reprieve without resetting penalties or restoring cancelled appointments. */
-    @Transactional fun unblockCustomer(customerId: Long, companyId: Long) = blocking.unblock(companyId, customerId)
+    @Transactional fun unblockCustomer(customerId: UUID, companyId: UUID) = blocking.unblock(companyId, customerId)
 }

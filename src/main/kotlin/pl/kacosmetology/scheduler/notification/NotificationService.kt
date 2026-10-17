@@ -90,7 +90,7 @@ class NotificationService(
         }
     }
 
-    private fun prepare(id: Long): Attempt? {
+    private fun prepare(id: UUID): Attempt? {
         val now = clock.instant()
         val delivery = repository.lock(id) ?: return null
         if (delivery.state !in setOf(DeliveryState.PENDING, DeliveryState.TEMPORARY_FAILURE)) return null

@@ -7,6 +7,7 @@ import java.time.Duration
 import java.time.LocalDateTime
 import java.util.Base64
 import java.util.Locale
+import java.util.UUID
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.security.authentication.BadCredentialsException
@@ -39,7 +40,7 @@ class StaffAccountService(
 
     /** Creates an EMPLOYEE account and initial one-use setup credential without a customer identity. */
     @Transactional
-    fun create(companyId: Long, request: CreateEmployeeRequest): EmployeeCreatedResponse {
+    fun create(companyId: UUID, request: CreateEmployeeRequest): EmployeeCreatedResponse {
         companies.findByIdForUpdate(companyId) ?: missing()
         val account =
             accounts.saveAndFlush(
@@ -58,7 +59,7 @@ class StaffAccountService(
 
     /** Edits only this company's employee profile and invalidates sessions when login identity changes. */
     @Transactional
-    fun update(companyId: Long, employeeId: Long, request: UpdateEmployeeRequest): StaffProfileResponse {
+    fun update(companyId: UUID, employeeId: UUID, request: UpdateEmployeeRequest): StaffProfileResponse {
         val account = employee(companyId, employeeId, allowOwner = true)
         val email = normalizeEmail(request.loginEmail)
         if (email != account.loginEmail) {
@@ -73,7 +74,7 @@ class StaffAccountService(
 
     /** Disabling revokes access/links immediately while preserving every appointment. */
     @Transactional
-    fun setEnabled(companyId: Long, employeeId: Long, enabled: Boolean): EmployeeEnabledResponse {
+    fun setEnabled(companyId: UUID, employeeId: UUID, enabled: Boolean): EmployeeEnabledResponse {
         companies.findByIdForUpdate(companyId) ?: missing()
         val account = employee(companyId, employeeId)
         if (account.enabled != enabled) {
@@ -104,12 +105,12 @@ class StaffAccountService(
 
     /** Replaces setup/recovery link; disabled staff cannot acquire a new link. */
     @Transactional
-    fun issueLink(companyId: Long, employeeId: Long): StaffPasswordLinkResponse =
+    fun issueLink(companyId: UUID, employeeId: UUID): StaffPasswordLinkResponse =
         replaceLink(employee(companyId, employeeId))
 
     /** Validates current password directly and revokes every session without creating a new one. */
     @Transactional
-    fun changePassword(accountId: Long, request: ChangeStaffPasswordRequest) {
+    fun changePassword(accountId: UUID, request: ChangeStaffPasswordRequest) {
         val account = accounts.findAccountForUpdate(accountId) ?: missing()
         if (!account.enabled || !passwords.matches(request.currentPassword, account.passwordHash ?: "")) {
             throw BadCredentialsException("Nieprawidłowe aktualne hasło")
@@ -134,10 +135,10 @@ class StaffAccountService(
 
     /** Reads a staff member's current company-local profile. */
     @Transactional(readOnly = true)
-    fun getOwn(accountId: Long): StaffProfileResponse =
+    fun getOwn(accountId: UUID): StaffProfileResponse =
         accounts.findById(accountId).orElseThrow { missing() }.toStaffProfile()
 
-    private fun employee(companyId: Long, employeeId: Long, allowOwner: Boolean = false): CompanyEmployee {
+    private fun employee(companyId: UUID, employeeId: UUID, allowOwner: Boolean = false): CompanyEmployee {
         val account = accounts.findByCompanyIdAndUserIdForUpdate(companyId, employeeId) ?: missing()
         if (account.role != "EMPLOYEE" && !(allowOwner && account.role == "OWNER"))
             throw ApiException(ErrorCode.ACCESS_DENIED, "Konto właściciela obsługuje operator")
@@ -183,7 +184,7 @@ class StaffAccountService(
 }
 
 /** Durable authVersion has already invalidated authentication when this after-commit cleanup runs. */
-data class StaffAccountRevoked(val accountId: Long)
+data class StaffAccountRevoked(val accountId: UUID)
 
 /** Removes Redis sessions only after the credential transaction commits. */
 @Component

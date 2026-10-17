@@ -17,6 +17,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.testId
 
 @ExtendWith(MockKExtension::class)
 class EmployeeOfferingServiceTest {
@@ -31,9 +32,9 @@ class EmployeeOfferingServiceTest {
 
     @InjectMockKs private lateinit var service: EmployeeOfferingService
 
-    private val companyId = 1L
-    private val employeeId = 10L
-    private val offeringId = 100L
+    private val companyId = testId(1)
+    private val employeeId = testId(10)
+    private val offeringId = testId(100)
 
     private val mockOffering =
         Offering(id = offeringId, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 60)
@@ -62,7 +63,12 @@ class EmployeeOfferingServiceTest {
     @Test
     fun `assignOffering should be idempotent when already assigned`() {
         val existing =
-            EmployeeOfferingAssignment(id = 1L, companyId = companyId, employeeId = employeeId, offeringId = offeringId)
+            EmployeeOfferingAssignment(
+                id = testId(1),
+                companyId = companyId,
+                employeeId = employeeId,
+                offeringId = offeringId,
+            )
         every { companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId) } returns true
         every { offeringRepository.findById(offeringId) } returns Optional.of(mockOffering)
         every { assignmentRepository.findByEmployeeIdAndOfferingId(employeeId, offeringId) } returns existing

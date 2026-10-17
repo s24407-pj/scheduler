@@ -2,11 +2,12 @@ package pl.kacosmetology.scheduler.reservation.dto
 
 import jakarta.validation.constraints.*
 import java.time.LocalDateTime
+import java.util.UUID
 
 /** Direct staff edit preserves identity and commercial terms for an unchanged service. */
 data class EditReservationRequest(
-    @field:Positive(message = "ID pracownika musi być dodatnie") val employeeId: Long? = null,
-    @field:Positive(message = "ID usługi musi być dodatnie") val serviceId: Long? = null,
+    val employeeId: UUID? = null,
+    val serviceId: UUID? = null,
     val startTime: LocalDateTime? = null,
     @field:PositiveOrZero(message = "Cena nie może być ujemna") val price: Int? = null,
     @field:Min(value = 1, message = "Czas musi wynosić co najmniej minutę")

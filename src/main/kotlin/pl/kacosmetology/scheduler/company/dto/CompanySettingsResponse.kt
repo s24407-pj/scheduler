@@ -1,11 +1,12 @@
 package pl.kacosmetology.scheduler.company.dto
 
 import java.time.LocalTime
+import java.util.UUID
 import pl.kacosmetology.scheduler.company.Company
 
 /** Response body containing company business hour settings. */
 data class CompanySettingsResponse(
-    val id: Long,
+    val id: UUID,
     val name: String,
     val openingTime: LocalTime,
     val closingTime: LocalTime,

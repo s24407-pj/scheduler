@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.offering
 
+import java.util.UUID
 import org.springframework.cache.annotation.CacheEvict
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -14,14 +15,14 @@ class OfferingCategoryService(
 
     /** Returns all categories for the given company. */
     @Transactional(readOnly = true)
-    fun getCategories(companyId: Long): List<OfferingCategory> = categoryRepository.findAllByCompanyId(companyId)
+    fun getCategories(companyId: UUID): List<OfferingCategory> = categoryRepository.findAllByCompanyId(companyId)
 
     /**
      * Creates a new category for the company. Throws [IllegalStateException] if a category with the same name already
      * exists.
      */
     @Transactional
-    fun createCategory(companyId: Long, request: OfferingCategoryRequest): OfferingCategory {
+    fun createCategory(companyId: UUID, request: OfferingCategoryRequest): OfferingCategory {
         if (categoryRepository.existsByCompanyIdAndName(companyId, request.name)) {
             throw IllegalStateException("Kategoria o tej nazwie już istnieje")
         }
@@ -35,7 +36,7 @@ class OfferingCategoryService(
      */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
-    fun deleteCategory(categoryId: Long, companyId: Long) {
+    fun deleteCategory(categoryId: UUID, companyId: UUID) {
         val category =
             categoryRepository.findById(categoryId).orElseThrow { NoSuchElementException("Kategoria nie istnieje") }
         if (category.companyId != companyId) {
@@ -50,7 +51,7 @@ class OfferingCategoryService(
      */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
-    fun assignCategory(offeringId: Long, companyId: Long, categoryId: Long?) {
+    fun assignCategory(offeringId: UUID, companyId: UUID, categoryId: UUID?) {
         val offering =
             offeringRepository.findById(offeringId).orElseThrow { NoSuchElementException("Usługa nie istnieje") }
         if (offering.companyId != companyId) {

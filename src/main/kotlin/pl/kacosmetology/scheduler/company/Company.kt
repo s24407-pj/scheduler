@@ -6,6 +6,8 @@ import java.math.RoundingMode
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.util.UUID
+import org.hibernate.annotations.UuidGenerator
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.config.ErrorCode
@@ -14,7 +16,7 @@ import pl.kacosmetology.scheduler.config.ErrorCode
 @Entity
 @Table(name = "companies")
 class Company(
-    id: Long? = null,
+    id: UUID? = null,
     @Column(nullable = false) var name: String,
     @Column(name = "tax_id") val taxId: String? = null,
     @Column(nullable = true) var address: String? = null,
@@ -42,8 +44,8 @@ class Company(
     val createdAt: LocalDateTime? = null,
 ) {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    var id: Long? = id
+    @UuidGenerator(style = UuidGenerator.Style.VERSION_7)
+    var id: UUID? = id
         protected set
 }
 

@@ -19,6 +19,7 @@ import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 
@@ -111,11 +112,11 @@ class AuthServiceTest {
         every { otpStore.verifyAndConsumeCode(testPhone, "123456") } returns OtpVerificationResult.VERIFIED
         every { userRepository.findByPhoneNumber(testPhone) } returns null
         every { userRepository.save(any()) } returns
-            User(id = 1L, phoneNumber = testPhone, firstName = "", lastName = "")
+            User(id = testId(1), phoneNumber = testPhone, firstName = "", lastName = "")
 
         val response = authService.verifyCode(VerifyCodeRequest(" 48111222333 ", "123456"), testIp)
 
-        assertEquals(1L, response.id)
+        assertEquals(testId(1), response.id)
         assertEquals("ROLE_CUSTOMER", response.role)
         verify(exactly = 1) {
             userRepository.save(match { it.phoneNumber == testPhone && it.firstName == "" && it.lastName == "" })
@@ -138,22 +139,22 @@ class AuthServiceTest {
 
     @Test
     fun `staff lookup uses company and canonical email without global customer lookup`() {
-        val request = StaffLoginRequest("  STAFF@Salon.PL ", "password123", 9L)
+        val request = StaffLoginRequest("  STAFF@Salon.PL ", "password123", testId(9))
         val account =
             CompanyEmployee(
-                id = 31L,
-                companyId = 9L,
-                userId = 15L,
+                id = testId(31),
+                companyId = testId(9),
+                userId = testId(15),
                 role = "EMPLOYEE",
                 loginEmail = "staff@salon.pl",
                 passwordHash = "hash",
             )
         every { loginRateLimiter.checkAndIncrement(testIp) } returns true
-        every { companyEmployeeRepository.findLoginForUpdate(9L, "staff@salon.pl") } returns account
+        every { companyEmployeeRepository.findLoginForUpdate(testId(9), "staff@salon.pl") } returns account
         every { accountSessions.sessionAttributes(any()) } returns mapOf("generation" to 0L)
         every { passwordEncoder.matches("password123", "hash") } returns true
         val result = authService.loginStaff(request, testIp)
-        assertEquals(31L, result.principal.employmentId)
+        assertEquals(testId(31), result.principal.employmentId)
         assertEquals("staff@salon.pl", result.principal.username)
         verify(exactly = 0) { userRepository.findByPhoneNumber(any()) }
         io.mockk.verifyOrder {
@@ -170,12 +171,18 @@ class AuthServiceTest {
         for (account in
             listOf(
                 null,
-                CompanyEmployee(id = 1L, companyId = 9L, userId = 1L, role = "EMPLOYEE", enabled = false),
-                CompanyEmployee(id = 1L, companyId = 9L, userId = 1L, role = "EMPLOYEE"),
+                CompanyEmployee(
+                    id = testId(1),
+                    companyId = testId(9),
+                    userId = testId(1),
+                    role = "EMPLOYEE",
+                    enabled = false,
+                ),
+                CompanyEmployee(id = testId(1), companyId = testId(9), userId = testId(1), role = "EMPLOYEE"),
             )) {
-            every { companyEmployeeRepository.findLoginForUpdate(9L, "staff@salon.pl") } returns account
+            every { companyEmployeeRepository.findLoginForUpdate(testId(9), "staff@salon.pl") } returns account
             assertThrows<org.springframework.security.authentication.BadCredentialsException> {
-                authService.loginStaff(StaffLoginRequest("staff@salon.pl", "password123", 9L), testIp)
+                authService.loginStaff(StaffLoginRequest("staff@salon.pl", "password123", testId(9)), testIp)
             }
         }
     }

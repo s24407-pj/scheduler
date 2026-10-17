@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.company
 
+import java.util.UUID
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.company.dto.CompanyEmployeeResponse
@@ -24,14 +25,14 @@ class CompanyService(
 
     /** Returns public company profile for customer booking. Throws [NoSuchElementException] if not found. */
     @Transactional(readOnly = true)
-    fun getPublicProfile(companyId: Long): CompanyPublicProfileResponse {
+    fun getPublicProfile(companyId: UUID): CompanyPublicProfileResponse {
         val company = companyRepository.findById(companyId).orElseThrow { NoSuchElementException("Firma nie istnieje") }
         return company.toPublicProfileResponse()
     }
 
     /** Returns active employees eligible to perform [offeringId] at [companyId], using explicit qualification modes. */
     @Transactional(readOnly = true)
-    fun getPublicBookableEmployees(companyId: Long, offeringId: Long): List<PublicEmployeeResponse> {
+    fun getPublicBookableEmployees(companyId: UUID, offeringId: UUID): List<PublicEmployeeResponse> {
         companyRepository.findById(companyId).orElseThrow { NoSuchElementException("Firma nie istnieje") }
         val offering =
             offeringRepository.findById(offeringId).orElseThrow { NoSuchElementException("Usługa nie istnieje") }
@@ -58,7 +59,7 @@ class CompanyService(
 
     /** Returns company settings. Throws [NoSuchElementException] if the company does not exist. */
     @Transactional(readOnly = true)
-    fun getCompany(companyId: Long): CompanySettingsResponse {
+    fun getCompany(companyId: UUID): CompanySettingsResponse {
         val company = companyRepository.findById(companyId).orElseThrow { NoSuchElementException("Firma nie istnieje") }
         return company.toSettingsResponse()
     }
@@ -68,7 +69,7 @@ class CompanyService(
      * record is missing (data integrity guard).
      */
     @Transactional(readOnly = true)
-    fun getEmployees(companyId: Long): List<CompanyEmployeeResponse> {
+    fun getEmployees(companyId: UUID): List<CompanyEmployeeResponse> {
         return companyEmployeeRepository.findAllByCompanyId(companyId).map { ce ->
             CompanyEmployeeResponse(
                 requireNotNull(ce.id),
@@ -90,7 +91,7 @@ class CompanyService(
      * strictly after [openingTime].
      */
     @Transactional
-    fun updateSettings(companyId: Long, request: UpdateCompanySettingsRequest): CompanySettingsResponse {
+    fun updateSettings(companyId: UUID, request: UpdateCompanySettingsRequest): CompanySettingsResponse {
         val company =
             companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
 
@@ -114,7 +115,7 @@ class CompanyService(
 
     /** Updates only the authenticated owner's company-local public presentation. */
     @Transactional
-    fun updateProfile(companyId: Long, request: UpdateCompanyProfileRequest): CompanyPublicProfileResponse {
+    fun updateProfile(companyId: UUID, request: UpdateCompanyProfileRequest): CompanyPublicProfileResponse {
         val company =
             companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         company.name = request.name.trim()

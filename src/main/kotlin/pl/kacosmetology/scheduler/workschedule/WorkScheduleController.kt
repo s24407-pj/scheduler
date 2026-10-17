@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.workschedule
 
 import jakarta.validation.Valid
 import java.time.LocalDate
+import java.util.UUID
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
@@ -24,7 +25,7 @@ class WorkScheduleController(
     @GetMapping("/{employeeId}/work-schedule")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getSchedule(
-        @PathVariable employeeId: Long,
+        @PathVariable employeeId: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): List<WorkScheduleEntryResponse> = workScheduleService.getSchedule(userDetails.requireCompanyId(), employeeId)
 
@@ -35,7 +36,7 @@ class WorkScheduleController(
     @PutMapping("/{employeeId}/work-schedule")
     @PreAuthorize("hasRole('OWNER')")
     fun setSchedule(
-        @PathVariable employeeId: Long,
+        @PathVariable employeeId: UUID,
         @Valid @RequestBody request: SetWeeklyScheduleRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): List<WorkScheduleEntryResponse> =
@@ -45,7 +46,7 @@ class WorkScheduleController(
     @GetMapping("/{employeeId}/schedule-overrides")
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getOverrides(
-        @PathVariable employeeId: Long,
+        @PathVariable employeeId: UUID,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) start: LocalDate,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) end: LocalDate,
         @AuthenticationPrincipal principal: CustomUserDetails,
@@ -56,7 +57,7 @@ class WorkScheduleController(
     @PutMapping("/{employeeId}/schedule-overrides/{date}")
     @PreAuthorize("hasRole('OWNER')")
     fun setOverride(
-        @PathVariable employeeId: Long,
+        @PathVariable employeeId: UUID,
         @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) date: LocalDate,
         @Valid @RequestBody request: ScheduleOverrideRequest,
         @AuthenticationPrincipal principal: CustomUserDetails,
@@ -68,7 +69,7 @@ class WorkScheduleController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('OWNER')")
     fun deleteOverride(
-        @PathVariable employeeId: Long,
+        @PathVariable employeeId: UUID,
         @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) date: LocalDate,
         @AuthenticationPrincipal principal: CustomUserDetails,
     ) = workScheduleService.deleteOverride(principal.requireCompanyId(), employeeId, date)

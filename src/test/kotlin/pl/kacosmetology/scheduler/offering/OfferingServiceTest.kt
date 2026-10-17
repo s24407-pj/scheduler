@@ -22,6 +22,7 @@ import pl.kacosmetology.scheduler.company.EmployeeEligibilityMode
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignment
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
+import pl.kacosmetology.scheduler.testId
 
 @ExtendWith(MockKExtension::class)
 class OfferingServiceTest {
@@ -38,11 +39,13 @@ class OfferingServiceTest {
 
     @InjectMockKs private lateinit var offeringService: OfferingService
 
-    private val companyId = 1L
-    private val employeeId = 10L
+    private val companyId = testId(1)
+    private val employeeId = testId(10)
 
-    private val manicure = Offering(id = 1, companyId = companyId, name = "Manicure", durationMinutes = 60, price = 100)
-    private val pedicure = Offering(id = 2, companyId = companyId, name = "Pedicure", durationMinutes = 60, price = 120)
+    private val manicure =
+        Offering(id = testId(1), companyId = companyId, name = "Manicure", durationMinutes = 60, price = 100)
+    private val pedicure =
+        Offering(id = testId(2), companyId = companyId, name = "Pedicure", durationMinutes = 60, price = 120)
 
     @BeforeEach
     fun companyLock() {
@@ -60,9 +63,9 @@ class OfferingServiceTest {
             )
         every { assignmentRepository.findAllByCompanyIdAndEmployeeId(companyId, employeeId) } returns
             listOf(
-                EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = 1),
+                EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = testId(1)),
                 // assigned but inactive: not returned by findAllByCompanyIdAndActiveTrue
-                EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = 3),
+                EmployeeOfferingAssignment(companyId = companyId, employeeId = employeeId, offeringId = testId(3)),
             )
         every { offeringRepository.findAllByCompanyIdAndActiveTrue(companyId) } returns listOf(manicure, pedicure)
 
@@ -98,8 +101,8 @@ class OfferingServiceTest {
         // GIVEN
         val offerings =
             listOf(
-                Offering(id = 1, companyId = companyId, name = "Masaż", durationMinutes = 60, price = 200),
-                Offering(id = 2, companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80),
+                Offering(id = testId(1), companyId = companyId, name = "Masaż", durationMinutes = 60, price = 200),
+                Offering(id = testId(2), companyId = companyId, name = "Strzyżenie", durationMinutes = 30, price = 80),
             )
         every { offeringRepository.findAllByCompanyIdAndActiveTrue(companyId) } returns offerings
 
@@ -114,11 +117,12 @@ class OfferingServiceTest {
     @Test
     fun `getOfferingById should return offering when it exists`() {
         // GIVEN
-        val offering = Offering(id = 1, companyId = companyId, name = "Masaż", durationMinutes = 60, price = 200)
-        every { offeringRepository.findById(1L) } returns Optional.of(offering)
+        val offering =
+            Offering(id = testId(1), companyId = companyId, name = "Masaż", durationMinutes = 60, price = 200)
+        every { offeringRepository.findById(testId(1)) } returns Optional.of(offering)
 
         // WHEN
-        val result = offeringService.getOfferingById(1L)
+        val result = offeringService.getOfferingById(testId(1))
 
         // THEN
         assertEquals("Masaż", result.name)
@@ -127,12 +131,12 @@ class OfferingServiceTest {
     @Test
     fun `getOfferingById should throw when offering does not exist`() {
         // GIVEN
-        every { offeringRepository.findById(999L) } returns Optional.empty()
+        every { offeringRepository.findById(testId(999)) } returns Optional.empty()
 
         // WHEN & THEN
         val exception =
             assertThrows<NoSuchElementException> {
-                offeringService.getOfferingById(999L)
+                offeringService.getOfferingById(testId(999))
             }
         assertEquals("Usługa nie istnieje", exception.message)
     }
@@ -157,12 +161,13 @@ class OfferingServiceTest {
     @Test
     fun `updateOffering should update offering belonging to company`() {
         // GIVEN
-        val existing = Offering(id = 1, companyId = companyId, name = "Stara", durationMinutes = 30, price = 100)
+        val existing =
+            Offering(id = testId(1), companyId = companyId, name = "Stara", durationMinutes = 30, price = 100)
         val request = OfferingRequest(name = "Nowa", durationMinutes = 45, price = 150)
 
-        every { offeringRepository.findById(1L) } returns Optional.of(existing)
+        every { offeringRepository.findById(testId(1)) } returns Optional.of(existing)
         // WHEN
-        val result = offeringService.updateOffering(1L, companyId, request)
+        val result = offeringService.updateOffering(testId(1), companyId, request)
 
         // THEN
         assertEquals("Nowa", result.name)
@@ -176,15 +181,16 @@ class OfferingServiceTest {
     @Test
     fun `updateOffering should throw when offering belongs to different company`() {
         // GIVEN
-        val existing = Offering(id = 1, companyId = 999L, name = "Obca", durationMinutes = 30, price = 100)
+        val existing =
+            Offering(id = testId(1), companyId = testId(999), name = "Obca", durationMinutes = 30, price = 100)
         val request = OfferingRequest(name = "Hack", durationMinutes = 10, price = 0)
 
-        every { offeringRepository.findById(1L) } returns Optional.of(existing)
+        every { offeringRepository.findById(testId(1)) } returns Optional.of(existing)
 
         // WHEN & THEN
         val exception =
             assertThrows<NoSuchElementException> {
-                offeringService.updateOffering(1L, companyId, request)
+                offeringService.updateOffering(testId(1), companyId, request)
             }
         assertEquals("Usługa nie istnieje", exception.message)
         verify(exactly = 0) { offeringRepository.save(any()) }
@@ -193,10 +199,11 @@ class OfferingServiceTest {
     @Test
     fun `deleteOffering should soft-delete offering belonging to company`() {
         // GIVEN
-        val existing = Offering(id = 1, companyId = companyId, name = "Do usunięcia", durationMinutes = 30, price = 50)
-        every { offeringRepository.findById(1L) } returns Optional.of(existing)
+        val existing =
+            Offering(id = testId(1), companyId = companyId, name = "Do usunięcia", durationMinutes = 30, price = 50)
+        every { offeringRepository.findById(testId(1)) } returns Optional.of(existing)
         // WHEN
-        offeringService.deleteOffering(1L, companyId)
+        offeringService.deleteOffering(testId(1), companyId)
 
         // THEN
         assertFalse(existing.active)
@@ -207,12 +214,13 @@ class OfferingServiceTest {
     @Test
     fun `deleteOffering should throw when offering belongs to different company`() {
         // GIVEN
-        val existing = Offering(id = 1, companyId = 999L, name = "Obca", durationMinutes = 30, price = 100)
-        every { offeringRepository.findById(1L) } returns Optional.of(existing)
+        val existing =
+            Offering(id = testId(1), companyId = testId(999), name = "Obca", durationMinutes = 30, price = 100)
+        every { offeringRepository.findById(testId(1)) } returns Optional.of(existing)
 
         // WHEN & THEN
         assertThrows<NoSuchElementException> {
-            offeringService.deleteOffering(1L, companyId)
+            offeringService.deleteOffering(testId(1), companyId)
         }
         verify(exactly = 0) { offeringRepository.save(any()) }
     }
@@ -220,41 +228,43 @@ class OfferingServiceTest {
     @Test
     fun `deleteOffering should throw when offering does not exist`() {
         // GIVEN
-        every { offeringRepository.findById(999L) } returns Optional.empty()
+        every { offeringRepository.findById(testId(999)) } returns Optional.empty()
 
         // WHEN & THEN
         assertThrows<NoSuchElementException> {
-            offeringService.deleteOffering(999L, companyId)
+            offeringService.deleteOffering(testId(999), companyId)
         }
     }
 
     @Test
     fun `uploadImage should delegate to offeringImageService and return offering`() {
         // GIVEN
-        val offering = Offering(id = 1, companyId = companyId, name = "Masaż", durationMinutes = 60, price = 200)
+        val offering =
+            Offering(id = testId(1), companyId = companyId, name = "Masaż", durationMinutes = 60, price = 200)
         val file = MockMultipartFile("image", "photo.jpg", "image/jpeg", ByteArray(100))
-        every { offeringRepository.findById(1L) } returns Optional.of(offering)
-        every { offeringImageService.upload(companyId, 1L, file) } returns
-            OfferingImage(id = 10, offeringId = 1L, imageUrl = "http://cdn/img.jpg")
+        every { offeringRepository.findById(testId(1)) } returns Optional.of(offering)
+        every { offeringImageService.upload(companyId, testId(1), file) } returns
+            OfferingImage(id = testId(10), offeringId = testId(1), imageUrl = "http://cdn/img.jpg")
 
         // WHEN
-        val result = offeringService.uploadImage(1L, companyId, file)
+        val result = offeringService.uploadImage(testId(1), companyId, file)
 
         // THEN
         assertEquals(offering, result)
-        verify(exactly = 1) { offeringImageService.upload(companyId, 1L, file) }
+        verify(exactly = 1) { offeringImageService.upload(companyId, testId(1), file) }
     }
 
     @Test
     fun `uploadImage should throw when offering belongs to different company`() {
         // GIVEN
-        val offering = Offering(id = 1, companyId = 999L, name = "Obca", durationMinutes = 30, price = 100)
+        val offering =
+            Offering(id = testId(1), companyId = testId(999), name = "Obca", durationMinutes = 30, price = 100)
         val file = MockMultipartFile("image", "photo.jpg", "image/jpeg", ByteArray(100))
-        every { offeringRepository.findById(1L) } returns Optional.of(offering)
+        every { offeringRepository.findById(testId(1)) } returns Optional.of(offering)
 
         // WHEN & THEN
         assertThrows<NoSuchElementException> {
-            offeringService.uploadImage(1L, companyId, file)
+            offeringService.uploadImage(testId(1), companyId, file)
         }
         verify(exactly = 0) { offeringImageService.upload(any(), any(), any()) }
     }
@@ -262,27 +272,29 @@ class OfferingServiceTest {
     @Test
     fun `deleteImage should delegate to offeringImageService and return offering`() {
         // GIVEN
-        val offering = Offering(id = 1, companyId = companyId, name = "Masaż", durationMinutes = 60, price = 200)
-        every { offeringRepository.findById(1L) } returns Optional.of(offering)
-        every { offeringImageService.delete(42L, 1L) } returns Unit
+        val offering =
+            Offering(id = testId(1), companyId = companyId, name = "Masaż", durationMinutes = 60, price = 200)
+        every { offeringRepository.findById(testId(1)) } returns Optional.of(offering)
+        every { offeringImageService.delete(testId(42), testId(1)) } returns Unit
 
         // WHEN
-        val result = offeringService.deleteImage(1L, 42L, companyId)
+        val result = offeringService.deleteImage(testId(1), testId(42), companyId)
 
         // THEN
         assertEquals(offering, result)
-        verify(exactly = 1) { offeringImageService.delete(42L, 1L) }
+        verify(exactly = 1) { offeringImageService.delete(testId(42), testId(1)) }
     }
 
     @Test
     fun `deleteImage should throw when offering belongs to different company`() {
         // GIVEN
-        val offering = Offering(id = 1, companyId = 999L, name = "Obca", durationMinutes = 30, price = 100)
-        every { offeringRepository.findById(1L) } returns Optional.of(offering)
+        val offering =
+            Offering(id = testId(1), companyId = testId(999), name = "Obca", durationMinutes = 30, price = 100)
+        every { offeringRepository.findById(testId(1)) } returns Optional.of(offering)
 
         // WHEN & THEN
         assertThrows<NoSuchElementException> {
-            offeringService.deleteImage(1L, 42L, companyId)
+            offeringService.deleteImage(testId(1), testId(42), companyId)
         }
         verify(exactly = 0) { offeringImageService.delete(any(), any()) }
     }

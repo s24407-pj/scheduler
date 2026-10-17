@@ -4,6 +4,7 @@ import com.ninjasquad.springmockk.MockkBean
 import jakarta.servlet.http.Cookie
 import java.time.Clock
 import java.time.LocalDateTime
+import java.util.UUID
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -31,6 +32,7 @@ import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 import pl.kacosmetology.scheduler.reservation.dto.CreateReservationRequest
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
@@ -66,8 +68,8 @@ class CustomerBlockIntegrationTest {
     private lateinit var owner: User
     private lateinit var employee: User
     private lateinit var customer: User
-    private var companyId: Long = 0
-    private var serviceId: Long = 0
+    private var companyId: UUID = testId(0)
+    private var serviceId: UUID = testId(0)
     private lateinit var ownerSession: Cookie
     private lateinit var employeeSession: Cookie
     private lateinit var customerSession: Cookie

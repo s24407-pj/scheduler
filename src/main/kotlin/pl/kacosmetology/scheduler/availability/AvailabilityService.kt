@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.availability
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.util.UUID
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
@@ -35,10 +36,10 @@ class AvailabilityService(
      */
     @Transactional(readOnly = true)
     fun getAvailableSlots(
-        employeeId: Long,
-        offeringId: Long,
+        employeeId: UUID,
+        offeringId: UUID,
         date: LocalDate,
-        customerId: Long? = null,
+        customerId: UUID? = null,
     ): List<AvailableSlotResponse> {
         val offering =
             offeringRepository.findById(offeringId).orElseThrow {

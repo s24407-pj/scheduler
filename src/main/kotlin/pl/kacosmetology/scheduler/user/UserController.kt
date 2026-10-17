@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.user
 
+import java.util.UUID
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
@@ -21,4 +22,4 @@ class UserController(private val userService: UserService) {
 }
 
 /** Global customer authentication identity without company-owned presentation. */
-data class CustomerAccountResponse(val id: Long, val phoneNumber: String)
+data class CustomerAccountResponse(val id: UUID, val phoneNumber: String)

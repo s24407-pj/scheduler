@@ -1,13 +1,15 @@
 package pl.kacosmetology.scheduler.reservation
 
+import java.util.UUID
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
+import pl.kacosmetology.scheduler.testId
 
 /** Both company staff roles read coworkers' calendars using company-local customer presentation. */
 class ReservationDashboardIntegrationTest : ReservationContractTestSupport() {
     private fun calendar(
-        employee: Long = salon.employee,
+        employee: UUID = salon.employee,
         cookie: jakarta.servlet.http.Cookie = staffCookie(),
         start: String = future.toString(),
         end: String = future.plusDays(1).toString(),
@@ -33,7 +35,7 @@ class ReservationDashboardIntegrationTest : ReservationContractTestSupport() {
         for (cookie in listOf(staffCookie(), staffCookie(coworker.second))) {
             val response = calendar(cookie = cookie)
             assertEquals(200, response.response.status, response.response.contentAsString)
-            assertEquals(id, tree(response)[0]["id"].longValue())
+            assertEquals(id, UUID.fromString(tree(response)[0]["id"].asString()))
             assertEquals("Company", tree(response)[0]["customerFirstName"].stringValue())
             assertEquals("Customer", tree(response)[0]["customerLastName"].stringValue())
         }
@@ -45,7 +47,7 @@ class ReservationDashboardIntegrationTest : ReservationContractTestSupport() {
         reservation(future.plusHours(1))
         val response = calendar(end = future.plusHours(1).toString())
         assertEquals(200, response.response.status)
-        assertEquals(listOf(overlaps), tree(response).values().map { it["id"].longValue() })
+        assertEquals(listOf(overlaps), tree(response).values().map { UUID.fromString(it["id"].asString()) })
     }
 
     @Test
@@ -63,7 +65,7 @@ class ReservationDashboardIntegrationTest : ReservationContractTestSupport() {
     fun `foreign and absent employee calendars are opaque missing resources`() {
         val foreign = fixtures.salon()
         assertEquals(404, calendar(employee = foreign.employee).response.status)
-        assertEquals(404, calendar(employee = Long.MAX_VALUE).response.status)
+        assertEquals(404, calendar(employee = testId(Long.MAX_VALUE)).response.status)
     }
 
     @Test

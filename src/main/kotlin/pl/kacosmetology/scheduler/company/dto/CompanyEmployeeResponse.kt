@@ -1,11 +1,12 @@
 package pl.kacosmetology.scheduler.company.dto
 
+import java.util.UUID
 import pl.kacosmetology.scheduler.company.EmployeeEligibilityMode
 
 /** Represents a single employee of a company, including their basic user info and role. */
 data class CompanyEmployeeResponse(
-    val id: Long,
-    val userId: Long,
+    val id: UUID,
+    val userId: UUID,
     val firstName: String,
     val lastName: String,
     val role: String,

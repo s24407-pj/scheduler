@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.availability
 
 import java.time.LocalDateTime
+import java.util.UUID
 import org.springframework.stereotype.Service
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.ErrorCode
@@ -28,8 +29,8 @@ class EmployeeAvailabilityPolicy(
 ) {
     /** Returns all active reservations and schedule blocks of [employeeId] at [companyId] overlapping [start, end). */
     fun findConflicts(
-        companyId: Long,
-        employeeId: Long,
+        companyId: UUID,
+        employeeId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
     ): List<EmployeeAvailabilityConflict> {
@@ -55,8 +56,8 @@ class EmployeeAvailabilityPolicy(
 
     /** Returns the first conflict for [start, end), preferring reservations over schedule blocks. */
     fun findFirstConflict(
-        companyId: Long,
-        employeeId: Long,
+        companyId: UUID,
+        employeeId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
     ): EmployeeAvailabilityConflict? = findConflicts(companyId, employeeId, start, end).firstOrNull()
@@ -70,8 +71,8 @@ class EmployeeAvailabilityPolicy(
 
     /** Throws [ApiException] with [ErrorCode.SLOT_UNAVAILABLE] when [start, end) is not available for [employeeId]. */
     fun assertAvailable(
-        companyId: Long,
-        employeeId: Long,
+        companyId: UUID,
+        employeeId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
         message: String = "Ten termin jest już zajęty",

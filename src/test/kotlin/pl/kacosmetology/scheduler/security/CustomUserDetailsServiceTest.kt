@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.security.core.userdetails.UsernameNotFoundException
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 
@@ -39,7 +40,7 @@ class CustomUserDetailsServiceTest {
 
     @Test
     fun `should assign only ROLE_CUSTOMER for regular customer`() {
-        val user = User(id = 1, phoneNumber = testPhone, firstName = "Jan", lastName = "Kowalski")
+        val user = User(id = testId(1), phoneNumber = testPhone, firstName = "Jan", lastName = "Kowalski")
         every { userRepository.findByPhoneNumber(testPhone) } returns user
         val userDetails = customUserDetailsService.loadUserByUsername(testPhone)
 
@@ -49,11 +50,11 @@ class CustomUserDetailsServiceTest {
 
     @Test
     fun `customer loading should not aggregate employment roles`() {
-        val user = User(id = 1, phoneNumber = testPhone, firstName = "Anna", lastName = "Nowak")
+        val user = User(id = testId(1), phoneNumber = testPhone, firstName = "Anna", lastName = "Nowak")
         every { userRepository.findByPhoneNumber(testPhone) } returns user
 
         // Zwracamy informacje, ze Anna jest wlascicielem (OWNER)
-        val employeeData = CompanyEmployee(companyId = 99L, userId = 1L, role = "OWNER")
+        val employeeData = CompanyEmployee(companyId = testId(99), userId = testId(1), role = "OWNER")
         val userDetails = customUserDetailsService.loadUserByUsername(testPhone)
 
         Assertions.assertEquals(listOf("ROLE_CUSTOMER"), userDetails.authorities.map { it.authority })
@@ -61,30 +62,36 @@ class CustomUserDetailsServiceTest {
 
     @Test
     fun `staff loading should use only the exact employment role and scope`() {
-        val user = User(id = 1, phoneNumber = testPhone, firstName = "Anna", lastName = "Nowak")
+        val user = User(id = testId(1), phoneNumber = testPhone, firstName = "Anna", lastName = "Nowak")
         val employment =
-            CompanyEmployee(id = 8L, companyId = 99L, userId = 1L, role = "OWNER", loginEmail = "staff@example.test")
+            CompanyEmployee(
+                id = testId(8),
+                companyId = testId(99),
+                userId = testId(1),
+                role = "OWNER",
+                loginEmail = "staff@example.test",
+            )
         every { userRepository.findByPhoneNumber(testPhone) } returns user
-        every { companyEmployeeRepository.findById(8L) } returns Optional.of(employment)
+        every { companyEmployeeRepository.findById(testId(8)) } returns Optional.of(employment)
 
-        val details = customUserDetailsService.loadStaffByEmployment("staff@example.test", 8L)
+        val details = customUserDetailsService.loadStaffByEmployment("staff@example.test", testId(8))
 
-        Assertions.assertEquals(8L, details.employmentId)
-        Assertions.assertEquals(99L, details.companyId)
+        Assertions.assertEquals(testId(8), details.employmentId)
+        Assertions.assertEquals(testId(99), details.companyId)
         Assertions.assertEquals(listOf("ROLE_OWNER"), details.authorities.map { it.authority })
     }
 
     @Test
     fun `staff loading should reject employment owned by another user`() {
-        val user = User(id = 1, phoneNumber = testPhone, firstName = "Anna", lastName = "Nowak")
+        val user = User(id = testId(1), phoneNumber = testPhone, firstName = "Anna", lastName = "Nowak")
         every { userRepository.findByPhoneNumber(testPhone) } returns user
-        every { companyEmployeeRepository.findById(8L) } returns
+        every { companyEmployeeRepository.findById(testId(8)) } returns
             Optional.of(
-                CompanyEmployee(id = 8L, companyId = 99L, userId = 2L, role = "OWNER"),
+                CompanyEmployee(id = testId(8), companyId = testId(99), userId = testId(2), role = "OWNER"),
             )
 
         assertThrows<UsernameNotFoundException> {
-            customUserDetailsService.loadStaffByEmployment("staff@example.test", 8L)
+            customUserDetailsService.loadStaffByEmployment("staff@example.test", testId(8))
         }
     }
 }

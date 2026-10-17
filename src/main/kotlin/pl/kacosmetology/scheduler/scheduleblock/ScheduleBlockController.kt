@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.scheduleblock
 
 import jakarta.validation.Valid
 import java.time.LocalDateTime
+import java.util.UUID
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -58,7 +59,7 @@ class ScheduleBlockController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun deleteBlock(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
         val requesterId = userDetails.id
@@ -75,7 +76,7 @@ class ScheduleBlockController(
     @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
     fun getMyBlocks(
         @AuthenticationPrincipal userDetails: CustomUserDetails,
-        @RequestParam(required = false) employeeId: Long?,
+        @RequestParam(required = false) employeeId: UUID?,
         @RequestParam start: LocalDateTime,
         @RequestParam end: LocalDateTime,
     ): List<ScheduleBlockResponse> {

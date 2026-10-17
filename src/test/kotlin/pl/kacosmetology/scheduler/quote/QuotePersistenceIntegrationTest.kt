@@ -6,6 +6,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
+import java.util.UUID
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -27,6 +28,7 @@ import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.quote.dto.CreateQuoteRequest
+import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.services.s3.S3Client
 
 /** Uses PostgreSQL quote storage and migrated phone accounts, independently of the legacy global-user mapping. */
@@ -43,9 +45,9 @@ class QuotePersistenceIntegrationTest {
     @Autowired private lateinit var entityManager: EntityManager
     @MockkBean private lateinit var smsSender: SmsSender
     @MockkBean private lateinit var s3Client: S3Client
-    private var customerId = 0L
-    private var companyId = 0L
-    private var offeringId = 0L
+    private var customerId = testId(0)
+    private var companyId = testId(0)
+    private var offeringId = testId(0)
     private val start = LocalDateTime.parse("2026-06-01T14:00:00")
     private val now = Instant.parse("2026-06-01T08:00:00Z")
 
@@ -55,7 +57,7 @@ class QuotePersistenceIntegrationTest {
             requireNotNull(
                 jdbc.queryForObject(
                     "INSERT INTO customer_accounts(phone_number) VALUES ('+48880000001') RETURNING id",
-                    Long::class.java,
+                    UUID::class.java,
                 ),
             )
         companyId = companies.save(Company(name = "Quote Salon", lastMinuteDiscountPercent = 50)).id!!
@@ -69,6 +71,11 @@ class QuotePersistenceIntegrationTest {
         entityManager.flush()
         entityManager.clear()
         val loaded = requireNotNull(repository.findByIdAndCustomerId(created.quoteId, customerId))
+        // ORM, SQL defaults and pre-persistence quote generation all produce UUIDv7.
+        assertEquals(7, requireNotNull(companies.findById(companyId).orElseThrow().id).version())
+        assertEquals(7, requireNotNull(offerings.findById(offeringId).orElseThrow().id).version())
+        assertEquals(7, customerId.version())
+        assertEquals(7, loaded.id.version())
         assertEquals(companyId, loaded.companyId)
         assertEquals(offeringId, loaded.serviceId)
         assertEquals("Original", loaded.acceptedServiceName)
@@ -143,10 +150,10 @@ class QuotePersistenceIntegrationTest {
         val created = service.create(customerId, CreateQuoteRequest(offeringId, start))
         entityManager.flush()
         entityManager.clear()
-        assertNull(repository.findByIdAndCustomerId(created.quoteId, customerId + 1))
+        assertNull(repository.findByIdAndCustomerId(created.quoteId, testId(999999)))
         assertEquals(
             ErrorCode.NOT_FOUND,
-            assertThrows<ApiException> { policy.resolve(customerId + 1, offeringId, start, created.quoteId, now) }.code,
+            assertThrows<ApiException> { policy.resolve(testId(999999), offeringId, start, created.quoteId, now) }.code,
         )
         assertEquals(
             ErrorCode.BAD_REQUEST,

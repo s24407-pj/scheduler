@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.offering.dto
 
 import java.time.LocalDateTime
+import java.util.UUID
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingImage
 
@@ -9,13 +10,13 @@ import pl.kacosmetology.scheduler.offering.OfferingImage
  * table.
  */
 data class OfferingResponse(
-    val id: Long?,
-    val companyId: Long,
+    val id: UUID?,
+    val companyId: UUID,
     val name: String,
     val durationMinutes: Int,
     val price: Int,
     val active: Boolean,
-    val categoryId: Long?,
+    val categoryId: UUID?,
     val createdAt: LocalDateTime?,
     val images: List<OfferingImageResponse>,
 ) {

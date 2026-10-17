@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.offering
 
+import java.util.UUID
 import org.springframework.cache.annotation.CacheEvict
 import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
@@ -26,7 +27,7 @@ class OfferingService(
      * Throws [NoSuchElementException] when the employee is not employed at [companyId].
      */
     @Transactional(readOnly = true)
-    fun getPublicEmployeeOfferings(companyId: Long, employeeId: Long): List<Offering> {
+    fun getPublicEmployeeOfferings(companyId: UUID, employeeId: UUID): List<Offering> {
         val employee =
             companyEmployeeRepository.findByCompanyIdAndUserId(companyId, employeeId)?.takeIf { it.enabled }
                 ?: throw NoSuchElementException("Pracownik nie istnieje")
@@ -40,26 +41,26 @@ class OfferingService(
     /** Returns only active offerings for a company. Used by public endpoints and booking. Cached in Redis. */
     @Transactional(readOnly = true)
     @Cacheable("companyServices", key = "#companyId")
-    fun getCompanyOfferings(companyId: Long): List<Offering> {
+    fun getCompanyOfferings(companyId: UUID): List<Offering> {
         return offeringRepository.findAllByCompanyIdAndActiveTrue(companyId)
     }
 
     /** Returns all offerings (including inactive) for a company. Used by owner/staff management panel. */
     @Transactional(readOnly = true)
-    fun getAllCompanyOfferings(companyId: Long): List<Offering> {
+    fun getAllCompanyOfferings(companyId: UUID): List<Offering> {
         return offeringRepository.findAllByCompanyId(companyId)
     }
 
     /** Returns a single offering by ID or throws [IllegalArgumentException]. */
     @Transactional(readOnly = true)
-    fun getOfferingById(id: Long): Offering {
+    fun getOfferingById(id: UUID): Offering {
         return offeringRepository.findById(id).orElseThrow { NoSuchElementException("Usługa nie istnieje") }
     }
 
     /** Creates a new offering and evicts the company offerings cache. */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
-    fun createOffering(companyId: Long, request: OfferingRequest): Offering {
+    fun createOffering(companyId: UUID, request: OfferingRequest): Offering {
         companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         return offeringRepository.save(
             Offering(
@@ -74,7 +75,7 @@ class OfferingService(
     /** Updates an existing offering. Throws if the offering belongs to a different company. */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
-    fun updateOffering(id: Long, companyId: Long, request: OfferingRequest): Offering {
+    fun updateOffering(id: UUID, companyId: UUID, request: OfferingRequest): Offering {
         companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val existing = getOfferingById(id)
 
@@ -91,7 +92,7 @@ class OfferingService(
     /** Reactivates a previously deactivated offering. */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
-    fun activateOffering(id: Long, companyId: Long) {
+    fun activateOffering(id: UUID, companyId: UUID) {
         companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val existing = getOfferingById(id)
 
@@ -108,7 +109,7 @@ class OfferingService(
      */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
-    fun uploadImage(offeringId: Long, companyId: Long, file: MultipartFile): Offering {
+    fun uploadImage(offeringId: UUID, companyId: UUID, file: MultipartFile): Offering {
         companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val offering = getOfferingById(offeringId)
         if (offering.companyId != companyId) throw NoSuchElementException("Usługa nie istnieje")
@@ -119,7 +120,7 @@ class OfferingService(
     /** Deletes the specified image from R2 and DB. Validates that [companyId] owns the offering. */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
-    fun deleteImage(offeringId: Long, imageId: Long, companyId: Long): Offering {
+    fun deleteImage(offeringId: UUID, imageId: UUID, companyId: UUID): Offering {
         companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val offering = getOfferingById(offeringId)
         if (offering.companyId != companyId) throw NoSuchElementException("Usługa nie istnieje")
@@ -130,7 +131,7 @@ class OfferingService(
     /** Soft-deletes an offering by marking it as inactive. Existing reservations are preserved. */
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
-    fun deleteOffering(id: Long, companyId: Long) {
+    fun deleteOffering(id: UUID, companyId: UUID) {
         companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
         val existing = getOfferingById(id)
 

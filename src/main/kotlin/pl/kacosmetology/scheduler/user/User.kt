@@ -2,6 +2,8 @@ package pl.kacosmetology.scheduler.user
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import jakarta.persistence.*
+import java.util.UUID
+import org.hibernate.annotations.UuidGenerator
 
 /**
  * Global phone-only customer authentication account. Salon data belongs to [CompanyCustomer]. Legacy transient
@@ -10,7 +12,7 @@ import jakarta.persistence.*
 @Entity
 @Table(name = "customer_accounts")
 class User(
-    id: Long? = null,
+    id: UUID? = null,
     @Column(name = "phone_number", nullable = false, unique = true) val phoneNumber: String,
     @JsonIgnore @Transient var firstName: String = "",
     @JsonIgnore @Transient var lastName: String = "",
@@ -19,7 +21,7 @@ class User(
     @JsonIgnore @Transient var photoUrl: String? = null,
 ) {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    var id: Long? = id
+    @UuidGenerator(style = UuidGenerator.Style.VERSION_7)
+    var id: UUID? = id
         protected set
 }

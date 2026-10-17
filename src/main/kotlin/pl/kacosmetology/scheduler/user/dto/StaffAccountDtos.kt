@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 import java.time.Instant
 import java.time.LocalDateTime
+import java.util.UUID
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 
 /** Owner-created staff identity; role is always EMPLOYEE. */
@@ -58,9 +59,9 @@ data class SetEmployeeEnabledRequest(val enabled: Boolean)
 
 /** A company-owned staff profile without password or recovery secret. */
 data class StaffProfileResponse(
-    val id: Long,
-    val accountId: Long,
-    val companyId: Long,
+    val id: UUID,
+    val accountId: UUID,
+    val companyId: UUID,
     val firstName: String,
     val lastName: String,
     val loginEmail: String?,
@@ -92,7 +93,7 @@ data class StaffPasswordLinkResponse(val token: String, val expiresAt: Instant)
 data class EmployeeCreatedResponse(val employee: StaffProfileResponse, val passwordSetup: StaffPasswordLinkResponse)
 
 /** Existing future booking requiring owner attention when an employee is disabled. */
-data class AffectedEmployeeBooking(val reservationId: Long, val start: LocalDateTime, val end: LocalDateTime)
+data class AffectedEmployeeBooking(val reservationId: UUID, val start: LocalDateTime, val end: LocalDateTime)
 
 /** Access-state change preserves bookings and returns affected future visits. */
 data class EmployeeEnabledResponse(

@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.user
 
+import java.util.UUID
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -10,13 +11,13 @@ import pl.kacosmetology.scheduler.user.dto.UpdateUserProfileRequest
 class UserService(private val userRepository: UserRepository) {
     /** Loads the current authentication identity. */
     @Transactional(readOnly = true)
-    fun getProfile(userId: Long): User =
+    fun getProfile(userId: UUID): User =
         userRepository.findById(userId).orElseThrow { NoSuchElementException("Klient nie istnieje") }
 
     /**
      * Legacy internal entry point retained temporarily for source compatibility; global profile edits are forbidden.
      */
     @Suppress("UNUSED_PARAMETER")
-    fun updateProfile(userId: Long, request: UpdateUserProfileRequest): User =
+    fun updateProfile(userId: UUID, request: UpdateUserProfileRequest): User =
         throw AccessDeniedException("Profil klienta edytuje personel salonu")
 }

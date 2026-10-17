@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.company
 
 import com.ninjasquad.springmockk.MockkBean
 import jakarta.servlet.http.Cookie
+import java.util.UUID
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -13,6 +14,7 @@ import org.springframework.test.web.servlet.get
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -36,7 +38,7 @@ class CompanyEmployeeControllerIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private var ownerUserId: Long = 0
+    private var ownerUserId: UUID = testId(0)
     private lateinit var employeeSession: Cookie
     private lateinit var customerSession: Cookie
 
@@ -97,8 +99,8 @@ class CompanyEmployeeControllerIntegrationTest {
             .andExpect {
                 status { isOk() }
                 jsonPath("$.length()") { value(2) }
-                jsonPath("$[?(@.firstName == 'Owner')].id") { value(ownerUserId.toInt()) }
-                jsonPath("$[?(@.firstName == 'Owner')].userId") { value(ownerUserId.toInt()) }
+                jsonPath("$[?(@.firstName == 'Owner')].id") { value(ownerUserId.toString()) }
+                jsonPath("$[?(@.firstName == 'Owner')].userId") { value(ownerUserId.toString()) }
                 jsonPath("$[?(@.firstName == 'Outsider')]") { isEmpty() }
             }
     }

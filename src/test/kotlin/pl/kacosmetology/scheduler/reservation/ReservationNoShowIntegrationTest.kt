@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.reservation
 
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -16,7 +17,7 @@ class ReservationNoShowIntegrationTest : ReservationContractTestSupport() {
     private fun ownerBlock(operation: String) =
         mvc.perform(patch("/api/customers/${salon.customer}/$operation").cookie(staffCookie()).with(csrf())).andReturn()
 
-    private fun flag(id: Long, column: String) =
+    private fun flag(id: UUID, column: String) =
         jdbc.queryForObject(
             "SELECT $column FROM company_customer_blocks WHERE company_id=? AND customer_id=?",
             Boolean::class.java,

@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.config.R2Properties
+import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.*
@@ -30,8 +31,15 @@ class EmployeePhotoServiceTest {
     @BeforeEach
     fun setup() {
         service = EmployeePhotoService(storage, properties, accounts)
-        employee = CompanyEmployee(id = 8L, companyId = 1L, userId = 10L, role = "EMPLOYEE", photoUrl = oldUrl)
-        every { accounts.findByCompanyIdAndUserIdForUpdate(1L, 10L) } returns employee
+        employee =
+            CompanyEmployee(
+                id = testId(8),
+                companyId = testId(1),
+                userId = testId(10),
+                role = "EMPLOYEE",
+                photoUrl = oldUrl,
+            )
+        every { accounts.findByCompanyIdAndUserIdForUpdate(testId(1), testId(10)) } returns employee
         every { accounts.save(any()) } answers { firstArg() }
         every { accounts.existsByPhotoUrl(any()) } returns false
         every { storage.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns
@@ -48,35 +56,41 @@ class EmployeePhotoServiceTest {
     @Test
     fun `invalid bytes are rejected before storage write`() {
         assertThrows<IllegalArgumentException> {
-            service.upload(1L, 10L, MockMultipartFile("photo", "fake.png", "image/png", "not an image".toByteArray()))
+            service.upload(
+                testId(1),
+                testId(10),
+                MockMultipartFile("photo", "fake.png", "image/png", "not an image".toByteArray()),
+            )
         }
         verify(exactly = 0) { storage.putObject(any<PutObjectRequest>(), any<RequestBody>()) }
     }
 
     @Test
     fun `actual bytes determine stored content type and profile remains company local`() {
-        val result = service.upload(1L, 10L, png())
+        val result = service.upload(testId(1), testId(10), png())
         assertSame(employee, result)
-        assertTrue(result.photoUrl!!.startsWith("https://images.test/employees/1/10/"))
+        assertTrue(result.photoUrl!!.startsWith("https://images.test/employees/${testId(1)}/${testId(10)}/"))
         verify { storage.putObject(match<PutObjectRequest> { it.contentType() == "image/png" }, any<RequestBody>()) }
         verify(exactly = 0) { storage.deleteObject(any<DeleteObjectRequest>()) }
     }
 
     @Test
     fun `rollback removes uploaded object and preserves former referenced object`() {
-        service.upload(1L, 10L, png())
+        service.upload(testId(1), testId(10), png())
         TransactionSynchronizationManager.getSynchronizations().forEach {
             it.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK)
         }
         verify(exactly = 1) {
-            storage.deleteObject(match<DeleteObjectRequest> { it.key().startsWith("employees/1/10/") })
+            storage.deleteObject(
+                match<DeleteObjectRequest> { it.key().startsWith("employees/${testId(1)}/${testId(10)}/") },
+            )
         }
         verify(exactly = 0) { storage.deleteObject(match<DeleteObjectRequest> { it.key() == "legacy/shared.png" }) }
     }
 
     @Test
     fun `committed replacement deletes old unreferenced object only after commit`() {
-        service.upload(1L, 10L, png())
+        service.upload(testId(1), testId(10), png())
         TransactionSynchronizationManager.getSynchronizations().forEach {
             it.afterCommit()
             it.afterCompletion(TransactionSynchronization.STATUS_COMMITTED)
@@ -87,7 +101,7 @@ class EmployeePhotoServiceTest {
     @Test
     fun `another company legacy reference prevents object deletion`() {
         every { accounts.existsByPhotoUrl(oldUrl) } returns true
-        service.delete(1L, 10L)
+        service.delete(testId(1), testId(10))
         assertNull(employee.photoUrl)
         TransactionSynchronizationManager.getSynchronizations().forEach { it.afterCommit() }
         verify(exactly = 0) { storage.deleteObject(any<DeleteObjectRequest>()) }
@@ -95,8 +109,8 @@ class EmployeePhotoServiceTest {
 
     @Test
     fun `foreign employee identifier is opaque missing before any write`() {
-        every { accounts.findByCompanyIdAndUserIdForUpdate(2L, 10L) } returns null
-        assertThrows<NoSuchElementException> { service.upload(2L, 10L, png()) }
+        every { accounts.findByCompanyIdAndUserIdForUpdate(testId(2), testId(10)) } returns null
+        assertThrows<NoSuchElementException> { service.upload(testId(2), testId(10), png()) }
         verify(exactly = 0) { storage.putObject(any<PutObjectRequest>(), any<RequestBody>()) }
     }
 

@@ -6,6 +6,7 @@ import java.util.UUID
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.EntityIds
 import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.quote.dto.CreateQuoteRequest
@@ -21,7 +22,7 @@ class QuoteService(
 ) {
     /** Saves the current commercial snapshot for ten elapsed minutes from quote creation. */
     @Transactional
-    fun create(customerId: Long, request: CreateQuoteRequest): QuoteResponse {
+    fun create(customerId: UUID, request: CreateQuoteRequest): QuoteResponse {
         val now = clock.instant()
         val start = quoteStartInstant(request.startTime)
         if (!start.isAfter(now)) throw ApiException(ErrorCode.BAD_REQUEST, "Termin musi być w przyszłości")
@@ -33,7 +34,7 @@ class QuoteService(
         val quote =
             quotes.save(
                 BookingQuote(
-                    UUID.randomUUID(),
+                    EntityIds.next(),
                     customerId,
                     service.companyId,
                     request.serviceId,

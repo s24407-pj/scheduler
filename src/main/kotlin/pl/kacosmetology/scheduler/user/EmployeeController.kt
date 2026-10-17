@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.user
 
+import java.util.UUID
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -17,7 +18,7 @@ class EmployeeController(private val employeePhotoService: EmployeePhotoService)
     /** Uploads validated bytes to one company employee's profile. */
     @PostMapping("/{id}/photo", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun uploadPhoto(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @RequestParam("photo") file: MultipartFile,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): StaffProfileResponse = employeePhotoService.upload(userDetails.requireCompanyId(), id, file).toStaffProfile()
@@ -25,7 +26,7 @@ class EmployeeController(private val employeePhotoService: EmployeePhotoService)
     /** Removes only this company's photo reference. */
     @DeleteMapping("/{id}/photo")
     fun deletePhoto(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): StaffProfileResponse = employeePhotoService.delete(userDetails.requireCompanyId(), id).toStaffProfile()
 }

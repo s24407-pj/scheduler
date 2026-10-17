@@ -5,6 +5,7 @@ import java.sql.Timestamp
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Component
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
@@ -13,7 +14,7 @@ import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 @Component
 class NotificationDetails(private val jdbc: JdbcTemplate) {
     /** Reads a current reservation and independently scoped account/company/employee presentation. */
-    fun reservation(id: Long): NotificationReservation? =
+    fun reservation(id: UUID): NotificationReservation? =
         jdbc
             .query(
                 """
@@ -31,7 +32,7 @@ class NotificationDetails(private val jdbc: JdbcTemplate) {
             .singleOrNull()
 
     /** Lists booked candidates for the next Warsaw calendar date, independent of the old reminder boolean. */
-    fun reminderCandidates(date: LocalDate): List<Long> =
+    fun reminderCandidates(date: LocalDate): List<UUID> =
         jdbc
             .queryForList(
                 """
@@ -39,7 +40,7 @@ class NotificationDetails(private val jdbc: JdbcTemplate) {
                 AND (start_time AT TIME ZONE 'Europe/Warsaw')::date=? ORDER BY id
                 """
                     .trimIndent(),
-                Long::class.java,
+                UUID::class.java,
                 date,
             )
             .filterNotNull()
@@ -48,7 +49,7 @@ class NotificationDetails(private val jdbc: JdbcTemplate) {
      * A creation or appointment start change after 09:00 excludes the record from this day's reminder run. Other edits
      * do not reset reminder identity or cut-off eligibility. Durable audit is authoritative after rescheduling.
      */
-    fun eligibleAtCutoff(id: Long, cutoff: Instant): Boolean =
+    fun eligibleAtCutoff(id: UUID, cutoff: Instant): Boolean =
         jdbc.queryForObject(
             """
             SELECT r.created_at<=? AND NOT EXISTS (
@@ -95,9 +96,9 @@ class NotificationDetails(private val jdbc: JdbcTemplate) {
     private fun read(rs: ResultSet): NotificationReservation {
         val start = rs.getTimestamp("start_time").toInstant()
         return NotificationReservation(
-            rs.getLong("id"),
-            rs.getLong("company_id"),
-            rs.getLong("customer_id"),
+            rs.getObject("id", UUID::class.java),
+            rs.getObject("company_id", UUID::class.java),
+            rs.getObject("customer_id", UUID::class.java),
             rs.getLong("version"),
             start,
             rs.getTimestamp("end_time").toInstant(),
@@ -114,9 +115,9 @@ class NotificationDetails(private val jdbc: JdbcTemplate) {
 
 /** Current dispatch details, combining scalar identity, scheduling and company-local presentation. */
 data class NotificationReservation(
-    val id: Long,
-    val companyId: Long,
-    val customerId: Long,
+    val id: UUID,
+    val companyId: UUID,
+    val customerId: UUID,
     val revision: Long,
     val start: Instant,
     val end: Instant,

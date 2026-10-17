@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import pl.kacosmetology.scheduler.offering.dto.OfferingCategoryRequest
+import pl.kacosmetology.scheduler.testId
 
 @ExtendWith(MockKExtension::class)
 class OfferingCategoryServiceTest {
@@ -22,9 +23,9 @@ class OfferingCategoryServiceTest {
 
     @InjectMockKs private lateinit var offeringCategoryService: OfferingCategoryService
 
-    private val companyId = 1L
-    private val categoryId = 50L
-    private val offeringId = 100L
+    private val companyId = testId(1)
+    private val categoryId = testId(50)
+    private val offeringId = testId(100)
 
     @Test
     fun `createCategory should save and return category`() {
@@ -77,7 +78,7 @@ class OfferingCategoryServiceTest {
 
     @Test
     fun `deleteCategory should throw when category belongs to different company`() {
-        val otherCompanyId = 99L
+        val otherCompanyId = testId(99)
         val category = OfferingCategory(id = categoryId, companyId = otherCompanyId, name = "Strzyżenie")
 
         every { categoryRepository.findById(categoryId) } returns Optional.of(category)
@@ -123,7 +124,7 @@ class OfferingCategoryServiceTest {
 
     @Test
     fun `assignCategory should throw when category belongs to different company`() {
-        val otherCompanyId = 99L
+        val otherCompanyId = testId(99)
         val offering =
             Offering(id = offeringId, companyId = companyId, name = "Farbowanie", durationMinutes = 60, price = 150)
         val category = OfferingCategory(id = categoryId, companyId = otherCompanyId, name = "Obca kategoria")

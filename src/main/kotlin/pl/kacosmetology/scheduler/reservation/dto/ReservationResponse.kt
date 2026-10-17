@@ -1,14 +1,15 @@
 package pl.kacosmetology.scheduler.reservation.dto
 
 import java.time.LocalDateTime
+import java.util.UUID
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 
 /** Booking confirmation and replay expose the current reservation and accepted commercial agreement. */
 data class ReservationResponse(
-    val id: Long,
-    val employeeId: Long,
-    val serviceId: Long,
+    val id: UUID,
+    val employeeId: UUID,
+    val serviceId: UUID,
     val price: Int,
     val startTime: LocalDateTime,
     val endTime: LocalDateTime,
@@ -18,7 +19,7 @@ data class ReservationResponse(
     val durationMinutes: Int = 0,
     val serviceName: String = "",
     val serviceNameSource: String = "ACCEPTED",
-    val companyId: Long = 0,
+    val companyId: UUID,
     val companyName: String = "",
     val companyAddress: String? = null,
     val employeeName: String = "",
@@ -27,9 +28,9 @@ data class ReservationResponse(
 
 /** Staff-facing DTO — includes customerId for the employee's schedule view. */
 data class EmployeeReservationResponse(
-    val id: Long,
-    val customerId: Long,
-    val serviceId: Long,
+    val id: UUID,
+    val customerId: UUID,
+    val serviceId: UUID,
     val price: Int,
     val startTime: LocalDateTime,
     val endTime: LocalDateTime,
@@ -41,12 +42,12 @@ data class EmployeeReservationResponse(
 
 /** Dashboard DTO — includes both customerId and employeeId for the owner's cross-employee view. */
 data class DashboardReservationResponse(
-    val id: Long,
-    val customerId: Long,
+    val id: UUID,
+    val customerId: UUID,
     val customerFirstName: String,
     val customerLastName: String,
-    val employeeId: Long,
-    val serviceId: Long,
+    val employeeId: UUID,
+    val serviceId: UUID,
     val price: Int,
     val startTime: LocalDateTime,
     val endTime: LocalDateTime,

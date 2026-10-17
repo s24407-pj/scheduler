@@ -112,7 +112,7 @@ S3-compatible client from `R2Config`. With no access key and secret key configur
 
 ## Database
 
-PostgreSQL, schema managed by Flyway (`src/main/resources/db/migration/`). `V1__init_schema.sql` is the consolidated pre-production baseline. Never edit an applied migration; add `V<n>__description.sql`.
+PostgreSQL 18, schema managed by Flyway (`src/main/resources/db/migration/`). `V1__init_schema.sql` is the consolidated pre-production baseline. Never edit an applied migration; add `V<n>__description.sql`.
 
 | Table | Purpose |
 | ----- | ------- |
@@ -130,8 +130,12 @@ PostgreSQL, schema managed by Flyway (`src/main/resources/db/migration/`). `V1__
 | `booking_submissions`, `booking_quotes` | Permanent account-scoped request identity and expiring commercial guarantees |
 | `notification_deliveries`, `notification_delivery_reservations` | Durable SMS attempts, provider uncertainty, retry deadlines and summary membership |
 
+Entity primary keys and resource references use native PostgreSQL `uuid`, Kotlin `UUID`, and OpenAPI `string`/`uuid`. Hibernate 7.4 generates UUIDv7 using `@UuidGenerator(style = VERSION_7)`; pre-persistence quote/OTP identifiers use the same Hibernate strategy. SQL-created records default to PostgreSQL 18 `uuidv7()`. The independent public employee `user_id` also uses UUIDv7; employment and customer realms retain their existing scope checks. Revisions, `@Version`, auth versions, counters, prices and durations remain numeric.
+
+The UUID baseline was consolidated into V1 with explicit pre-production authorization on 2026-10-17. Recreate existing development databases and clear existing Redis sessions/caches before running it. Principal serialization version 2 intentionally invalidates numeric-ID sessions.
+
 ## Strict request input
 
-Jackson rejects unknown JSON properties and fractional values for every integral property, including identifiers, PLN prices and durations. Date-time JSON/query input uses strict ISO local parsing. Failures return Problem Details (`MALFORMED_REQUEST` for JSON, `INVALID_PARAMETER` for query/path conversion).
+Jackson rejects unknown JSON properties and fractional values for every integral property, including PLN prices and durations; identifiers require UUID strings. Date-time JSON/query input uses strict ISO local parsing. Failures return Problem Details (`MALFORMED_REQUEST` for JSON, `INVALID_PARAMETER` for query/path conversion).
 
 The baseline was consolidated with explicit pre-production authorization on 2026-10-15. Existing developer databases must be recreated before using this baseline; the application never resets a database automatically. No legacy global user/profile table is part of the new schema.

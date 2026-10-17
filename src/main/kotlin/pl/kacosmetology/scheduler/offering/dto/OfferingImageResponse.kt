@@ -1,10 +1,11 @@
 package pl.kacosmetology.scheduler.offering.dto
 
+import java.util.UUID
 import pl.kacosmetology.scheduler.offering.OfferingImage
 
 /** DTO returned in API responses representing a single offering image. */
 data class OfferingImageResponse(
-    val id: Long,
+    val id: UUID,
     val imageUrl: String,
 ) {
     companion object {

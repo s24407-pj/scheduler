@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.user
 
+import java.util.UUID
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
@@ -8,7 +9,7 @@ import org.springframework.stereotype.Repository
 
 /** JPA repository for [User] entities. */
 @Repository
-interface UserRepository : JpaRepository<User, Long> {
+interface UserRepository : JpaRepository<User, UUID> {
 
     /** Finds a user by phone number. Used for SMS OTP authentication. */
     fun findByPhoneNumber(phoneNumber: String): User?

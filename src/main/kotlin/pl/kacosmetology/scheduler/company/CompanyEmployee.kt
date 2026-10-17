@@ -2,14 +2,16 @@ package pl.kacosmetology.scheduler.company
 
 import jakarta.persistence.*
 import java.time.LocalDateTime
+import java.util.UUID
+import org.hibernate.annotations.UuidGenerator
 
 /** Company-owned staff authentication account and presentation; [userId] is its public employee identifier. */
 @Entity
 @Table(name = "company_employees")
 class CompanyEmployee(
-    id: Long? = null,
-    @Column(name = "company_id", nullable = false) val companyId: Long,
-    @Column(name = "user_id", nullable = false) val userId: Long,
+    id: UUID? = null,
+    @Column(name = "company_id", nullable = false) val companyId: UUID,
+    @Column(name = "user_id", nullable = false) val userId: UUID,
     @Column(nullable = false) val role: String,
     @Column(name = "login_email") var loginEmail: String? = null,
     @Column(name = "password_hash") var passwordHash: String? = null,
@@ -26,8 +28,8 @@ class CompanyEmployee(
     val createdAt: LocalDateTime? = null,
 ) {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    var id: Long? = id
+    @UuidGenerator(style = UuidGenerator.Style.VERSION_7)
+    var id: UUID? = id
         protected set
 }
 

@@ -2,15 +2,12 @@ package pl.kacosmetology.scheduler.reservation.dto
 
 import jakarta.validation.constraints.*
 import java.time.LocalDateTime
+import java.util.UUID
 
 /** Manual booking uses regular catalog terms unless staff explicitly override price or duration. */
 data class StaffCreateReservationRequest(
-    @field:NotNull(message = "ID pracownika jest wymagane")
-    @field:Positive(message = "ID pracownika musi być dodatnie")
-    val employeeId: Long?,
-    @field:NotNull(message = "ID usługi jest wymagane")
-    @field:Positive(message = "ID usługi musi być dodatnie")
-    val serviceId: Long?,
+    @field:NotNull(message = "ID pracownika jest wymagane") val employeeId: UUID?,
+    @field:NotNull(message = "ID usługi jest wymagane") val serviceId: UUID?,
     @field:NotNull(message = "Czas rozpoczęcia jest wymagany") val startTime: LocalDateTime?,
     @field:NotBlank(message = "Telefon klienta jest wymagany")
     @field:Pattern(regexp = "^\\+?[0-9]{9,15}$", message = "Nieprawidłowy numer telefonu")

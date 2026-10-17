@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.company
 
 import jakarta.validation.Valid
+import java.util.UUID
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
@@ -23,7 +24,7 @@ class CompanyController(
 
     /** Returns public company profile for customer booking pages. No authentication required. */
     @GetMapping("/public/{companyId}")
-    fun getPublicProfile(@PathVariable companyId: Long): CompanyPublicProfileResponse =
+    fun getPublicProfile(@PathVariable companyId: UUID): CompanyPublicProfileResponse =
         companyService.getPublicProfile(companyId)
 
     /** Returns all employees (OWNER + EMPLOYEE) of the authenticated user's company. */

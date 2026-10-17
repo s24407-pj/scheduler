@@ -7,6 +7,7 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -36,6 +37,7 @@ import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.TestSessions
+import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
@@ -64,7 +66,7 @@ class ScheduleBlockIntegrationTest {
 
     private lateinit var employee: User
     private lateinit var owner: User
-    private var companyId: Long = 0
+    private var companyId: UUID = testId(0)
     private lateinit var employeeSession: Cookie
     private lateinit var ownerSession: Cookie
     private val testDate

@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.offering
 
 import jakarta.validation.Valid
+import java.util.UUID
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -24,7 +25,7 @@ class OfferingController(
 
     /** Returns all active offerings for a given company. Public — no authentication required. */
     @GetMapping("/public/company/{companyId}")
-    fun getPublicCompanyOfferings(@PathVariable companyId: Long): List<OfferingResponse> {
+    fun getPublicCompanyOfferings(@PathVariable companyId: UUID): List<OfferingResponse> {
         val offerings = offeringService.getCompanyOfferings(companyId)
         return enrichWithImages(offerings)
     }
@@ -35,8 +36,8 @@ class OfferingController(
      */
     @GetMapping("/public/company/{companyId}/employee/{employeeId}")
     fun getPublicEmployeeOfferings(
-        @PathVariable companyId: Long,
-        @PathVariable employeeId: Long,
+        @PathVariable companyId: UUID,
+        @PathVariable employeeId: UUID,
     ): List<OfferingResponse> = enrichWithImages(offeringService.getPublicEmployeeOfferings(companyId, employeeId))
 
     /**
@@ -53,7 +54,7 @@ class OfferingController(
     /** Returns a single offering by ID. Requires staff membership in the same company as the offering. */
     @GetMapping("/{id}")
     fun getOfferingById(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): OfferingResponse {
         val offering = findOfferingOrThrow(id)
@@ -79,7 +80,7 @@ class OfferingController(
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('OWNER')")
     fun updateOffering(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @Valid @RequestBody request: OfferingRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): OfferingResponse {
@@ -98,7 +99,7 @@ class OfferingController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('OWNER')")
     fun activateOffering(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
         try {
@@ -115,7 +116,7 @@ class OfferingController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasAnyRole('OWNER')")
     fun deleteOffering(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
         try {
@@ -134,7 +135,7 @@ class OfferingController(
     @PostMapping("/{id}/image", consumes = [org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE])
     @PreAuthorize("hasAnyRole('OWNER')")
     fun uploadImage(
-        @PathVariable id: Long,
+        @PathVariable id: UUID,
         @RequestParam("image") file: MultipartFile,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): OfferingResponse {
@@ -154,8 +155,8 @@ class OfferingController(
     @DeleteMapping("/{id}/image/{imageId}")
     @PreAuthorize("hasAnyRole('OWNER')")
     fun deleteImage(
-        @PathVariable id: Long,
-        @PathVariable imageId: Long,
+        @PathVariable id: UUID,
+        @PathVariable imageId: UUID,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ): OfferingResponse {
         return try {
@@ -170,10 +171,10 @@ class OfferingController(
 
     // ---- helpers ----
 
-    private fun requireCompanyId(userDetails: CustomUserDetails): Long =
+    private fun requireCompanyId(userDetails: CustomUserDetails): UUID =
         userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisania do firmy")
 
-    private fun findOfferingOrThrow(id: Long): Offering =
+    private fun findOfferingOrThrow(id: UUID): Offering =
         try {
             offeringService.getOfferingById(id)
         } catch (e: IllegalArgumentException) {

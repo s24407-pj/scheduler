@@ -2,14 +2,16 @@ package pl.kacosmetology.scheduler.user
 
 import jakarta.persistence.*
 import java.time.OffsetDateTime
+import java.util.UUID
+import org.hibernate.annotations.UuidGenerator
 
 /** Stores company-scoped business data (e.g. notes) about a customer. */
 @Entity
 @Table(name = "company_customers")
 class CompanyCustomer(
-    id: Long? = null,
-    @Column(name = "company_id", nullable = false) val companyId: Long,
-    @Column(name = "user_id", nullable = false) val userId: Long,
+    id: UUID? = null,
+    @Column(name = "company_id", nullable = false) val companyId: UUID,
+    @Column(name = "user_id", nullable = false) val userId: UUID,
     @Column(name = "first_name", nullable = false) var firstName: String = "",
     @Column(name = "last_name", nullable = false) var lastName: String = "",
     @Column(name = "contact_email") var contactEmail: String? = null,
@@ -17,7 +19,7 @@ class CompanyCustomer(
     @Column(name = "created_at", insertable = false, updatable = false) val createdAt: OffsetDateTime? = null,
 ) {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    var id: Long? = id
+    @UuidGenerator(style = UuidGenerator.Style.VERSION_7)
+    var id: UUID? = id
         protected set
 }
