@@ -33,7 +33,7 @@ docker compose up --build
 curl -sf http://localhost:8080/actuator/health
 ```
 
-Compose starts PostgreSQL 18, Redis 8, and the app with the `dev` profile (override with `SPRING_PROFILE` in `.env`). Copy `.env.example` to `.env` to change values.
+Compose starts PostgreSQL 18, Redis 8, and the app with the `prod` profile by default (`SPRING_PROFILE=dev` for local development). Copy `.env.example` to `.env` to change values.
 
 Remote debugging on port 5005, with CORS for `:5173`, `:5174`, and `:3000`:
 
@@ -97,18 +97,18 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 
 | Variable | Default | Purpose |
 | -------- | ------- | ------- |
-| `SPRING_PROFILE` | `dev` | Compose only: maps to `SPRING_PROFILES_ACTIVE` |
-| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/scheduler_db` | Set by Compose to the `db` container |
-| `DB_USERNAME`, `DB_PASSWORD` | `postgres` / `password` | Database credentials (Compose also passes them as `SPRING_DATASOURCE_USERNAME/PASSWORD`) |
-| `REDIS_HOST`, `REDIS_PORT` | `localhost` / `6379` | Redis (Compose sets `SPRING_DATA_REDIS_HOST/PORT` instead) |
+| `SPRING_PROFILE` | `prod` | Compose only: maps to `SPRING_PROFILES_ACTIVE` |
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/scheduler_db` | Compose overrides this with `jdbc:postgresql://db:5432/scheduler_db` |
+| `DB_USERNAME`, `DB_PASSWORD` | required by Compose | Database credentials; Compose passes these as `SPRING_DATASOURCE_USERNAME/PASSWORD` and initializes PostgreSQL with the same values |
+| `SPRING_DATA_REDIS_HOST`, `SPRING_DATA_REDIS_PORT` | `redis`, `6379` in Compose | Compose connects to the `redis` service; `REDIS_HOST`/`REDIS_PORT` are legacy application property aliases and are not used by Compose |
 | `SPRING_SESSION_TIMEOUT` | `24h` | Anonymous session default; authenticated customers have absolute 24h expiry and staff have 24h inactivity expiry |
 | `SPRING_SESSION_DATA_REDIS_NAMESPACE` | `scheduler:sessions` | Application-specific session namespace; share between API instances |
 | `SERVER_SERVLET_SESSION_COOKIE_SECURE` | request HTTPS detection; true in prod | Keep true in production; no cookie Domain; SameSite=Lax |
-| `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed origins |
-| `OTP_GLOBAL_DAILY_SMS_CAP` | 0 outside prod | Positive operator-configured shared SMS attempt budget required in prod, UTC calendar day; OTP issuance reserves the first attempt and definite-temporary retries reserve again. Fixed OTP rules: 5-minute lifetime, 60-second cooldown, 3 failed attempts, 3 accepted phone issuances/rolling 5 minutes, 10 issuance requests/IP/rolling 15 minutes, 10 verification requests/IP/rolling 5 minutes. |
+| `CORS_ORIGINS` | required by Compose | Comma-separated allowed origins; set to the exact dashboard origin(s) |
+| `OTP_GLOBAL_DAILY_SMS_CAP` | required by Compose | Positive operator-configured shared SMS attempt budget required in prod, UTC calendar day; OTP issuance reserves the first attempt and definite-temporary retries reserve again. Fixed OTP rules: 5-minute lifetime, 60-second cooldown, 3 failed attempts, 3 accepted phone issuances/rolling 5 minutes, 10 issuance requests/IP/rolling 15 minutes, 10 verification requests/IP/rolling 5 minutes. |
 | `TRUSTED_PROXIES` | empty | Regex of reverse-proxy IPs whose `X-Forwarded-For` is trusted for the client IP; empty trusts none |
 | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` | 10 / 1 | Staff logins per IP per window (not passed through by Compose; edit `docker-compose.yml` to override) |
-| `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | endpoint and bucket preset, keys empty | Image storage. Without keys the app starts but uploads fail. |
+| `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | required by Compose | Cloudflare R2 image storage configuration |
 | `TZ` | `Europe/Warsaw` in Compose | Container OS zone; the app sets its JVM default zone to Europe/Warsaw regardless |
 
 Profiles:
@@ -118,6 +118,37 @@ Profiles:
 
 Every request gets an ID (`RequestIdFilter`): a valid incoming `X-Request-Id` (up to 64 characters of `[A-Za-z0-9-]`) is reused, otherwise a UUID is generated. It is returned in the `X-Request-Id` response header and stored in the log MDC as `requestId`, so plain-text log lines show it in brackets and ECS logs carry it as a field.
 - `test`: set by Gradle for every test run; uses local test infrastructure.
+
+## Dokploy production deployment (Docker Compose)
+
+1. In Dokploy, create a **Compose** service and connect the Git repository `s24407-pj/scheduler`.
+2. Select `docker-compose.yml` as the Compose file. The file builds the application from the repository's Java 25 `Dockerfile`.
+3. Add the environment variables below in the Compose service's Environment section. Use real secrets in Dokploy's protected environment settings; do not commit them to `.env` or the repository. The Compose file fails configuration if required values are missing.
+4. Add the public domain in Dokploy and route it to service `app`, container port `8080`, path `/`. Do not add host port mappings for the app, PostgreSQL, or Redis. Dokploy/Traefik routes traffic to the app over the Compose network.
+5. Keep Dokploy's named volumes `postgres_data` and `redis_data` across redeployments. Removing them deletes persisted database/session data.
+
+Required Dokploy variables:
+
+```text
+SPRING_PROFILE=prod
+DB_USERNAME=scheduler
+DB_PASSWORD=<strong secret>
+CORS_ORIGINS=https://<dashboard-domain>
+R2_ENDPOINT=<Cloudflare R2 S3 endpoint>
+R2_ACCESS_KEY=<secret>
+R2_SECRET_KEY=<secret>
+R2_BUCKET_NAME=scheduler
+R2_PUBLIC_URL=<public base URL for R2 objects>
+OTP_GLOBAL_DAILY_SMS_CAP=<positive production limit>
+```
+
+`TRUSTED_PROXIES` is optional and defaults to empty (no forwarded client-IP header is trusted). Set it only to a regex matching the actual proxy peer address(es) seen by the app container. `SPRING_SESSION_TIMEOUT` and `SPRING_SESSION_DATA_REDIS_NAMESPACE` are optional and default to `24h` and `scheduler:sessions`; `TZ` is fixed to `Europe/Warsaw` in Compose.
+
+The internal service hostnames are `db:5432` for PostgreSQL and `redis:6379` for Redis. These names are configured in Compose using `SPRING_DATASOURCE_URL`, `SPRING_DATA_REDIS_HOST`, and `SPRING_DATA_REDIS_PORT`; neither dependency is published on the host. Flyway applies database migrations automatically when the application starts.
+
+After deployment, verify the app through `https://<your-domain>/actuator/health`; the production actuator health response hides component details. Dokploy's container logs should show the app starting after both dependencies pass their health checks and Flyway completing its migration check.
+
+**Production readiness note:** the repository currently provides only `ConsoleSmsSender`, which is disabled by the `prod` profile, and contains no production `SmsSender` implementation. As a result, selecting `SPRING_PROFILE=prod` will currently fail Spring dependency injection at startup. A real SMS provider integration must be added/configured before this stack can serve production OTP traffic. Do not switch to the development profile in production to work around this, because it logs OTPs and enables development behavior.
 
 ## Testing
 
