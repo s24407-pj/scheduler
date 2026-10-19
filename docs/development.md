@@ -28,26 +28,25 @@ Stop the dedicated service with Ctrl-C after verification. This changes neither 
 
 ### Full stack in containers (recommended)
 
+Copy the local example once (keep an existing `.env` if already configured):
+
 ```bash
-docker compose up --build
+cp .env.example .env
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 curl -sf http://localhost:8080/actuator/health
 ```
 
-Compose starts PostgreSQL 18, Redis 8, and the app with the `dev` profile (override with `SPRING_PROFILE` in `.env`). Copy `.env.example` to `.env` to change values.
+The base Compose file defaults to `prod` and publishes no host ports. The development override selects `dev` and binds the API (`8080`), debugger (`5005`), PostgreSQL (`5432`), and Redis (`6379`) to `127.0.0.1` only. It enables JDWP through `JAVA_TOOL_OPTIONS`, preserving the Dockerfile's Java entrypoint. `CORS_ORIGINS` remains configurable in `.env`.
 
-Remote debugging on port 5005, with CORS for `:5173`, `:5174`, and `:3000`:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
+The example supplies local database credentials and R2 placeholders so Compose interpolation succeeds; image uploads require real R2 settings. Do not use this file or the development override in production.
 
 ### App on the host
 
-Start only the databases, then run the app with the `dev` profile:
+Start only the databases using the same override so their loopback ports are available. Export `.env` for `bootRun`, because Gradle does not load it automatically (the example is shell-compatible; quote any custom shell-sensitive values):
 
 ```bash
-docker compose up -d db redis
-./gradlew bootRun --args='--spring.profiles.active=dev'
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db redis
+(set -a; . ./.env; set +a; ./gradlew bootRun --args='--spring.profiles.active=dev')
 ```
 
 Without `--spring.profiles.active=dev` no profile is active: nothing is seeded, SQL logging is off, and API docs are disabled. The app sets its own default time zone to Europe/Warsaw, so the host zone does not matter ([time handling](./time-handling.md)).
@@ -97,18 +96,19 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 
 | Variable | Default | Purpose |
 | -------- | ------- | ------- |
-| `SPRING_PROFILE` | `dev` | Compose only: maps to `SPRING_PROFILES_ACTIVE` |
-| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/scheduler_db` | Set by Compose to the `db` container |
-| `DB_USERNAME`, `DB_PASSWORD` | `postgres` / `password` | Database credentials (Compose also passes them as `SPRING_DATASOURCE_USERNAME/PASSWORD`) |
-| `REDIS_HOST`, `REDIS_PORT` | `localhost` / `6379` | Redis (Compose sets `SPRING_DATA_REDIS_HOST/PORT` instead) |
+| `SPRING_PROFILE` | `prod` | Compose only: maps to `SPRING_PROFILES_ACTIVE` |
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/scheduler_db` | Compose overrides this with `jdbc:postgresql://db:5432/scheduler_db` |
+| `DB_USERNAME`, `DB_PASSWORD` | required by Compose | Database credentials; Compose passes these as `SPRING_DATASOURCE_USERNAME/PASSWORD` and initializes PostgreSQL with the same values |
+| `SPRING_DATA_REDIS_HOST`, `SPRING_DATA_REDIS_PORT` | `redis`, `6379` in Compose | Compose connects to the `redis` service; `REDIS_HOST`/`REDIS_PORT` are legacy application property aliases and are not used by Compose |
 | `SPRING_SESSION_TIMEOUT` | `24h` | Anonymous session default; authenticated customers have absolute 24h expiry and staff have 24h inactivity expiry |
 | `SPRING_SESSION_DATA_REDIS_NAMESPACE` | `scheduler:sessions` | Application-specific session namespace; share between API instances |
 | `SERVER_SERVLET_SESSION_COOKIE_SECURE` | request HTTPS detection; true in prod | Keep true in production; no cookie Domain; SameSite=Lax |
-| `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed origins |
-| `OTP_GLOBAL_DAILY_SMS_CAP` | 0 outside prod | Positive operator-configured shared SMS attempt budget required in prod, UTC calendar day; OTP issuance reserves the first attempt and definite-temporary retries reserve again. Fixed OTP rules: 5-minute lifetime, 60-second cooldown, 3 failed attempts, 3 accepted phone issuances/rolling 5 minutes, 10 issuance requests/IP/rolling 15 minutes, 10 verification requests/IP/rolling 5 minutes. |
-| `TRUSTED_PROXIES` | empty | Regex of reverse-proxy IPs whose `X-Forwarded-For` is trusted for the client IP; empty trusts none |
+| `CORS_ORIGINS` | required by Compose | Comma-separated allowed origins; set to the exact dashboard origin(s) |
+| `OTP_GLOBAL_DAILY_SMS_CAP` | required by Compose | Positive operator-configured shared SMS attempt budget required in prod, UTC calendar day; OTP issuance reserves the first attempt and definite-temporary retries reserve again. Fixed OTP rules: 5-minute lifetime, 60-second cooldown, 3 failed attempts, 3 accepted phone issuances/rolling 5 minutes, 10 issuance requests/IP/rolling 15 minutes, 10 verification requests/IP/rolling 5 minutes. |
+| `TRUSTED_PROXIES` | empty | Regex of trusted direct proxy peers; empty trusts none. See [deployment.md](./deployment.md#client-ip-for-rate-limiting). |
+| `SERVER_TOMCAT_REMOTEIP_REMOTE_IP_HEADER` | `X-Forwarded-For` in Compose | Client-IP header accepted only from trusted peers; Cloudflare prerequisites in [deployment.md](./deployment.md#client-ip-for-rate-limiting). |
 | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` | 10 / 1 | Staff logins per IP per window (not passed through by Compose; edit `docker-compose.yml` to override) |
-| `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | endpoint and bucket preset, keys empty | Image storage. Without keys the app starts but uploads fail. |
+| `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | required by Compose | Cloudflare R2 image storage configuration |
 | `TZ` | `Europe/Warsaw` in Compose | Container OS zone; the app sets its JVM default zone to Europe/Warsaw regardless |
 
 Profiles:
@@ -118,6 +118,10 @@ Profiles:
 
 Every request gets an ID (`RequestIdFilter`): a valid incoming `X-Request-Id` (up to 64 characters of `[A-Za-z0-9-]`) is reused, otherwise a UUID is generated. It is returned in the `X-Request-Id` response header and stored in the log MDC as `requestId`, so plain-text log lines show it in brackets and ECS logs carry it as a field.
 - `test`: set by Gradle for every test run; uses local test infrastructure.
+
+## Production deployment
+
+See [deployment.md](./deployment.md) for Dokploy networking, required environment variables, proxy trust, persistence, and verification. Production startup currently requires the real `SmsSender` integration deferred to a separate PR; the missing bean is a known prerequisite.
 
 ## Testing
 

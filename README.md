@@ -20,7 +20,8 @@ Spring Boot API for a beauty and cosmetology salon scheduler. Customers book wit
 Requires Docker (or rootless Podman) with Compose.
 
 ```bash
-docker compose up --build
+cp .env.example .env
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 curl -sf http://localhost:8080/actuator/health
 ```
 
@@ -35,6 +36,8 @@ Customer OTP codes are not logged; development instructions explain how to inspe
 
 Running on the host, configuration, seed details, and testing: [docs/development.md](./docs/development.md).
 
+Production Compose defaults to `prod` and publishes no host ports. Dokploy setup and the deferred production SMS prerequisite: [docs/deployment.md](./docs/deployment.md).
+
 ## Commands
 
 | Command | Description |
@@ -42,8 +45,7 @@ Running on the host, configuration, seed details, and testing: [docs/development
 | `./gradlew test` | Run all tests (needs Docker/Podman for Testcontainers) |
 | `./gradlew build` | Build including tests |
 | `./gradlew build -x test` | Build without tests |
-| `docker compose up --build` | Run full stack |
-| `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` | Dev profile + debugger on `:5005` |
+| `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` | Local full stack + debugger on `127.0.0.1:5005` |
 
 ## Documentation
 
