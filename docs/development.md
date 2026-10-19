@@ -35,7 +35,7 @@ curl -sf http://localhost:8080/actuator/health
 
 Compose starts PostgreSQL 18, Redis 8, and the app with the `prod` profile by default (`SPRING_PROFILE=dev` for local development). Copy `.env.example` to `.env` to change values.
 
-Remote debugging on port 5005, with CORS for `:5173`, `:5174`, and `:3000`:
+Remote debugging on port 5005, with default CORS origins for localhost ports `:5173`, `:5174`, `:3000` and `http://192.168.50.50:3000`. Set `CORS_ORIGINS` in `.env` or the shell to replace this list (including the LAN origin if needed); a copied `.env.example` already sets a localhost-only list:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
