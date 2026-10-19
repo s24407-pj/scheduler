@@ -2,9 +2,37 @@
 
 Target: a VPS running [Dokploy](https://dokploy.com/) (Traefik as the reverse proxy), with DNS proxied through Cloudflare.
 
-Request path: browser → Cloudflare edge → Traefik container on `dokploy-network` → app container.
+`docker-compose.yml` is the production configuration: `prod` by default, required deployment settings, no host port mappings, and a project-scoped `backend` bridge shared explicitly by `app`, `db`, and `redis`. The app uses `db:5432` and `redis:6379`. The bridge is not an external/shared network; it permits outbound access needed for R2 and the future SMS provider.
 
-> **Pending:** none of the steps below are applied in the repo yet. `docker-compose.yml` is still the local-development setup.
+**Known deployment prerequisite:** a real production `SmsSender` will be implemented in a separate PR. Only `ConsoleSmsSender` exists and it is disabled in `prod`, so production startup currently fails with a missing `SmsSender` bean. This is expected until that integration lands. Do not add a placeholder sender, enable console SMS in production, or switch production to `dev`.
+
+## Dokploy setup and networking
+
+1. Create a **Compose** service connected to `s24407-pj/scheduler`, select the deployment branch, and use `docker-compose.yml`. It builds the Java 25 `Dockerfile`. Do not include `docker-compose.dev.yml` or copy the local `.env.example` into production.
+2. Set the required values below in Dokploy's protected **Environment** settings. They are referenced by Compose and forwarded to the appropriate containers; missing required values fail Compose interpolation.
+3. In **Domains**, route the API hostname to service `app`, container port `8080`, path `/`, with HTTPS. Use [Dokploy's native domain management](https://docs.dokploy.com/docs/core/docker-compose/domains); it generates Traefik routing labels. No manual labels or host ports are needed.
+4. On Dokploy versions with per-service network attachment settings (introduced in [v0.30.0](https://dokploy.com/blog/v0-30-0-networks-management-dns-and-vault-providers-concurrent-builds-and-env-encryption)), disable **Isolated Deployment** in Advanced. Keep all three services on the Compose `backend` network. Attach only `app` to `dokploy-network` (or a dedicated ingress network also attached to Traefik); detach `db` and `redis` from any Dokploy-added ingress/shared networks. Apply through service network settings and redeploy, rather than relying on a one-off container network change.
+5. Older Dokploy versions without those settings should also leave **Isolated Deployment** disabled: native Domains adds the ingress network to `app`, while explicit `backend` membership keeps database DNS reachable. [Isolated Deployment](https://docs.dokploy.com/docs/core/docker-compose/utilities#isolated-deployments) attaches every service and Traefik to a deployment network; it isolates the whole stack from other deployments but also makes the databases reachable from Traefik. Avoid it for this split backend/ingress setup.
+6. Use **Preview Compose** before deploying. Confirm all three services retain a common `backend` network (Dokploy may suffix its name), only `app` joins the ingress network, and routing targets `8080` on the network shared with Traefik. Check actual attachments after deployment too; UI behavior varies by Dokploy version. Do not fix missing connectivity by putting the databases on `dokploy-network`.
+
+Request path: browser → Cloudflare → Traefik → `app:8080` on ingress; app → PostgreSQL/Redis on `backend`. No service publishes a host port.
+
+Required Dokploy variables:
+
+```text
+SPRING_PROFILE=prod
+DB_USERNAME=scheduler
+DB_PASSWORD=<strong secret>
+CORS_ORIGINS=https://<dashboard-domain>
+R2_ENDPOINT=<Cloudflare R2 S3 endpoint>
+R2_ACCESS_KEY=<secret>
+R2_SECRET_KEY=<secret>
+R2_BUCKET_NAME=scheduler
+R2_PUBLIC_URL=<public base URL for R2 objects>
+OTP_GLOBAL_DAILY_SMS_CAP=<positive production limit>
+```
+
+Keep frontend and API on HTTPS subdomains of the same site. Production enables Secure, HttpOnly, host-only `SESSION` cookies with SameSite=Lax. Use explicit CORS origins and credentials, with no broad cookie Domain. Verify forwarded HTTPS detection for the CSRF cookie.
 
 ## Client IP for rate limiting
 
@@ -12,20 +40,20 @@ The app uses `request.remoteAddr` for every per-IP limit (see [architecture.md](
 
 Cloudflare sends the real client IP in `CF-Connecting-IP`. Traefik does not trust Cloudflare by default and rewrites `X-Forwarded-For` to the Cloudflare edge IP, so use `CF-Connecting-IP`:
 
-1. Find the Dokploy network subnet on the VPS:
+1. Inspect the ingress network on the VPS and identify the actual Traefik peer address seen by the app (use the selected ingress network name if different):
 
    ```bash
-   docker network inspect dokploy-network -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
+   docker network inspect dokploy-network
    ```
 
-2. Set, for example for `10.0.1.0/24`:
+2. Set a regex matching only the trusted proxy peer address(es). For example, if Traefik is `10.0.1.2`:
 
    ```bash
-   TRUSTED_PROXIES=10\.0\.1\.\d{1,3}
+   TRUSTED_PROXIES=10\.0\.1\.2
    SERVER_TOMCAT_REMOTEIP_REMOTE_IP_HEADER=CF-Connecting-IP
    ```
 
-   Tomcat then takes the client IP from `CF-Connecting-IP`, but only when the direct peer is Traefik. Spring Boot binds the second variable without code changes, but `docker-compose.yml` must list it under `environment:` (Dokploy's environment variables reach the container only when the compose file references them).
+   Tomcat then takes the client IP from `CF-Connecting-IP`, but only when the direct peer is Traefik. Compose forwards both variables. By default `TRUSTED_PROXIES` is empty (trust none) and `SERVER_TOMCAT_REMOTEIP_REMOTE_IP_HEADER` is `X-Forwarded-For`. Never use a catch-all proxy regex or trust an entire shared Docker network. Recheck the peer address after network changes or container recreation.
 
 3. **Allow only Cloudflare to reach the origin.** Anyone who can reach the VPS directly can forge `CF-Connecting-IP`. Use one of:
    - the VPS provider's firewall, allowing 80/443 only from [Cloudflare's IP ranges](https://www.cloudflare.com/ips/) (`ufw` does not work: Docker-published ports, including Traefik's, bypass it);
@@ -34,15 +62,13 @@ Cloudflare sends the real client IP in `CF-Connecting-IP`. Traefik does not trus
 
 Rejected alternative: making Traefik trust Cloudflare ranges and having Tomcat walk `X-Forwarded-For`. Tomcat matches proxies by regex, so the Cloudflare ranges would have to be maintained as regexes in two places.
 
-## Compose changes before going live
+## Persistence and verification
 
-A production compose file (for example `docker-compose.prod.yml`) should:
+Keep the Compose project identity and named volumes `postgres_data` (PostgreSQL 18, `/var/lib/postgresql`) and `redis_data` (`/data`) across redeployments. Redis uses AOF (`--appendonly yes`). Health checks and `unless-stopped` restart policies apply to both dependencies. Do not run `down -v` or enable fresh-volume replacement on production data. Back up PostgreSQL and Redis and verify restoration.
 
-- **Not publish `5432`, `6379`, or `8080`.** On a VPS, Docker-published ports bypass `ufw`. Exposed Redis lets anyone read `otp:<phone>` codes (log in as any customer) or delete every session; Postgres would be reachable with its password. Traefik reaches the app over `dokploy-network`.
-- **Set `SPRING_PROFILE=prod`.** The compose default is `dev`, which seeds the `admin123` / `employee123` accounts.
-- **Serve both frontend and API over HTTPS on the same site.** The prod profile enables Secure, HttpOnly, host-only `SESSION` cookies with SameSite=Lax. Keep explicit `CORS_ORIGINS` and credentials; no broad cookie Domain. Confirm forwarded HTTPS detection for the CSRF cookie. Unrelated frontend/API sites need a separate cookie/deployment decision; do not set SameSite=None without Secure.
-- Set `TRUSTED_PROXIES` and `SERVER_TOMCAT_REMOTEIP_REMOTE_IP_HEADER` as above, and `CORS_ORIGINS` to the real frontend origins.
-- Use strong `DB_PASSWORD`, and add a real `SmsSender`. `ConsoleSmsSender` only logs and is disabled in `prod`, so startup fails without one (see the known gap in [architecture.md](./architecture.md#notifications-and-scheduled-jobs)).
+Flyway applies migrations at application startup. After the production SMS prerequisite is resolved, verify `https://<api-domain>/actuator/health` and logs for successful Flyway validation and application startup; production health hides component details. Until then a missing `SmsSender` startup failure is expected, not a networking regression.
+
+To diagnose networking, inspect the deployed containers' network memberships and aliases. From the app's network namespace (or a temporary diagnostic container attached to the same backend network), resolve `db` and `redis`, then test TCP connections to `db:5432` and `redis:6379`. From Traefik's ingress network, check HTTP access to app port `8080` once the app is running. A successful Compose render alone does not prove Dokploy's deployed attachments or HTTP routing work.
 
 All instances must share `SPRING_SESSION_DATA_REDIS_NAMESPACE` and Redis, with indexed sessions enabled. The anonymous default is `SPRING_SESSION_TIMEOUT=24h`; authenticated customer sessions have an absolute 24-hour deadline and staff sessions have a 24-hour inactivity timeout. Keep Redis private and trusted: it holds serialized security contexts. Deploy frontend changes together with the API; existing sessions require re-login. Scheduled jobs still assume a single instance.
 

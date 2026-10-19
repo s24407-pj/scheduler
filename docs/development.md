@@ -28,26 +28,25 @@ Stop the dedicated service with Ctrl-C after verification. This changes neither 
 
 ### Full stack in containers (recommended)
 
+Copy the local example once (keep an existing `.env` if already configured):
+
 ```bash
-docker compose up --build
+cp .env.example .env
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 curl -sf http://localhost:8080/actuator/health
 ```
 
-Compose starts PostgreSQL 18, Redis 8, and the app with the `prod` profile by default (`SPRING_PROFILE=dev` for local development). Copy `.env.example` to `.env` to change values.
+The base Compose file defaults to `prod` and publishes no host ports. The development override selects `dev` and binds the API (`8080`), debugger (`5005`), PostgreSQL (`5432`), and Redis (`6379`) to `127.0.0.1` only. It enables JDWP through `JAVA_TOOL_OPTIONS`, preserving the Dockerfile's Java entrypoint. `CORS_ORIGINS` remains configurable in `.env`.
 
-Remote debugging on port 5005, with default CORS origins for localhost ports `:5173`, `:5174`, `:3000` and `http://192.168.50.50:3000`. Set `CORS_ORIGINS` in `.env` or the shell to replace this list (including the LAN origin if needed); a copied `.env.example` already sets a localhost-only list:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
+The example supplies local database credentials and R2 placeholders so Compose interpolation succeeds; image uploads require real R2 settings. Do not use this file or the development override in production.
 
 ### App on the host
 
-Start only the databases, then run the app with the `dev` profile:
+Start only the databases using the same override so their loopback ports are available. Export `.env` for `bootRun`, because Gradle does not load it automatically (the example is shell-compatible; quote any custom shell-sensitive values):
 
 ```bash
-docker compose up -d db redis
-./gradlew bootRun --args='--spring.profiles.active=dev'
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db redis
+(set -a; . ./.env; set +a; ./gradlew bootRun --args='--spring.profiles.active=dev')
 ```
 
 Without `--spring.profiles.active=dev` no profile is active: nothing is seeded, SQL logging is off, and API docs are disabled. The app sets its own default time zone to Europe/Warsaw, so the host zone does not matter ([time handling](./time-handling.md)).
@@ -106,7 +105,8 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 | `SERVER_SERVLET_SESSION_COOKIE_SECURE` | request HTTPS detection; true in prod | Keep true in production; no cookie Domain; SameSite=Lax |
 | `CORS_ORIGINS` | required by Compose | Comma-separated allowed origins; set to the exact dashboard origin(s) |
 | `OTP_GLOBAL_DAILY_SMS_CAP` | required by Compose | Positive operator-configured shared SMS attempt budget required in prod, UTC calendar day; OTP issuance reserves the first attempt and definite-temporary retries reserve again. Fixed OTP rules: 5-minute lifetime, 60-second cooldown, 3 failed attempts, 3 accepted phone issuances/rolling 5 minutes, 10 issuance requests/IP/rolling 15 minutes, 10 verification requests/IP/rolling 5 minutes. |
-| `TRUSTED_PROXIES` | empty | Regex of reverse-proxy IPs whose `X-Forwarded-For` is trusted for the client IP; empty trusts none |
+| `TRUSTED_PROXIES` | empty | Regex of trusted direct proxy peers; empty trusts none. See [deployment.md](./deployment.md#client-ip-for-rate-limiting). |
+| `SERVER_TOMCAT_REMOTEIP_REMOTE_IP_HEADER` | `X-Forwarded-For` in Compose | Client-IP header accepted only from trusted peers; Cloudflare prerequisites in [deployment.md](./deployment.md#client-ip-for-rate-limiting). |
 | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` | 10 / 1 | Staff logins per IP per window (not passed through by Compose; edit `docker-compose.yml` to override) |
 | `R2_ENDPOINT`, `R2_ACCESS_KEY`, `R2_SECRET_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | required by Compose | Cloudflare R2 image storage configuration |
 | `TZ` | `Europe/Warsaw` in Compose | Container OS zone; the app sets its JVM default zone to Europe/Warsaw regardless |
@@ -119,36 +119,9 @@ Profiles:
 Every request gets an ID (`RequestIdFilter`): a valid incoming `X-Request-Id` (up to 64 characters of `[A-Za-z0-9-]`) is reused, otherwise a UUID is generated. It is returned in the `X-Request-Id` response header and stored in the log MDC as `requestId`, so plain-text log lines show it in brackets and ECS logs carry it as a field.
 - `test`: set by Gradle for every test run; uses local test infrastructure.
 
-## Dokploy production deployment (Docker Compose)
+## Production deployment
 
-1. In Dokploy, create a **Compose** service and connect the Git repository `s24407-pj/scheduler`.
-2. Select `docker-compose.yml` as the Compose file. The file builds the application from the repository's Java 25 `Dockerfile`.
-3. Add the environment variables below in the Compose service's Environment section. Use real secrets in Dokploy's protected environment settings; do not commit them to `.env` or the repository. The Compose file fails configuration if required values are missing.
-4. Add the public domain in Dokploy and route it to service `app`, container port `8080`, path `/`. Do not add host port mappings for the app, PostgreSQL, or Redis. Dokploy/Traefik routes traffic to the app over the Compose network.
-5. Keep Dokploy's named volumes `postgres_data` and `redis_data` across redeployments. Removing them deletes persisted database/session data.
-
-Required Dokploy variables:
-
-```text
-SPRING_PROFILE=prod
-DB_USERNAME=scheduler
-DB_PASSWORD=<strong secret>
-CORS_ORIGINS=https://<dashboard-domain>
-R2_ENDPOINT=<Cloudflare R2 S3 endpoint>
-R2_ACCESS_KEY=<secret>
-R2_SECRET_KEY=<secret>
-R2_BUCKET_NAME=scheduler
-R2_PUBLIC_URL=<public base URL for R2 objects>
-OTP_GLOBAL_DAILY_SMS_CAP=<positive production limit>
-```
-
-`TRUSTED_PROXIES` is optional and defaults to empty (no forwarded client-IP header is trusted). Set it only to a regex matching the actual proxy peer address(es) seen by the app container. `SPRING_SESSION_TIMEOUT` and `SPRING_SESSION_DATA_REDIS_NAMESPACE` are optional and default to `24h` and `scheduler:sessions`; `TZ` is fixed to `Europe/Warsaw` in Compose.
-
-The internal service hostnames are `db:5432` for PostgreSQL and `redis:6379` for Redis. These names are configured in Compose using `SPRING_DATASOURCE_URL`, `SPRING_DATA_REDIS_HOST`, and `SPRING_DATA_REDIS_PORT`; neither dependency is published on the host. Flyway applies database migrations automatically when the application starts.
-
-After deployment, verify the app through `https://<your-domain>/actuator/health`; the production actuator health response hides component details. Dokploy's container logs should show the app starting after both dependencies pass their health checks and Flyway completing its migration check.
-
-**Production readiness note:** the repository currently provides only `ConsoleSmsSender`, which is disabled by the `prod` profile, and contains no production `SmsSender` implementation. As a result, selecting `SPRING_PROFILE=prod` will currently fail Spring dependency injection at startup. A real SMS provider integration must be added/configured before this stack can serve production OTP traffic. Do not switch to the development profile in production to work around this, because it logs OTPs and enables development behavior.
+See [deployment.md](./deployment.md) for Dokploy networking, required environment variables, proxy trust, persistence, and verification. Production startup currently requires the real `SmsSender` integration deferred to a separate PR; the missing bean is a known prerequisite.
 
 ## Testing
 
