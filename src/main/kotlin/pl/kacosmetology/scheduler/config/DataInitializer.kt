@@ -30,7 +30,7 @@ class DataInitializer(
 
     override fun run(vararg args: String) {
         val company =
-            companyRepository.findAll().firstOrNull() ?: companyRepository.save(Company(name = "Ka.Cosmetology"))
+            companyRepository.findByName("Ka.Cosmetology") ?: companyRepository.save(Company(name = "Ka.Cosmetology"))
         val cid = requireNotNull(company.id) { "Seeded company must have an ID" }
 
         ensureOwner(cid)
