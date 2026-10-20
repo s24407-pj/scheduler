@@ -6,13 +6,19 @@ import org.springframework.context.ApplicationEventPublisher
 import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
+import pl.kacosmetology.scheduler.auth.dto.CompleteStaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
+import pl.kacosmetology.scheduler.auth.dto.StaffEmailLoginRequest
+import pl.kacosmetology.scheduler.auth.dto.StaffLoginCompany
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginResponse
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginStatus
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
+import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
+import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.security.AccountSessionRegistry
@@ -32,9 +38,14 @@ class AuthService(
     private val loginRateLimiter: LoginRateLimiter,
     private val otpVerificationRateLimiter: OtpVerificationRateLimiter,
     private val otpRequestRateLimiter: OtpRequestRateLimiter,
+    private val selections: StaffLoginSelectionStore,
+    private val companyRepository: CompanyRepository,
+    private val credentials: StaffCredentialTransactions,
 ) {
 
     companion object {
+        /** Maximum BCrypt checks per email-first attempt; overflow uses company-scoped login. */
+        const val MAX_EMAIL_CANDIDATES = 5
         private const val INVALID_CREDENTIALS_MESSAGE = "Nieprawidłowy email lub hasło"
     }
 
@@ -94,6 +105,105 @@ class AuthService(
         }
     }
 
+    private fun staffPrincipal(account: CompanyEmployee): CustomUserDetails {
+        return CustomUserDetails(
+            account.userId,
+            requireNotNull(account.loginEmail),
+            "ROLE_${account.role}",
+            account.companyId,
+            requireNotNull(account.id),
+            account.authVersion,
+        )
+    }
+
+    /** Checks a fixed work budget outside transactions, then revalidates only matches under short row locks. */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun loginStaffEmail(
+        request: StaffEmailLoginRequest,
+        clientIp: String,
+        browserSession: () -> String,
+    ): EmailStaffAuthenticationResult {
+        if (!loginRateLimiter.checkAndIncrement(clientIp)) rateLimited("login", clientIp)
+        val email = request.email.trim().lowercase(Locale.ROOT)
+        if (!loginRateLimiter.checkEmail(email)) throw RateLimitExceededException()
+        val snapshots = credentials.snapshots(email)
+        // Capture revocation state before BCrypt, without holding any database locks.
+        val candidates = snapshots.map { snapshot ->
+            val eligible =
+                snapshot.email == email &&
+                    snapshot.enabled &&
+                    snapshot.passwordHash != null &&
+                    snapshot.role in setOf("OWNER", "EMPLOYEE")
+            val principal =
+                if (eligible)
+                    CustomUserDetails(
+                        snapshot.userId,
+                        requireNotNull(snapshot.email),
+                        "ROLE_${snapshot.role}",
+                        snapshot.companyId,
+                        snapshot.id,
+                        snapshot.authVersion,
+                    )
+                else null
+            Triple(snapshot, principal, principal?.let(accountSessions::sessionAttributes))
+        }
+        val matches = candidates.filter { candidate ->
+            val (_, principal, _) = candidate
+            passwordEncoder.matches(
+                request.password,
+                if (principal != null) requireNotNull(candidate.first.passwordHash) else dummyPasswordHash,
+            ) && principal != null
+        }
+        repeat(MAX_EMAIL_CANDIDATES - candidates.size) {
+            passwordEncoder.matches(request.password, dummyPasswordHash)
+        }
+        val verified = matches.map { (_, principal, attributes) ->
+            StaffAuthenticationResult(
+                StaffLoginResponse(StaffLoginStatus.AUTHENTICATED),
+                requireNotNull(principal),
+                requireNotNull(attributes),
+            )
+        }
+        credentials.revalidate(matches.map { it.first })
+        if (matches.any { it.third?.get(AccountSessionRegistry.GENERATION_ATTRIBUTE) != it.first.generation })
+            throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
+        verified.forEach {
+            if (!accountSessions.isAuthorized(it.principal, it.sessionAttributes::get))
+                throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
+        }
+        if (verified.isEmpty()) throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
+        if (verified.size == 1) return EmailStaffAuthenticationResult(verified.single().response, verified.single())
+        val companies = verified.map {
+            StaffLoginCompany(
+                it.principal.requireCompanyId(),
+                companyRepository.findById(it.principal.requireCompanyId()).orElseThrow().name,
+            )
+        }
+        val token = selections.issue(verified.map { VerifiedStaffAccount.from(it) }, browserSession())
+        return EmailStaffAuthenticationResult(
+            StaffLoginResponse(StaffLoginStatus.COMPANY_SELECTION_REQUIRED, token, companies),
+        )
+    }
+
+    /** Consumes the browser-bound grant before short locked validation; Redis calls run outside row locks. */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun completeStaffLogin(
+        request: CompleteStaffLoginRequest,
+        clientIp: String,
+        browserSession: String?,
+    ): StaffAuthenticationResult {
+        if (!loginRateLimiter.checkCompletion(clientIp)) rateLimited("login-completion", clientIp)
+        val grant =
+            selections.consume(request.selectionToken, browserSession)?.singleOrNull {
+                it.companyId == request.companyId
+            } ?: throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
+        val principal = credentials.revalidateSelection(grant)
+        val attributes = accountSessions.sessionAttributes(principal)
+        if (attributes[AccountSessionRegistry.GENERATION_ATTRIBUTE] != grant.generation)
+            throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
+        return StaffAuthenticationResult(StaffLoginResponse(StaffLoginStatus.AUTHENTICATED), principal, attributes)
+    }
+
     /** Authenticates one company-owned account; the row lock serializes validation with password reset/disable. */
     @Transactional
     fun loginStaff(request: StaffLoginRequest, clientIp: String): StaffAuthenticationResult {
@@ -110,15 +220,7 @@ class AuthService(
             passwordEncoder.matches(request.password, dummyPasswordHash)
             throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
         }
-        val principal =
-            CustomUserDetails(
-                account.userId,
-                requireNotNull(account.loginEmail),
-                "ROLE_${account.role}",
-                account.companyId,
-                requireNotNull(account.id),
-                account.authVersion,
-            )
+        val principal = staffPrincipal(account)
         // Capture before password verification under the credential row lock. A subsequent reset cannot validate this
         // response with a new revocation generation, even when the browser's session is saved after reset commits.
         val attributes = accountSessions.sessionAttributes(principal)
@@ -133,4 +235,10 @@ data class StaffAuthenticationResult(
     val response: StaffLoginResponse,
     val principal: CustomUserDetails,
     val sessionAttributes: Map<String, Any>,
+)
+
+/** Internal outcome; only the response is serialized. */
+data class EmailStaffAuthenticationResult(
+    val response: StaffLoginResponse,
+    val authentication: StaffAuthenticationResult? = null,
 )

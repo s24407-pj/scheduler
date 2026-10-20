@@ -20,7 +20,9 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | ------ | ---- | ------ | ----- |
 | POST | `/api/auth/request-code` | Public | Sends six-digit OTP after commit; 60s cooldown, rolling phone/IP limits and global daily cap |
 | POST | `/api/auth/verify-code` | Public | Creates phone-only customer HttpOnly session without names; atomic single-use OTP, rolling IP limit |
-| POST | `/api/auth/login-staff` | Public | `companyId`, normalized `email`, `password`; failed authentication is 401, no employment selection |
+| POST | `/api/auth/login-staff` | Public | `companyId`, normalized `email`, `password`; failed authentication is generic 401; compatibility/high-membership fallback |
+| POST | `/api/auth/login-staff-email` | Public, anonymous only | `{email,password}`; authenticate one verified account or return verified company choices plus a 120s opaque grant; generic 401, IP/email 429 |
+| POST | `/api/auth/complete-staff-login` | Public, anonymous only | `{selectionToken,companyId}`; anonymous SESSION cookie binding, atomic single use, locked version/generation revalidation; generic 401 on invalid/expired/wrong-browser grant, independent IP 429 |
 | POST | `/api/auth/staff-password` | Public, CSRF required | One-use 24h setup/recovery token, sets password without login; 204 |
 | POST | `/api/auth/logout` | Public, CSRF required | Revokes the session of the current browser; 204 |
 | GET | `/api/auth/csrf` | Public | Sets XSRF-TOKEN; returns CSRF token/header name |

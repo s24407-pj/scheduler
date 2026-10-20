@@ -55,6 +55,9 @@ class AccountSessionRegistry(
         sessions.findByPrincipalName(indexedPrincipal(accountKey, generation - 1)).keys.forEach(sessions::deleteById)
     }
 
+    /** Captures staff revocation state before reading credentials, without taking database locks. */
+    fun staffGeneration(accountId: java.util.UUID): Long = currentGeneration("staff:$accountId")
+
     private fun currentGeneration(accountKey: String): Long =
         redis.opsForValue().get(generationKey(accountKey))?.toLong() ?: 0L
 

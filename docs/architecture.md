@@ -27,9 +27,9 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 | Flow | Endpoint(s) | Authenticated session scope |
 | ---- | ----------- | --------------------------- |
 | Customer | `POST /api/auth/request-code` → `POST /api/auth/verify-code` | `ROLE_CUSTOMER`, no company or employment |
-| Staff | `POST /api/auth/login-staff` with `companyId`, `email`, `password` | Exactly one `employmentId`, its `companyId`, and `ROLE_OWNER` or `ROLE_EMPLOYEE` |
+| Staff | `POST /api/auth/login-staff-email` → optional `POST /api/auth/complete-staff-login`; company-scoped `POST /api/auth/login-staff` remains supported | Exactly one `employmentId`, its `companyId`, and `ROLE_OWNER` or `ROLE_EMPLOYEE` |
 
-All unsafe calls, including anonymous authentication endpoints, require CSRF. Staff credentials belong to one company. Email is trimmed and lowercased before lookup; there is no employment selection flow or global staff credential lookup. An already authenticated browser must log out first; login returns 409 rather than replacing its identity or company scope. See [identity and staff administration](./identity.md) and [ADR-0012](./adr/0012-separate-account-realms.md).
+All unsafe calls, including anonymous authentication endpoints, require CSRF. Staff credentials belong to one company. Email is trimmed and lowercased before lookup; email-first discovery verifies every candidate account independently before revealing company names. It never creates shared credentials. An already authenticated browser must log out first; login returns 409 rather than replacing its identity or company scope. See [identity and staff administration](./identity.md) and [ADR-0012](./adr/0012-separate-account-realms.md).
 
 After verification, `AuthService` returns only a safe identity after its transaction commits. `SessionAuthenticationService` invokes Spring's `ChangeSessionIdAuthenticationStrategy` and `CsrfAuthenticationStrategy`, creates a fresh `SecurityContext`, and explicitly saves it through the shared `HttpSessionSecurityContextRepository`. Setting the holder alone is insufficient with Security 7's explicit-save mode. The credential is Spring Session's normal `SESSION` cookie; auth JSON contains status, never a credential. `GET /api/auth/me` returns `userId`, `username`, `authorities`, `companyId`, and `employmentId`; `/api/users/me` returns customer phone identity only; `/api/staff/me` returns company-local staff presentation.
 
@@ -59,7 +59,7 @@ Security 7's `csrf.spa()` uses standard cookie tokens and SPA request handling, 
 
 ### Login hardening
 
-Staff login keeps the same error message for unknown email, SMS-only accounts and wrong passwords and runs one bcrypt comparison in each case. OTP identity is global and phone-only: normalize to `+digits` before lookup; verification requires no name and creates no company customer profile. OTP intent is durable before commit in `otp_deliveries`; classified provider delivery runs after commit, checks original Redis validity, clears terminal secrets and conservatively marks unknown in-flight sends ambiguous on restart. Failures are logged without secrets and never escape into the request.
+Staff login keeps the same error message for unknown email, disabled/passwordless accounts and wrong passwords. Company-scoped login runs one BCrypt comparison. Email-first login runs exactly five comparisons (dummy padding included) with a six-ID indexed query; overflow fails with the same generic 401 without revealing counts or partial matches. See the safe company-scoped fallback in [identity](./identity.md). OTP identity is global and phone-only: normalize to `+digits` before lookup; verification requires no name and creates no company customer profile. OTP intent is durable before commit in `otp_deliveries`; classified provider delivery runs after commit, checks original Redis validity, clears terminal secrets and conservatively marks unknown in-flight sends ambiguous on restart. Failures are logged without secrets and never escape into the request.
 
 ### Rate limiting (Redis)
 
@@ -71,7 +71,9 @@ Staff login keeps the same error message for unknown email, SMS-only accounts an
 | OTP failed attempts per code | stored with `otp:<phone>` | 3 | Fixed contract |
 | OTP verification per client IP | `rate:otp-verify:<ip>` | 10 per rolling 5 min | Fixed contract |
 | Global daily SMS cap | `otp:global-daily` | Operator-defined, positive in prod | `OTP_GLOBAL_DAILY_SMS_CAP` |
-| Staff login per client IP | `rate:login:<ip>` | 10 per 1 min | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` |
+| Email-first login per normalized email | `rate:login:email:<SHA-256(email)>` | Same allowance/window as IP; one count per attempt across all companies/IPs | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` |
+| Staff password login per client IP | `rate:login:<ip>` | 10 per 1 min | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` |
+| Staff selection completion per client IP | `rate:login:completion:<ip>` | Independent 10 per 1 min, all outcomes | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` |
 
 OTP codes contain exactly six digits and expire after five minutes. Lua scripts enforce limits using Redis server time, atomically issue replacements, preserve expiry after failures and consume a correct code only once. A replacement differs from the preceding code, invalidates it, and receives a new expiry and attempt allowance. The phone limit counts accepted issuances only; every issuance request, including cooldown denials, counts against the IP limit. IP verification requests count regardless of outcome. No browser bot challenge is required.
 

@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.auth.dto
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Pattern
@@ -44,11 +45,37 @@ data class AuthResponse(
 /** Possible outcomes of a staff login request. */
 enum class StaffLoginStatus {
     AUTHENTICATED,
+    COMPANY_SELECTION_REQUIRED,
 }
 
 /** Staff login result; the HttpOnly cookie, never the response body, carries authentication. */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 data class StaffLoginResponse(
     val status: StaffLoginStatus,
+    val selectionToken: String? = null,
+    val companies: List<StaffLoginCompany>? = null,
+)
+
+/** Email-first credentials remain independent for each company account. */
+data class StaffEmailLoginRequest(
+    @field:NotBlank(message = "Email jest wymagany")
+    @field:Size(max = 255, message = "Email jest za długi")
+    @field:Pattern(regexp = "^\\s*[^\\s@]+@[^\\s@]+\\.[^\\s@]+\\s*$", message = "Nieprawidłowy email")
+    val email: String,
+    @field:NotBlank(message = "Hasło jest wymagane")
+    @field:Size(min = 8, max = 128, message = "Hasło musi mieć od 8 do 128 znaków")
+    val password: String,
+)
+
+/** Only password-verified company names are returned to the browser. */
+data class StaffLoginCompany(val companyId: UUID, val name: String)
+
+/** A short-lived single-use capability, never a session credential. */
+data class CompleteStaffLoginRequest(
+    @field:NotBlank(message = "Wybór firmy jest wymagany")
+    @field:Pattern(regexp = "^[A-Za-z0-9_-]{43}$", message = "Nieprawidłowy wybór firmy")
+    val selectionToken: String,
+    @field:NotNull(message = "Firma jest wymagana") val companyId: UUID,
 )
 
 /** Safe identity and exact authorization scope; the credential is never included. */

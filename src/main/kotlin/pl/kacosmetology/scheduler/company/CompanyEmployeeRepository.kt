@@ -10,6 +10,18 @@ import org.springframework.stereotype.Repository
 @Repository
 interface CompanyEmployeeRepository : JpaRepository<CompanyEmployee, UUID> {
 
+    /** Bounded, indexed cross-company discovery; credentials are reloaded under a row lock. */
+    @Query("SELECT e.id FROM CompanyEmployee e WHERE e.loginEmail = :email ORDER BY e.id")
+    fun findLoginCandidates(email: String, pageable: org.springframework.data.domain.Pageable): List<UUID>
+
+    /** Scalar projection avoids retaining stale credential entities in the request persistence context. */
+    @Query(
+        """SELECT new pl.kacosmetology.scheduler.auth.StaffCredentialSnapshot(
+        e.id, e.companyId, e.userId, e.loginEmail, e.passwordHash, e.enabled, e.role, e.authVersion, 0L
+    ) FROM CompanyEmployee e WHERE e.id = :id""",
+    )
+    fun findCredentialSnapshot(id: UUID): pl.kacosmetology.scheduler.auth.StaffCredentialSnapshot?
+
     /** Finds exactly one company-owned staff login namespace. */
     fun findByCompanyIdAndLoginEmail(companyId: UUID, loginEmail: String): CompanyEmployee?
 

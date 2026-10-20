@@ -45,6 +45,12 @@ class OpenApiIntegrationTest {
             jsonPath("$.paths['/api/reservations'].post.security[0].csrfToken") { exists() }
             jsonPath("$.paths['/api/auth/verify-code'].post.security[0].sessionAuth") { doesNotExist() }
             jsonPath("$.paths['/api/auth/verify-code'].post.security[0].csrfToken") { exists() }
+            jsonPath("$.paths['/api/auth/login-staff-email'].post.security[0].sessionAuth") { doesNotExist() }
+            jsonPath("$.paths['/api/auth/login-staff-email'].post.security[0].csrfToken") { exists() }
+            jsonPath("$.paths['/api/auth/complete-staff-login'].post.security[0].sessionAuth") { doesNotExist() }
+            jsonPath("$.paths['/api/auth/complete-staff-login'].post.security[0].csrfToken") { exists() }
+            jsonPath("$.components.schemas.StaffEmailLoginRequest.properties.companyId") { doesNotExist() }
+            jsonPath("$.components.schemas.StaffLoginCompany.properties.passwordHash") { doesNotExist() }
             jsonPath("$.paths['/api/auth/staff-password'].post.security[0].sessionAuth") { doesNotExist() }
             jsonPath("$.paths['/api/auth/staff-password'].post.security[0].csrfToken") { exists() }
             jsonPath("$.paths['/api/staff/password'].post.security[0].sessionAuth") { exists() }

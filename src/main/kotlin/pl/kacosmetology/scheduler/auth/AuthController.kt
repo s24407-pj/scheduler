@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import pl.kacosmetology.scheduler.auth.dto.AuthResponse
 import pl.kacosmetology.scheduler.auth.dto.AuthenticatedSessionResponse
+import pl.kacosmetology.scheduler.auth.dto.CompleteStaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
+import pl.kacosmetology.scheduler.auth.dto.StaffEmailLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.StaffLoginResponse
 import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
@@ -65,6 +67,34 @@ class AuthController(
         val result = authService.loginStaff(request, httpRequest.remoteAddr)
         sessionAuthenticationService.authenticate(result.principal, httpRequest, httpResponse, result.sessionAttributes)
         return ResponseEntity.ok(result.response)
+    }
+
+    /** Verifies company-local credentials before revealing any company choices. */
+    @PostMapping("/login-staff-email")
+    fun loginStaffEmail(
+        @Valid @RequestBody request: StaffEmailLoginRequest,
+        httpRequest: HttpServletRequest,
+        httpResponse: HttpServletResponse,
+    ): StaffLoginResponse {
+        sessionAuthenticationService.requireAnonymous()
+        val result = authService.loginStaffEmail(request, httpRequest.remoteAddr) { httpRequest.getSession(true).id }
+        result.authentication?.let {
+            sessionAuthenticationService.authenticate(it.principal, httpRequest, httpResponse, it.sessionAttributes)
+        }
+        return result.response
+    }
+
+    /** Establishes only the selected, previously password-verified account's session. */
+    @PostMapping("/complete-staff-login")
+    fun completeStaffLogin(
+        @Valid @RequestBody request: CompleteStaffLoginRequest,
+        httpRequest: HttpServletRequest,
+        httpResponse: HttpServletResponse,
+    ): StaffLoginResponse {
+        sessionAuthenticationService.requireAnonymous()
+        val result = authService.completeStaffLogin(request, httpRequest.remoteAddr, httpRequest.getSession(false)?.id)
+        sessionAuthenticationService.authenticate(result.principal, httpRequest, httpResponse, result.sessionAttributes)
+        return result.response
     }
 
     /** Supplies a fresh SPA CSRF token, including to anonymous clients before login. */

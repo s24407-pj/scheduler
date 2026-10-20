@@ -46,6 +46,12 @@ class AuthServiceTest {
 
     @MockK private lateinit var otpRequestRateLimiter: OtpRequestRateLimiter
 
+    @MockK private lateinit var selections: StaffLoginSelectionStore
+
+    @MockK private lateinit var companyRepository: pl.kacosmetology.scheduler.company.CompanyRepository
+
+    @MockK private lateinit var credentials: StaffCredentialTransactions
+
     @InjectMockKs private lateinit var authService: AuthService
 
     private val testIp = "127.0.0.1"
@@ -161,6 +167,57 @@ class AuthServiceTest {
             accountSessions.sessionAttributes(any())
             passwordEncoder.matches("password123", "hash")
         }
+    }
+
+    @Test
+    fun `email first has a fixed bounded bcrypt budget even for missing and overflowing candidates`() {
+        every { loginRateLimiter.checkAndIncrement(testIp) } returns true
+        every { loginRateLimiter.checkEmail("staff@salon.pl") } returns true
+        every { passwordEncoder.encode(any()) } returns DUMMY_HASH
+        every { passwordEncoder.matches("password123", DUMMY_HASH) } returns false
+        repeat(2) {
+            every { credentials.snapshots("staff@salon.pl") } returns emptyList()
+            every { credentials.revalidate(emptyList()) } just Runs
+            assertThrows<org.springframework.security.authentication.BadCredentialsException> {
+                authService.loginStaffEmail(
+                    pl.kacosmetology.scheduler.auth.dto.StaffEmailLoginRequest(" STAFF@SALON.PL ", "password123"),
+                    testIp,
+                    { "browser" },
+                )
+            }
+        }
+        verify(exactly = 2 * AuthService.MAX_EMAIL_CANDIDATES) { passwordEncoder.matches("password123", DUMMY_HASH) }
+        verify(exactly = 0) { companyEmployeeRepository.findAccountForUpdate(any()) }
+        verify(exactly = 2) { loginRateLimiter.checkAndIncrement(testIp) }
+        verify(exactly = 2) { loginRateLimiter.checkEmail("staff@salon.pl") }
+    }
+
+    @Test
+    fun `one matching account uses five comparisons and locks only the password match`() {
+        val valid =
+            StaffCredentialSnapshot(testId(1), testId(2), testId(3), "staff@salon.pl", "hash", true, "EMPLOYEE", 0)
+        val disabled = valid.copy(id = testId(4), enabled = false)
+        val wrong = valid.copy(id = testId(5), passwordHash = "wrong-hash")
+        every { loginRateLimiter.checkAndIncrement(testIp) } returns true
+        every { loginRateLimiter.checkEmail("staff@salon.pl") } returns true
+        every { credentials.snapshots("staff@salon.pl") } returns listOf(valid, disabled, wrong)
+        every { credentials.revalidate(listOf(valid)) } just Runs
+        every { passwordEncoder.encode(any()) } returns DUMMY_HASH
+        every { passwordEncoder.matches("password123", any()) } answers { secondArg<String>() == "hash" }
+        every { accountSessions.sessionAttributes(any()) } returns
+            mapOf(pl.kacosmetology.scheduler.security.AccountSessionRegistry.GENERATION_ATTRIBUTE to 0L)
+        every { accountSessions.isAuthorized(any(), any()) } returns true
+        val result =
+            authService.loginStaffEmail(
+                pl.kacosmetology.scheduler.auth.dto.StaffEmailLoginRequest("staff@salon.pl", "password123"),
+                testIp,
+                { error("No selection needed") },
+            )
+        assertEquals(valid.id, result.authentication!!.principal.employmentId)
+        verify(exactly = 5) { passwordEncoder.matches("password123", any()) }
+        verify(exactly = 3) { passwordEncoder.matches("password123", DUMMY_HASH) }
+        verify(exactly = 1) { credentials.revalidate(listOf(valid)) }
+        verify(exactly = 0) { selections.issue(any(), any()) }
     }
 
     @Test

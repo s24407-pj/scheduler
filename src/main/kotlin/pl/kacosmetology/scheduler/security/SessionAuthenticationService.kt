@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.security
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.HttpStatus
+import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler
@@ -38,6 +39,8 @@ class SessionAuthenticationService(
         attributes: Map<String, Any> = accountSessions.sessionAttributes(principal),
     ) {
         requireAnonymous()
+        if (!accountSessions.isAuthorized(principal, attributes::get))
+            throw BadCredentialsException("Nieprawidłowy email lub hasło")
         val authentication = UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.authorities)
         sessionAuthenticationStrategy.onAuthentication(authentication, request, response)
         val context = SecurityContextHolder.createEmptyContext()
