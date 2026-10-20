@@ -1,7 +1,9 @@
 package pl.kacosmetology.scheduler.auth
 
 import com.ninjasquad.springmockk.MockkBean
+import com.ninjasquad.springmockk.MockkSpyBean
 import io.mockk.Runs
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.just
 import jakarta.servlet.http.Cookie
@@ -16,6 +18,7 @@ import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -37,6 +40,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.MvcResult
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.context.WebApplicationContext
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
@@ -65,7 +69,11 @@ class SessionSecurityIntegrationTest {
     @Autowired private lateinit var companies: CompanyRepository
     @Autowired private lateinit var employments: CompanyEmployeeRepository
     @Autowired private lateinit var reservations: ReservationRepository
-    @Autowired private lateinit var passwords: PasswordEncoder
+    @MockkSpyBean private lateinit var passwords: PasswordEncoder
+    @Autowired private lateinit var authService: AuthService
+    @Autowired
+    private lateinit var sessionAuthentication: pl.kacosmetology.scheduler.security.SessionAuthenticationService
+    @Autowired private lateinit var schedules: pl.kacosmetology.scheduler.workschedule.WorkScheduleService
     @Autowired private lateinit var jdbc: JdbcTemplate
     @Autowired private lateinit var context: WebApplicationContext
     @Autowired private lateinit var securityFilter: FilterChainProxy
@@ -83,6 +91,8 @@ class SessionSecurityIntegrationTest {
 
     @BeforeEach
     fun setup() {
+        clearMocks(passwords)
+        grantBrowsers.clear()
         loginTime = Instant.now()
         every { clock.instant() } returns loginTime
         every { clock.zone } returns ZoneId.of("Europe/Warsaw")
@@ -597,7 +607,7 @@ class SessionSecurityIntegrationTest {
         )
         val result = emailLogin()
         assertEquals(200, result.response.status)
-        assertNull(result.response.getCookie("SESSION"))
+        assertNotNull(result.response.getCookie("SESSION"))
         val body = mapper.readTree(result.response.contentAsString)
         assertEquals("COMPANY_SELECTION_REQUIRED", body["status"].asString())
         assertEquals(
@@ -656,12 +666,21 @@ class SessionSecurityIntegrationTest {
         assertNull(wrong.response.getCookie("SESSION"))
         assertEquals(401, completeSelection(token, owner.companyId).response.status)
         assertEquals(401, completeSelection("a".repeat(43), owner.companyId).response.status)
+        val legacy = selectionToken()
+        redis
+            .opsForValue()
+            .set(
+                "scheduler:staff-login-selection:${StaffLoginSelectionStore.hash(legacy)}",
+                "[]",
+                Duration.ofSeconds(120),
+            )
+        assertEquals(401, completeSelection(legacy, owner.companyId).response.status)
     }
 
     @Test
-    fun `concurrent selection consumes grant once across independent browsers`() {
+    fun `concurrent selection consumes grant once in the same browser`() {
         val token = selectionToken()
-        val browsers = List(2) { csrf() }
+        val browsers = List(2) { csrf(grantBrowsers.getValue(token).session) }
         val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)
         try {
@@ -800,11 +819,157 @@ class SessionSecurityIntegrationTest {
         assertEquals(204, post(refreshed, "/api/auth/logout").response.status)
     }
 
+    @Test
+    fun `revocation between committed verification and session establishment rejects authentication`() {
+        employee.enabled = false
+        employments.saveAndFlush(employee)
+        val result =
+            requireNotNull(
+                authService
+                    .loginStaffEmail(
+                        pl.kacosmetology.scheduler.auth.dto.StaffEmailLoginRequest("sessions@salon.pl", password),
+                        "127.0.0.1",
+                        { "browser" },
+                    )
+                    .authentication,
+            )
+        accountSessions.revokeAccount("staff:${owner.id}")
+        val request = org.springframework.mock.web.MockHttpServletRequest()
+        org.junit.jupiter.api.assertThrows<org.springframework.security.authentication.BadCredentialsException> {
+            sessionAuthentication.authenticate(
+                result.principal,
+                request,
+                org.springframework.mock.web.MockHttpServletResponse(),
+                result.sessionAttributes,
+            )
+        }
+        assertNull(request.getSession(false))
+    }
+
+    @Test
+    fun `selection is bound to original browser and CSRF refresh keeps its grant`() {
+        val token = selectionToken()
+        val original = csrf(grantBrowsers.getValue(token).session)
+        assertEquals(
+            200,
+            post(
+                    original,
+                    "/api/auth/complete-staff-login",
+                    mapOf("selectionToken" to token, "companyId" to owner.companyId),
+                )
+                .response
+                .status,
+        )
+        val stolen = selectionToken()
+        val response =
+            post(
+                    csrf(),
+                    "/api/auth/complete-staff-login",
+                    mapOf("selectionToken" to stolen, "companyId" to owner.companyId),
+                )
+                .response
+        assertEquals(401, response.status)
+        assertNull(response.getCookie("SESSION"))
+        assertEquals(401, completeSelection(stolen, owner.companyId).response.status)
+    }
+
+    @Test
+    fun `final password allowance can complete and completion abuse is independently bounded`() {
+        redis.opsForValue().set("rate:login:127.0.0.1", "9", Duration.ofMinutes(1))
+        val token = selectionToken()
+        assertEquals("10", redis.opsForValue().get("rate:login:127.0.0.1"))
+        assertEquals(200, completeSelection(token, owner.companyId).response.status)
+        repeat(9) { assertEquals(401, completeSelection("x".repeat(43), owner.companyId).response.status) }
+        val limited = completeSelection("x".repeat(43), owner.companyId).response
+        assertEquals(429, limited.status)
+        assertNotNull(limited.getHeader("Retry-After"))
+        assertEquals(429, emailLogin().response.status)
+    }
+
+    @Test
+    fun `BCrypt holds no transaction or employee write lock while schedule operation commits`() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val first = AtomicBoolean(true)
+        every { passwords.matches(any(), any()) } answers
+            {
+                assertFalse(TransactionSynchronizationManager.isActualTransactionActive())
+                if (first.compareAndSet(true, false)) {
+                    entered.countDown()
+                    check(release.await(15, TimeUnit.SECONDS))
+                }
+                callOriginal()
+            }
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val pending = executor.submit<MvcResult> { emailLogin() }
+            assertTrue(entered.await(10, TimeUnit.SECONDS))
+            executor
+                .submit {
+                    schedules.setSchedule(
+                        owner.companyId,
+                        owner.userId,
+                        pl.kacosmetology.scheduler.workschedule.dto.SetWeeklyScheduleRequest(emptyList()),
+                    )
+                }
+                .get(5, TimeUnit.SECONDS)
+            release.countDown()
+            assertEquals(200, pending.get(15, TimeUnit.SECONDS).response.status)
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `credential or generation changes during BCrypt reject the entire attempt`() {
+        val mutations =
+            listOf(
+                "UPDATE company_employees SET password_hash = 'changed' WHERE id = ?",
+                "UPDATE company_employees SET enabled = false WHERE id = ?",
+                "UPDATE company_employees SET role = 'EMPLOYEE' WHERE id = ?",
+                "UPDATE company_employees SET login_email = 'changed@salon.pl' WHERE id = ?",
+                "UPDATE company_employees SET auth_version = auth_version + 1 WHERE id = ?",
+            )
+        (mutations + "revoke").forEach { mutation ->
+            val first = AtomicBoolean(true)
+            every { passwords.matches(any(), any()) } answers
+                {
+                    if (first.compareAndSet(true, false)) {
+                        if (mutation == "revoke") accountSessions.revokeAccount("staff:${owner.id}")
+                        else jdbc.update(mutation, owner.id)
+                    }
+                    callOriginal()
+                }
+            val result = emailLogin().response
+            assertEquals(401, result.status, mutation)
+            assertNull(result.getCookie("SESSION"))
+            jdbc.update(
+                "UPDATE company_employees SET password_hash = ?, enabled = true, role = 'OWNER', login_email = ? WHERE id = ?",
+                owner.passwordHash,
+                staff.email,
+                owner.id,
+            )
+        }
+    }
+
     private fun emailCredentials(email: String = "sessions@salon.pl", password: String = this.password) =
         mapOf("email" to email, "password" to password)
 
-    private fun emailLogin(email: String = "sessions@salon.pl", password: String = this.password) =
-        post(csrf(), "/api/auth/login-staff-email", emailCredentials(email, password))
+    private val grantBrowsers = mutableMapOf<String, Browser>()
+
+    private fun emailLogin(email: String = "sessions@salon.pl", password: String = this.password): MvcResult {
+        val browser = csrf()
+        val result = post(browser, "/api/auth/login-staff-email", emailCredentials(email, password))
+        if (result.response.status == 200) {
+            val body = mapper.readTree(result.response.contentAsString)
+            if (body.has("selectionToken") && !body["selectionToken"].isNull) {
+                grantBrowsers[body["selectionToken"].asString()] =
+                    browser.copy(session = result.response.getCookie("SESSION") ?: browser.session)
+            }
+        }
+        return result
+    }
 
     private fun selectionToken(): String {
         val result = emailLogin()
@@ -813,7 +978,11 @@ class SessionSecurityIntegrationTest {
     }
 
     private fun completeSelection(token: String, companyId: UUID) =
-        post(csrf(), "/api/auth/complete-staff-login", mapOf("selectionToken" to token, "companyId" to companyId))
+        post(
+            grantBrowsers[token] ?: csrf(),
+            "/api/auth/complete-staff-login",
+            mapOf("selectionToken" to token, "companyId" to companyId),
+        )
 
     /** A formerly accepted signed credential and Redis entry; production no longer understands this protocol. */
     private fun legacyBearerFixture(): String {

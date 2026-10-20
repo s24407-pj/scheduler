@@ -31,6 +31,9 @@ class LoginRateLimiter(
     /** Counts one logical email-first request, using only a non-reversible digest in Redis. */
     fun checkEmail(email: String): Boolean = checkAndIncrement("email:" + StaffLoginSelectionStore.hash(email))
 
+    /** Completion has its own equally bounded allowance, so the final password attempt can still finish. */
+    fun checkCompletion(ip: String): Boolean = checkAndIncrement("completion:$ip")
+
     /**
      * Checks and increments the login attempt counter for [ip]. Returns `true` if the request is within limits, `false`
      * if exceeded. The counter resets automatically after the configured time window.

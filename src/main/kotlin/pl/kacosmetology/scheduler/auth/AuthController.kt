@@ -77,7 +77,7 @@ class AuthController(
         httpResponse: HttpServletResponse,
     ): StaffLoginResponse {
         sessionAuthenticationService.requireAnonymous()
-        val result = authService.loginStaffEmail(request, httpRequest.remoteAddr)
+        val result = authService.loginStaffEmail(request, httpRequest.remoteAddr) { httpRequest.getSession(true).id }
         result.authentication?.let {
             sessionAuthenticationService.authenticate(it.principal, httpRequest, httpResponse, it.sessionAttributes)
         }
@@ -92,7 +92,7 @@ class AuthController(
         httpResponse: HttpServletResponse,
     ): StaffLoginResponse {
         sessionAuthenticationService.requireAnonymous()
-        val result = authService.completeStaffLogin(request, httpRequest.remoteAddr)
+        val result = authService.completeStaffLogin(request, httpRequest.remoteAddr, httpRequest.getSession(false)?.id)
         sessionAuthenticationService.authenticate(result.principal, httpRequest, httpResponse, result.sessionAttributes)
         return result.response
     }

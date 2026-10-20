@@ -3,10 +3,10 @@ package pl.kacosmetology.scheduler.auth
 import java.util.Locale
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
-import org.springframework.data.domain.PageRequest
 import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.auth.dto.CompleteStaffLoginRequest
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
@@ -40,6 +40,7 @@ class AuthService(
     private val otpRequestRateLimiter: OtpRequestRateLimiter,
     private val selections: StaffLoginSelectionStore,
     private val companyRepository: CompanyRepository,
+    private val credentials: StaffCredentialTransactions,
 ) {
 
     companion object {
@@ -115,40 +116,60 @@ class AuthService(
         )
     }
 
-    /** Checks a fixed work budget and never authenticates a partial candidate set. */
-    @Transactional
-    fun loginStaffEmail(request: StaffEmailLoginRequest, clientIp: String): EmailStaffAuthenticationResult {
+    /** Checks a fixed work budget outside transactions, then revalidates only matches under short row locks. */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun loginStaffEmail(
+        request: StaffEmailLoginRequest,
+        clientIp: String,
+        browserSession: () -> String,
+    ): EmailStaffAuthenticationResult {
         if (!loginRateLimiter.checkAndIncrement(clientIp)) rateLimited("login", clientIp)
         val email = request.email.trim().lowercase(Locale.ROOT)
         if (!loginRateLimiter.checkEmail(email)) throw RateLimitExceededException()
-        val ids = companyEmployeeRepository.findLoginCandidates(email, PageRequest.of(0, MAX_EMAIL_CANDIDATES + 1))
-        val verified = mutableListOf<StaffAuthenticationResult>()
-        // Overflow follows the same public failure and work budget as all other invalid credentials.
-        repeat(MAX_EMAIL_CANDIDATES) { index ->
-            val account =
-                if (ids.size <= MAX_EMAIL_CANDIDATES)
-                    ids.getOrNull(index)?.let(companyEmployeeRepository::findAccountForUpdate)
-                else null
+        val snapshots = credentials.snapshots(email)
+        // Capture revocation state before BCrypt, without holding any database locks.
+        val candidates = snapshots.map { snapshot ->
             val eligible =
-                account != null &&
-                    account.loginEmail == email &&
-                    account.enabled &&
-                    account.passwordHash != null &&
-                    account.role in setOf("OWNER", "EMPLOYEE")
-            val principal = if (eligible) staffPrincipal(requireNotNull(account)) else null
-            val attributes = principal?.let(accountSessions::sessionAttributes)
-            val matches =
-                passwordEncoder.matches(
-                    request.password,
-                    if (eligible) requireNotNull(account.passwordHash) else dummyPasswordHash,
-                )
-            if (matches && principal != null)
-                verified +=
-                    StaffAuthenticationResult(
-                        StaffLoginResponse(StaffLoginStatus.AUTHENTICATED),
-                        principal,
-                        requireNotNull(attributes),
+                snapshot.email == email &&
+                    snapshot.enabled &&
+                    snapshot.passwordHash != null &&
+                    snapshot.role in setOf("OWNER", "EMPLOYEE")
+            val principal =
+                if (eligible)
+                    CustomUserDetails(
+                        snapshot.userId,
+                        requireNotNull(snapshot.email),
+                        "ROLE_${snapshot.role}",
+                        snapshot.companyId,
+                        snapshot.id,
+                        snapshot.authVersion,
                     )
+                else null
+            Triple(snapshot, principal, principal?.let(accountSessions::sessionAttributes))
+        }
+        val matches = candidates.filter { candidate ->
+            val (_, principal, _) = candidate
+            passwordEncoder.matches(
+                request.password,
+                if (principal != null) requireNotNull(candidate.first.passwordHash) else dummyPasswordHash,
+            ) && principal != null
+        }
+        repeat(MAX_EMAIL_CANDIDATES - candidates.size) {
+            passwordEncoder.matches(request.password, dummyPasswordHash)
+        }
+        val verified = matches.map { (_, principal, attributes) ->
+            StaffAuthenticationResult(
+                StaffLoginResponse(StaffLoginStatus.AUTHENTICATED),
+                requireNotNull(principal),
+                requireNotNull(attributes),
+            )
+        }
+        credentials.revalidate(matches.map { it.first })
+        if (matches.any { it.third?.get(AccountSessionRegistry.GENERATION_ATTRIBUTE) != it.first.generation })
+            throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
+        verified.forEach {
+            if (!accountSessions.isAuthorized(it.principal, it.sessionAttributes::get))
+                throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
         }
         if (verified.isEmpty()) throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
         if (verified.size == 1) return EmailStaffAuthenticationResult(verified.single().response, verified.single())
@@ -158,34 +179,25 @@ class AuthService(
                 companyRepository.findById(it.principal.requireCompanyId()).orElseThrow().name,
             )
         }
-        val token = selections.issue(verified.map { VerifiedStaffAccount.from(it) })
+        val token = selections.issue(verified.map { VerifiedStaffAccount.from(it) }, browserSession())
         return EmailStaffAuthenticationResult(
             StaffLoginResponse(StaffLoginStatus.COMPANY_SELECTION_REQUIRED, token, companies),
         )
     }
 
-    /** Consumes the grant before validation, then revalidates the exact locked account and original generation. */
-    @Transactional
-    fun completeStaffLogin(request: CompleteStaffLoginRequest, clientIp: String): StaffAuthenticationResult {
-        if (!loginRateLimiter.checkAndIncrement(clientIp)) rateLimited("login", clientIp)
+    /** Consumes the browser-bound grant before short locked validation; Redis calls run outside row locks. */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    fun completeStaffLogin(
+        request: CompleteStaffLoginRequest,
+        clientIp: String,
+        browserSession: String?,
+    ): StaffAuthenticationResult {
+        if (!loginRateLimiter.checkCompletion(clientIp)) rateLimited("login-completion", clientIp)
         val grant =
-            selections.consume(request.selectionToken)?.singleOrNull { it.companyId == request.companyId }
-                ?: throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
-        val account =
-            companyEmployeeRepository.findAccountForUpdate(grant.accountId)
-                ?: throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
-        if (
-            !account.enabled ||
-                account.passwordHash == null ||
-                account.companyId != grant.companyId ||
-                account.userId != grant.userId ||
-                account.role != grant.role ||
-                account.role !in setOf("OWNER", "EMPLOYEE") ||
-                account.authVersion != grant.authVersion ||
-                account.loginEmail != grant.email
-        )
-            throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
-        val principal = staffPrincipal(account)
+            selections.consume(request.selectionToken, browserSession)?.singleOrNull {
+                it.companyId == request.companyId
+            } ?: throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
+        val principal = credentials.revalidateSelection(grant)
         val attributes = accountSessions.sessionAttributes(principal)
         if (attributes[AccountSessionRegistry.GENERATION_ATTRIBUTE] != grant.generation)
             throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)

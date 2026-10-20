@@ -16,23 +16,32 @@ class StaffLoginSelectionStore(private val redis: StringRedisTemplate, private v
     private val random = SecureRandom()
 
     /** Writes only scalar verification snapshots, never passwords or hashes of passwords. */
-    fun issue(accounts: List<VerifiedStaffAccount>): String {
+    fun issue(accounts: List<VerifiedStaffAccount>, browserSession: String): String {
         while (true) {
             val bytes = ByteArray(32).also(random::nextBytes)
             val token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
             if (
                 redis
                     .opsForValue()
-                    .setIfAbsent(key(token), mapper.writeValueAsString(accounts), Duration.ofMinutes(2)) == true
+                    .setIfAbsent(
+                        key(token),
+                        mapper.writeValueAsString(BrowserSelectionGrant(hash(browserSession), accounts)),
+                        Duration.ofMinutes(2),
+                    ) == true
             )
                 return token
         }
     }
 
     /** Redis GETDEL provides single-use semantics across threads, instances and transaction rollback. */
-    fun consume(token: String): List<VerifiedStaffAccount>? {
+    fun consume(token: String, browserSession: String?): List<VerifiedStaffAccount>? {
         val value = redis.opsForValue().getAndDelete(key(token)) ?: return null
-        return mapper.readValue(value, Array<VerifiedStaffAccount>::class.java).toList()
+        val payload = mapper.readTree(value)
+        // Unbound grants issued by the previous deployment must fail with the same generic authentication error.
+        if (!payload.isObject) return null
+        val grant = mapper.treeToValue(payload, BrowserSelectionGrant::class.java)
+        if (browserSession == null || grant.browser != hash(browserSession)) return null
+        return grant.accounts
     }
 
     private fun key(token: String): String = "scheduler:staff-login-selection:${hash(token)}"
@@ -72,3 +81,6 @@ data class VerifiedStaffAccount(
             }
     }
 }
+
+/** Server-session binding is independent of CSRF refreshes and is checked after atomic consumption. */
+data class BrowserSelectionGrant(val browser: String, val accounts: List<VerifiedStaffAccount>)

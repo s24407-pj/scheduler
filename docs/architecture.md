@@ -72,7 +72,8 @@ Staff login keeps the same error message for unknown email, disabled/passwordles
 | OTP verification per client IP | `rate:otp-verify:<ip>` | 10 per rolling 5 min | Fixed contract |
 | Global daily SMS cap | `otp:global-daily` | Operator-defined, positive in prod | `OTP_GLOBAL_DAILY_SMS_CAP` |
 | Email-first login per normalized email | `rate:login:email:<SHA-256(email)>` | Same allowance/window as IP; one count per attempt across all companies/IPs | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` |
-| Staff login/selection per client IP | `rate:login:<ip>` | 10 per 1 min | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` |
+| Staff password login per client IP | `rate:login:<ip>` | 10 per 1 min | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` |
+| Staff selection completion per client IP | `rate:login:completion:<ip>` | Independent 10 per 1 min, all outcomes | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` |
 
 OTP codes contain exactly six digits and expire after five minutes. Lua scripts enforce limits using Redis server time, atomically issue replacements, preserve expiry after failures and consume a correct code only once. A replacement differs from the preceding code, invalidates it, and receives a new expiry and attempt allowance. The phone limit counts accepted issuances only; every issuance request, including cooldown denials, counts against the IP limit. IP verification requests count regardless of outcome. No browser bot challenge is required.
 
