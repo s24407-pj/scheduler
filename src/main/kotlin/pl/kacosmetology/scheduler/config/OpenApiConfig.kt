@@ -93,6 +93,8 @@ class OpenApiConfig {
                                 "/api/auth/request-code",
                                 "/api/auth/verify-code",
                                 "/api/auth/login-staff",
+                                "/api/auth/login-staff-email",
+                                "/api/auth/complete-staff-login",
                                 "/api/auth/staff-password",
                             )
                 val unsafe =

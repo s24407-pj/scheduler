@@ -46,6 +46,10 @@ class AuthServiceTest {
 
     @MockK private lateinit var otpRequestRateLimiter: OtpRequestRateLimiter
 
+    @MockK private lateinit var selections: StaffLoginSelectionStore
+
+    @MockK private lateinit var companyRepository: pl.kacosmetology.scheduler.company.CompanyRepository
+
     @InjectMockKs private lateinit var authService: AuthService
 
     private val testIp = "127.0.0.1"
@@ -161,6 +165,27 @@ class AuthServiceTest {
             accountSessions.sessionAttributes(any())
             passwordEncoder.matches("password123", "hash")
         }
+    }
+
+    @Test
+    fun `email first has a fixed bounded bcrypt budget even for missing and overflowing candidates`() {
+        every { loginRateLimiter.checkAndIncrement(testIp) } returns true
+        every { loginRateLimiter.checkEmail("staff@salon.pl") } returns true
+        every { passwordEncoder.encode(any()) } returns DUMMY_HASH
+        every { passwordEncoder.matches("password123", DUMMY_HASH) } returns false
+        listOf(emptyList(), List(AuthService.MAX_EMAIL_CANDIDATES + 1) { testId(it.toLong() + 1) }).forEach { ids ->
+            every { companyEmployeeRepository.findLoginCandidates("staff@salon.pl", any()) } returns ids
+            assertThrows<org.springframework.security.authentication.BadCredentialsException> {
+                authService.loginStaffEmail(
+                    pl.kacosmetology.scheduler.auth.dto.StaffEmailLoginRequest(" STAFF@SALON.PL ", "password123"),
+                    testIp,
+                )
+            }
+        }
+        verify(exactly = 2 * AuthService.MAX_EMAIL_CANDIDATES) { passwordEncoder.matches("password123", DUMMY_HASH) }
+        verify(exactly = 0) { companyEmployeeRepository.findAccountForUpdate(any()) }
+        verify(exactly = 2) { loginRateLimiter.checkAndIncrement(testIp) }
+        verify(exactly = 2) { loginRateLimiter.checkEmail("staff@salon.pl") }
     }
 
     @Test

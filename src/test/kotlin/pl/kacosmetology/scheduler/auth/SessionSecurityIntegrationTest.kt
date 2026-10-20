@@ -569,6 +569,252 @@ class SessionSecurityIntegrationTest {
         assertNull(bad.getHeader("Access-Control-Allow-Origin"))
     }
 
+    @Test
+    fun `email first checks each company password and authenticates only the single match`() {
+        employee.passwordHash = passwords.encode("differentPassword1")
+        employments.saveAndFlush(employee)
+        val result = emailLogin()
+        assertEquals(200, result.response.status)
+        assertEquals("AUTHENTICATED", mapper.readTree(result.response.contentAsString)["status"].asString())
+        val browser = csrf(requireNotNull(result.response.getCookie("SESSION")))
+        val identity = me(browser)
+        assertEquals(owner.companyId.toString(), identity["companyId"].asString())
+        assertEquals(owner.id.toString(), identity["employmentId"].asString())
+        assertEquals("ROLE_OWNER", identity["authorities"][0].asString())
+    }
+
+    @Test
+    fun `selection lists only password verified companies and establishes exact employee scope`() {
+        val excluded = companies.save(Company(name = "Unverified"))
+        employments.saveAndFlush(
+            CompanyEmployee(
+                companyId = excluded.id!!,
+                userId = UUID.randomUUID(),
+                role = "EMPLOYEE",
+                loginEmail = staff.email,
+                passwordHash = passwords.encode("differentPassword1"),
+            ),
+        )
+        val result = emailLogin()
+        assertEquals(200, result.response.status)
+        assertNull(result.response.getCookie("SESSION"))
+        val body = mapper.readTree(result.response.contentAsString)
+        assertEquals("COMPANY_SELECTION_REQUIRED", body["status"].asString())
+        assertEquals(
+            setOf(owner.companyId.toString(), employee.companyId.toString()),
+            (0 until body["companies"].size()).map { body["companies"][it]["companyId"].asString() }.toSet(),
+        )
+        assertEquals(
+            setOf("Alpha", "Beta"),
+            (0 until body["companies"].size()).map { body["companies"][it]["name"].asString() }.toSet(),
+        )
+        assertFalse(result.response.contentAsString.contains("authVersion"))
+        assertFalse(result.response.contentAsString.contains(owner.id.toString()))
+        val token = body["selectionToken"].asString()
+        val key = "scheduler:staff-login-selection:${StaffLoginSelectionStore.hash(token)}"
+        assertTrue(redis.getExpire(key) in 1..120)
+        val grant = requireNotNull(redis.opsForValue().get(key))
+        assertFalse(grant.contains(password))
+        assertFalse(grant.contains(requireNotNull(owner.passwordHash)))
+        val selected = completeSelection(token, employee.companyId)
+        assertEquals(200, selected.response.status)
+        val browser = csrf(requireNotNull(selected.response.getCookie("SESSION")))
+        val identity = me(browser)
+        assertEquals(employee.companyId.toString(), identity["companyId"].asString())
+        assertEquals(employee.id.toString(), identity["employmentId"].asString())
+        assertEquals("ROLE_EMPLOYEE", identity["authorities"][0].asString())
+        assertEquals(401, completeSelection(token, owner.companyId).response.status)
+        assertNull(redis.opsForValue().get(key))
+    }
+
+    @Test
+    fun `unknown email wrong password disabled and passwordless accounts have identical public errors`() {
+        val wrong = emailLogin(password = "incorrectPassword").response
+        val unknown = emailLogin(email = "nobody@salon.pl").response
+        employee.enabled = false
+        owner.passwordHash = null
+        employments.saveAllAndFlush(listOf(employee, owner))
+        val disabled = emailLogin().response
+        listOf(wrong, unknown, disabled).forEach {
+            assertEquals(401, it.status)
+            assertNull(it.getCookie("SESSION"))
+            val body = mapper.readTree(it.contentAsString)
+            assertEquals("INVALID_CREDENTIALS", body["code"].asString())
+            assertEquals("Nieprawidłowe dane logowania", body["detail"].asString())
+            assertFalse(body.has("companies"))
+        }
+    }
+
+    @Test
+    fun `expired invalid and mismatched selections never authenticate and invalid choice burns token`() {
+        var token = selectionToken()
+        redis.expire("scheduler:staff-login-selection:${StaffLoginSelectionStore.hash(token)}", Duration.ZERO)
+        assertEquals(401, completeSelection(token, owner.companyId).response.status)
+        token = selectionToken()
+        val wrong = completeSelection(token, UUID.randomUUID())
+        assertEquals(401, wrong.response.status)
+        assertNull(wrong.response.getCookie("SESSION"))
+        assertEquals(401, completeSelection(token, owner.companyId).response.status)
+        assertEquals(401, completeSelection("a".repeat(43), owner.companyId).response.status)
+    }
+
+    @Test
+    fun `concurrent selection consumes grant once across independent browsers`() {
+        val token = selectionToken()
+        val browsers = List(2) { csrf() }
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val futures = browsers.map { browser ->
+                executor.submit<Int> {
+                    start.await()
+                    post(
+                            browser,
+                            "/api/auth/complete-staff-login",
+                            mapOf("selectionToken" to token, "companyId" to owner.companyId),
+                        )
+                        .response
+                        .status
+                }
+            }
+            start.countDown()
+            assertEquals(listOf(200, 401), futures.map { it.get(10, TimeUnit.SECONDS) }.sorted())
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `password reset disable role or generation change invalidates a pending grant`() {
+        val mutations =
+            listOf(
+                "UPDATE company_employees SET auth_version = auth_version + 1 WHERE id = ?",
+                "UPDATE company_employees SET enabled = false WHERE id = ?",
+                "UPDATE company_employees SET role = 'EMPLOYEE' WHERE id = ?",
+            )
+        mutations.forEach { sql ->
+            val token = selectionToken()
+            jdbc.update(sql, owner.id)
+            val result = completeSelection(token, owner.companyId)
+            assertEquals(401, result.response.status)
+            assertNull(result.response.getCookie("SESSION"))
+            jdbc.update("UPDATE company_employees SET enabled = true, role = 'OWNER' WHERE id = ?", owner.id)
+        }
+        val token = selectionToken()
+        accountSessions.revokeAccount("staff:${owner.id}")
+        assertEquals(401, completeSelection(token, owner.companyId).response.status)
+    }
+
+    @Test
+    fun `email limiter is normalized shared across IPs and counted once per logical attempt`() {
+        repeat(10) { index ->
+            val browser = csrf()
+            val result =
+                mvc.perform(
+                        post("/api/auth/login-staff-email")
+                            .cookie(browser.csrf)
+                            .header("X-XSRF-TOKEN", browser.token)
+                            .with {
+                                it.remoteAddr = "192.0.2.$index"
+                                it
+                            }
+                            .contentType("application/json")
+                            .content(
+                                mapper.writeValueAsString(
+                                    mapOf("email" to "  SESSIONS@SALON.PL  ", "password" to "incorrectPassword"),
+                                ),
+                            ),
+                    )
+                    .andReturn()
+            assertEquals(401, result.response.status)
+        }
+        assertEquals(
+            "10",
+            redis.opsForValue().get("rate:login:email:${StaffLoginSelectionStore.hash("sessions@salon.pl")}"),
+        )
+        val limited = emailLogin().response
+        assertEquals(429, limited.status)
+        assertNotNull(limited.getHeader("Retry-After"))
+    }
+
+    @Test
+    fun `candidate overflow fails generically while scoped fallback remains available`() {
+        repeat(AuthService.MAX_EMAIL_CANDIDATES - 1) { index ->
+            val company = companies.save(Company(name = "Extra $index"))
+            employments.saveAndFlush(
+                CompanyEmployee(
+                    companyId = company.id!!,
+                    userId = UUID.randomUUID(),
+                    role = "EMPLOYEE",
+                    loginEmail = staff.email,
+                    passwordHash = owner.passwordHash,
+                ),
+            )
+        }
+        val failure = emailLogin().response
+        assertEquals(401, failure.status)
+        assertFalse(mapper.readTree(failure.contentAsString).has("companies"))
+        assertEquals(owner.companyId.toString(), me(login(owner.id!!))["companyId"].asString())
+    }
+
+    @Test
+    fun `new endpoints require CSRF reject authenticated browsers and rotate anonymous session`() {
+        listOf("/api/auth/login-staff-email", "/api/auth/complete-staff-login").forEach { path ->
+            assertEquals(
+                403,
+                mvc.perform(post(path).contentType("application/json").content("{}")).andReturn().response.status,
+            )
+        }
+        val authenticated = login(owner.id!!)
+        assertEquals(409, post(authenticated, "/api/auth/login-staff-email", emailCredentials()).response.status)
+        assertEquals(
+            409,
+            post(
+                    authenticated,
+                    "/api/auth/complete-staff-login",
+                    mapOf("selectionToken" to "a".repeat(43), "companyId" to employee.companyId),
+                )
+                .response
+                .status,
+        )
+        val anonymous = sessions.createSession().also { sessions.save(it) }
+        val oldCookie = Cookie("SESSION", Base64.getEncoder().encodeToString(anonymous.id.toByteArray()))
+        val prelogin = csrf(oldCookie)
+        val grant = post(prelogin, "/api/auth/login-staff-email", emailCredentials())
+        assertEquals(200, grant.response.status)
+        assertEquals(401, mvc.perform(get("/api/auth/me").cookie(oldCookie)).andReturn().response.status)
+        val token = mapper.readTree(grant.response.contentAsString)["selectionToken"].asString()
+        val result =
+            post(
+                prelogin,
+                "/api/auth/complete-staff-login",
+                mapOf("selectionToken" to token, "companyId" to owner.companyId),
+            )
+        assertEquals(200, result.response.status)
+        val newCookie = requireNotNull(result.response.getCookie("SESSION"))
+        assertNotEquals(oldCookie.value, newCookie.value)
+        assertNull(sessions.findById(anonymous.id))
+        assertEquals(0, result.response.getCookie("XSRF-TOKEN")!!.maxAge)
+        val refreshed = csrf(newCookie)
+        assertNotEquals(prelogin.token, refreshed.token)
+        assertEquals(204, post(refreshed, "/api/auth/logout").response.status)
+    }
+
+    private fun emailCredentials(email: String = "sessions@salon.pl", password: String = this.password) =
+        mapOf("email" to email, "password" to password)
+
+    private fun emailLogin(email: String = "sessions@salon.pl", password: String = this.password) =
+        post(csrf(), "/api/auth/login-staff-email", emailCredentials(email, password))
+
+    private fun selectionToken(): String {
+        val result = emailLogin()
+        assertEquals(200, result.response.status)
+        return mapper.readTree(result.response.contentAsString)["selectionToken"].asString()
+    }
+
+    private fun completeSelection(token: String, companyId: UUID) =
+        post(csrf(), "/api/auth/complete-staff-login", mapOf("selectionToken" to token, "companyId" to companyId))
+
     /** A formerly accepted signed credential and Redis entry; production no longer understands this protocol. */
     private fun legacyBearerFixture(): String {
         val sessionId = java.util.UUID.randomUUID().toString()

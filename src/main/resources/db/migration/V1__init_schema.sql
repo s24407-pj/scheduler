@@ -558,3 +558,6 @@ CREATE TABLE public.otp_deliveries (
 );
 CREATE INDEX otp_deliveries_due ON public.otp_deliveries(next_attempt_at)
     WHERE state IN ('PENDING','TEMPORARY_FAILURE');
+
+-- Bounded email-first staff discovery; company-local uniqueness remains unchanged.
+CREATE INDEX staff_login_email_lookup ON public.company_employees (login_email, id);

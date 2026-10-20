@@ -48,3 +48,5 @@ Every error is RFC 9457 Problem Details (`application/problem+json`) with stable
 Booking keys remain bound after failed input/business validation. `IDEMPOTENCY_CONFLICT` means a changed payload; `IDEMPOTENCY_IN_PROGRESS` means another execution held the key beyond five seconds. `CONCURRENT_MODIFICATION` identifies a stale revision. A replayed lifecycle command after reversal conflicts with `INVALID_STATUS_TRANSITION`.
 
 Foreign staff/customer/company resources return the same opaque missing error as nonexistent ones. A completed visit may be cancelled by staff with a private reason; elapsed or corrected outcomes follow the current [reservation contract](../reservations.md).
+
+Email-first credentials, overflow beyond five candidates, invalid/expired/reused selection grants and unauthorized selections share 401 `INVALID_CREDENTIALS` with `Nieprawidłowe dane logowania`. No membership information is included. Login while authenticated returns 409; missing CSRF returns 403; IP/email allowances return 429 with Retry-After.
