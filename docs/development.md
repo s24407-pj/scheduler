@@ -154,3 +154,23 @@ The initial whole-repo reformat is listed in `.git-blame-ignore-revs`. GitHub sk
 ```bash
 git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
+
+## Continuous integration
+
+GitHub Actions runs `./gradlew build --no-daemon --console=plain --stacktrace`.
+The Gradle `check` lifecycle already includes `spotlessCheck`, so formatting and tests
+are checked in one invocation. The wrapper download has a SHA-256 checksum, a
+30-second network timeout and three retries. `setup-gradle` also validates the wrapper
+JAR before execution.
+
+CI uses Ubuntu 24.04, Temurin 25.0.4.1+1, commit-pinned actions, UTC, read-only repository
+permissions and a 20-minute job timeout. Only main/develop runs may write the Gradle
+cache. Dependabot maintains action pins; review JDK and wrapper updates explicitly.
+The hosted runner image and Testcontainers image tags still receive upstream updates.
+A newer run cancels an obsolete run for the same event and PR/branch; workflow dispatch
+supports manual runs.
+
+The `backend-test-reports` artifact contains the Gradle console log, HTML reports,
+JUnit XML and generated OpenAPI document, including on failures, for seven days.
+Docker availability is checked before building, and failed jobs print container state.
+The required check name remains `Build & Test`.
