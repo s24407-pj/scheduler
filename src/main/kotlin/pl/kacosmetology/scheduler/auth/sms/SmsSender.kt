@@ -34,5 +34,6 @@ interface SmsSender {
 enum class SmsDeliveryResult {
     ACCEPTED,
     DEFINITE_TEMPORARY_FAILURE,
+    PERMANENT_REJECTION,
     AMBIGUOUS,
 }

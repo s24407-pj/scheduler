@@ -177,6 +177,7 @@ class NotificationService(
             when (result) {
                 SmsDeliveryResult.ACCEPTED -> DeliveryState.ACCEPTED
                 SmsDeliveryResult.AMBIGUOUS -> DeliveryState.AMBIGUOUS
+                SmsDeliveryResult.PERMANENT_REJECTION -> DeliveryState.DISCARDED
                 SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE -> {
                     val ongoing =
                         current.kind != "REMINDER" &&

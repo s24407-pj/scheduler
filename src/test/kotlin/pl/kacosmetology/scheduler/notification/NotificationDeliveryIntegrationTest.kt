@@ -179,6 +179,17 @@ class NotificationDeliveryIntegrationTest {
     }
 
     @Test
+    fun `permanent provider rejection discards notification without retry`() {
+        val id = booking(nine.plusSeconds(3600))
+        every { sender.deliverMessage(any(), any()) } returns SmsDeliveryResult.PERMANENT_REJECTION
+        changed(id)
+        assertEquals("DISCARDED", state())
+        clock.set(nine.plusSeconds(31))
+        service.dispatchDue()
+        verify(exactly = 1) { sender.deliverMessage(any(), any()) }
+    }
+
+    @Test
     fun `duplicate application event preserves original pending delivery without additional side effects`() {
         val id = booking(nine.plusSeconds(3600))
         every { sender.deliverMessage(any(), any()) } returnsMany

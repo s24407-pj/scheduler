@@ -177,6 +177,17 @@ class OtpDeliveryIntegrationTest {
     }
 
     @Test
+    fun `permanent provider rejection discards OTP and scrubs code without retry`() {
+        provider.outcome = SmsDeliveryResult.PERMANENT_REJECTION
+        auth.requestCode(RequestCodeRequest(phone), "ip")
+        assertEquals("DISCARDED", state())
+        assertScrubbed()
+        clock.set(now.plusSeconds(31))
+        deliveries.dispatchDue()
+        assertEquals(1, provider.calls.get())
+    }
+
+    @Test
     fun `restart turns unknown in flight send ambiguous but preserves live pending delivery`() {
         queue(phone)
         jdbc.update("UPDATE otp_deliveries SET state='SENDING',attempts=1")

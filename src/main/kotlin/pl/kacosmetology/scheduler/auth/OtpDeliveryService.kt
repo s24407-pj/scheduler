@@ -118,6 +118,7 @@ class OtpDeliveryService(
                         when (result) {
                             SmsDeliveryResult.ACCEPTED -> "ACCEPTED"
                             SmsDeliveryResult.AMBIGUOUS -> "AMBIGUOUS"
+                            SmsDeliveryResult.PERMANENT_REJECTION -> "DISCARDED"
                             SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE ->
                                 if (
                                     retry.isBefore(row.expiresAt) &&

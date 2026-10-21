@@ -8,6 +8,7 @@ Customer booking has page/API confirmation only: no confirmation SMS or email. A
 | --- | --- | --- |
 | `ACCEPTED` | `ACCEPTED` | Never |
 | `DEFINITE_TEMPORARY_FAILURE` | `TEMPORARY_FAILURE`, or `DISCARDED` at the deadline | Every 30 seconds while eligible |
+| `PERMANENT_REJECTION` | `DISCARDED` | Never |
 | `AMBIGUOUS` or unclassified exception | `AMBIGUOUS` | Never |
 
 Other durable states are `PENDING`, `PAUSED` and `DISCARDED`. On restart, an old `SENDING` row becomes `AMBIGUOUS`: the provider may have accepted it even when the process failed before recording the response. This may miss an SMS if the crash happened before the provider call. It avoids blindly repeating unknown sends and makes no exactly-once guarantee. A legacy adapter's successful `sendMessage` implies acceptance; modern adapters should override `deliverMessage` to classify definite temporary failure accurately.
@@ -36,4 +37,4 @@ An accepted reminder discards obsolete pending commercial confirmations for the 
 
 V1 runs one backend instance. `scheduler.jobs.enabled=false` disables automatic scheduler/startup entrypoints in tests; tests call dispatcher/recovery methods explicitly. Production defaults to enabled. The shared Redis `otp:global-daily` UTC-day send reservation budget includes the pre-reserved first OTP attempt, additional OTP retry attempts and notification provider attempts. Production requires positive `OTP_GLOBAL_DAILY_SMS_CAP`. Attempts and failed/ambiguous or rolled-back reservations do not refund the conservative budget.
 
-`ConsoleSmsSender` is a development adapter only. Production still requires an operator-configured real provider adapter. Delivery state persists in `notification_deliveries` and summary membership in `notification_delivery_reservations`; the old reservation `reminder_sent` column is not authoritative.
+`ConsoleSmsSender` is a development adapter only. Production uses Twilio's Messages API with a configured Messaging Service and API key. A valid message creation response means provider acceptance, not handset delivery. HTTP 429 is a definite temporary rejection; other explicit 4xx responses are permanent rejections. Timeouts, transport failures, 5xx responses and malformed creation responses are ambiguous and never retried automatically. The adapter has bounded HTTP timeouts, makes one request per attempt and does not log credentials, codes, messages or provider response bodies. Delivery state persists in `notification_deliveries` and summary membership in `notification_delivery_reservations`; the old reservation `reminder_sent` column is not authoritative.

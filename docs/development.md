@@ -105,6 +105,7 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 | `SERVER_SERVLET_SESSION_COOKIE_SECURE` | request HTTPS detection; true in prod | Keep true in production; no cookie Domain; SameSite=Lax |
 | `CORS_ORIGINS` | required by Compose | Comma-separated allowed origins; set to the exact dashboard origin(s) |
 | `OTP_GLOBAL_DAILY_SMS_CAP` | required by Compose | Positive operator-configured shared SMS attempt budget required in prod, UTC calendar day; OTP issuance reserves the first attempt and definite-temporary retries reserve again. Fixed OTP rules: 5-minute lifetime, 60-second cooldown, 3 failed attempts, 3 accepted phone issuances/rolling 5 minutes, 10 issuance requests/IP/rolling 15 minutes, 10 verification requests/IP/rolling 5 minutes. |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_MESSAGING_SERVICE_SID` | required by Compose | Production Twilio Messages API credentials and Messaging Service. Local `.env.example` uses inert placeholders; the `dev` profile keeps the console adapter. See [deployment.md](./deployment.md). |
 | `TRUSTED_PROXIES` | empty | Regex of trusted direct proxy peers; empty trusts none. See [deployment.md](./deployment.md#client-ip-for-rate-limiting). |
 | `SERVER_TOMCAT_REMOTEIP_REMOTE_IP_HEADER` | `X-Forwarded-For` in Compose | Client-IP header accepted only from trusted peers; Cloudflare prerequisites in [deployment.md](./deployment.md#client-ip-for-rate-limiting). |
 | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` | 10 / 1 | Staff logins per IP per window (not passed through by Compose; edit `docker-compose.yml` to override) |
@@ -114,7 +115,7 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 Profiles:
 
 - `dev` (`application-dev.yaml`): SQL logging (`org.hibernate.SQL` at DEBUG), DEBUG for the app and Spring Security, extra actuator endpoints, seed data, Swagger UI.
-- `prod` (`application-prod.yaml`): INFO/WARN logging as ECS JSON on the console, no SQL logging. `ConsoleSmsSender` is disabled, so a real `SmsSender` is required.
+- `prod` (`application-prod.yaml`): INFO/WARN logging as ECS JSON on the console, no SQL logging. `ConsoleSmsSender` is disabled; Twilio settings are required.
 
 Every request gets an ID (`RequestIdFilter`): a valid incoming `X-Request-Id` (up to 64 characters of `[A-Za-z0-9-]`) is reused, otherwise a UUID is generated. It is returned in the `X-Request-Id` response header and stored in the log MDC as `requestId`, so plain-text log lines show it in brackets and ECS logs carry it as a field.
 - `test`: set by Gradle for every test run; uses local test infrastructure.

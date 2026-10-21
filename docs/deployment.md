@@ -2,9 +2,7 @@
 
 Target: a VPS running [Dokploy](https://dokploy.com/) (Traefik as the reverse proxy), with DNS proxied through Cloudflare.
 
-`docker-compose.yml` is the production configuration: `prod` by default, required deployment settings, no host port mappings, and a project-scoped `backend` bridge shared explicitly by `app`, `db`, and `redis`. The app uses `db:5432` and `redis:6379`. The bridge is not an external/shared network; it permits outbound access needed for R2 and the future SMS provider.
-
-**Known deployment prerequisite:** a real production `SmsSender` will be implemented in a separate PR. Only `ConsoleSmsSender` exists and it is disabled in `prod`, so production startup currently fails with a missing `SmsSender` bean. This is expected until that integration lands. Do not add a placeholder sender, enable console SMS in production, or switch production to `dev`.
+`docker-compose.yml` is the production configuration: `prod` by default, required deployment settings, no host port mappings, and a project-scoped `backend` bridge shared explicitly by `app`, `db`, and `redis`. The app uses `db:5432` and `redis:6379`. The bridge is not an external/shared network; it permits outbound access needed for R2 and Twilio.
 
 ## Dokploy setup and networking
 
@@ -30,7 +28,13 @@ R2_SECRET_KEY=<secret>
 R2_BUCKET_NAME=scheduler
 R2_PUBLIC_URL=<public base URL for R2 objects>
 OTP_GLOBAL_DAILY_SMS_CAP=<positive production limit>
+TWILIO_ACCOUNT_SID=<AC... account SID>
+TWILIO_API_KEY_SID=<SK... API key SID>
+TWILIO_API_KEY_SECRET=<API key secret>
+TWILIO_MESSAGING_SERVICE_SID=<MG... Messaging Service SID>
 ```
+
+Create a Twilio Messaging Service with an SMS sender in its sender pool. Create an API key for the same account, then supply its SID and secret with the account and Messaging Service SIDs. The app uses API key HTTP Basic authentication and the Messaging Service chooses the sender; no `From` number is configured. Keep the secret in Dokploy's protected environment settings.
 
 Keep frontend and API on HTTPS subdomains of the same site. Production enables Secure, HttpOnly, host-only `SESSION` cookies with SameSite=Lax. Use explicit CORS origins and credentials, with no broad cookie Domain. Verify forwarded HTTPS detection for the CSRF cookie.
 
@@ -66,7 +70,7 @@ Rejected alternative: making Traefik trust Cloudflare ranges and having Tomcat w
 
 Keep the Compose project identity and named volumes `postgres_data` (PostgreSQL 18, `/var/lib/postgresql`) and `redis_data` (`/data`) across redeployments. Redis uses AOF (`--appendonly yes`). Health checks and `unless-stopped` restart policies apply to both dependencies. Do not run `down -v` or enable fresh-volume replacement on production data. Back up PostgreSQL and Redis and verify restoration.
 
-Flyway applies migrations at application startup. After the production SMS prerequisite is resolved, verify `https://<api-domain>/actuator/health` and logs for successful Flyway validation and application startup; production health hides component details. Until then a missing `SmsSender` startup failure is expected, not a networking regression.
+Flyway applies migrations at application startup. Verify `https://<api-domain>/actuator/health` and logs for successful Flyway validation and application startup; production health hides component details. Missing Twilio settings fail startup.
 
 To diagnose networking, inspect the deployed containers' network memberships and aliases. From the app's network namespace (or a temporary diagnostic container attached to the same backend network), resolve `db` and `redis`, then test TCP connections to `db:5432` and `redis:6379`. From Traefik's ingress network, check HTTP access to app port `8080` once the app is running. A successful Compose render alone does not prove Dokploy's deployed attachments or HTTP routing work.
 

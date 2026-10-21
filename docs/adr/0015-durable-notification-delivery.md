@@ -6,7 +6,7 @@
 
 Store SMS intent before commit in its originating transaction, then deliver after commit. OTP intent uses a separate phone-only outbox without creating an unverified account/profile; it retries only a still-current Redis code within its original lifetime and scrubs plaintext on terminal/expired state. Customer booking sends no confirmation SMS/email. Actual staff changes opt in explicitly, default off; actual edits opting out invalidate obsolete pending messages. Blocking sends one mandatory dynamically filtered cancellation summary.
 
-Persist `PENDING`, `SENDING`, `ACCEPTED`, `TEMPORARY_FAILURE`, `AMBIGUOUS`, `PAUSED` or `DISCARDED`, attempt count, scheduling/deadline data, reservation revision/date and reminder run UUID. Commit `SENDING` before invoking the provider outside the transaction. On restart convert uncompleted `SENDING` to `AMBIGUOUS`; never blindly retry it. Categorize provider results as accepted, definite temporary rejection, or ambiguous. Unknown exceptions are ambiguous.
+Persist `PENDING`, `SENDING`, `ACCEPTED`, `TEMPORARY_FAILURE`, `AMBIGUOUS`, `PAUSED` or `DISCARDED`, attempt count, scheduling/deadline data, reservation revision/date and reminder run UUID. Commit `SENDING` before invoking the provider outside the transaction. On restart convert uncompleted `SENDING` to `AMBIGUOUS`; never blindly retry it. Categorize provider results as accepted, definite temporary rejection, permanent rejection, or ambiguous. A permanent rejection is discarded without retry. Unknown exceptions are ambiguous.
 
 A sent boolean cannot provide crash-safe at-most-once or exactly-once delivery. A crash between claim and provider call may miss delivery; a crash after provider acceptance may leave an ambiguous outcome. These are accepted v1 risks. No claim of exactly-once acceptance is made.
 
@@ -16,4 +16,4 @@ Automatic completion remains a separate audited reservation job and catches up a
 
 ## Consequences
 
-Delivery intent and its state survive process failure. Provider failure never rolls back an appointment. Database state supports operator investigation without exposing OTP codes or internal cancellation reasons. A real provider must classify definite temporary rejection explicitly; timeouts and unknown failures are ambiguous. See [notification rules](../notifications.md).
+Delivery intent and its state survive process failure. Provider failure never rolls back an appointment. Database state supports operator investigation without exposing OTP codes or internal cancellation reasons. The Twilio adapter classifies HTTP 429 as definite temporary rejection and other explicit 4xx responses as permanent rejection; timeouts and unknown failures are ambiguous. See [notification rules](../notifications.md).
