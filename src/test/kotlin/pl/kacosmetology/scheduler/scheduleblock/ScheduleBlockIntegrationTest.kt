@@ -792,6 +792,23 @@ class ScheduleBlockIntegrationTest {
         }
 
     @Test
+    fun `overlap query excludes only the requested block and includes all blocks by default`() {
+        val editedBlock = savedBlock()
+        val otherBlock = savedBlock(startHour = 12)
+        val start = testDate.atTime(10, 0)
+        val end = testDate.atTime(13, 0)
+
+        assertEquals(
+            listOf(editedBlock.id, otherBlock.id),
+            scheduleBlockRepository.findOverlapping(companyId, employee.id!!, start, end).map { it.id },
+        )
+        assertEquals(
+            listOf(otherBlock.id),
+            scheduleBlockRepository.findOverlapping(companyId, employee.id!!, start, end, editedBlock.id).map { it.id },
+        )
+    }
+
+    @Test
     fun `PUT moves a block across its old interval preserving identity and returns new revision`() {
         val block = savedBlock()
         val createdAt = scheduleBlockRepository.findById(block.id!!).orElseThrow().createdAt
@@ -879,7 +896,10 @@ class ScheduleBlockIntegrationTest {
     fun `PUT requires valid revision CSRF and interval`() {
         val block = savedBlock()
         for (revision in listOf(null, "invalid", "-1")) {
-            moveBlock(block, revision = revision).andExpect { status { isBadRequest() } }
+            moveBlock(block, revision = revision).andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("REVISION_REQUIRED") }
+            }
         }
         moveBlock(block, end = testDate.atTime(10, 15)).andExpect { status { isBadRequest() } }
         mockMvc

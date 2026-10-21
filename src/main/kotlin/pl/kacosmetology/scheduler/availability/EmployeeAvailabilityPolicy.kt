@@ -44,16 +44,13 @@ class EmployeeAvailabilityPolicy(
                 )
             }
         val blockConflicts =
-            scheduleBlockRepository
-                .findOverlapping(companyId, employeeId, start, end)
-                .filter { it.id != excludeBlockId || excludeBlockId == null }
-                .map {
-                    EmployeeAvailabilityConflict(
-                        source = EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK,
-                        startTime = it.startTime,
-                        endTime = it.endTime,
-                    )
-                }
+            scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end, excludeBlockId).map {
+                EmployeeAvailabilityConflict(
+                    source = EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK,
+                    startTime = it.startTime,
+                    endTime = it.endTime,
+                )
+            }
 
         return reservationConflicts + blockConflicts
     }

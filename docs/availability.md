@@ -24,7 +24,7 @@ Public employee lists, public employee services and availability use these same 
 
 Employee blocks are separate stored intervals, with optional staff-visible reasons. Blocks may be ongoing or span multiple days, including a DST transition; each endpoint must identify an unambiguous Warsaw local time. A block cannot overlap an occupied reservation interval or another block. Owners manage all company employees' blocks; employees manage only their own. An explicit unauthorized target is rejected, never ignored. Both staff roles may read coworkers' intervals and reasons within the company.
 
-Block responses include `revision`. `PUT /api/schedule-blocks/{id}` accepts required `startTime`/`endTime` and the observed revision in `If-Match`, preserving identity, reason and employee. Stale updates return `CONCURRENT_MODIFICATION`; the existing block is excluded from its own overlap check.
+Block responses include `revision`. `PUT /api/schedule-blocks/{id}` accepts required `startTime`/`endTime` and the observed revision in `If-Match`, preserving identity, reason and employee. Stale updates return `CONCURRENT_MODIFICATION`; missing or invalid `If-Match` returns `REVISION_REQUIRED`. The existing block is excluded directly in the database overlap query.
 
 Policy mutations lock the company row before the employee row, matching booking allocation. This serializes weekly/date schedules, qualification/assignments and block changes against booking decisions. Existing appointments remain when a schedule or qualification changes. Employee overlap continues to use the shared employment lock and database exclusion constraint.
 

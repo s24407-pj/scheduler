@@ -28,7 +28,8 @@ interface ScheduleBlockRepository : JpaRepository<ScheduleBlock, UUID> {
 
     /**
      * Returns schedule blocks for an employee in a company that overlap the given time range. Uses the standard
-     * half-open interval overlap condition: start < blockEnd AND end > blockStart.
+     * half-open interval overlap condition: start < blockEnd AND end > blockStart. Excludes [excludeBlockId] in the
+     * query when supplied, so an edited block does not conflict with itself.
      */
     @Query(
         """
@@ -36,6 +37,7 @@ interface ScheduleBlockRepository : JpaRepository<ScheduleBlock, UUID> {
         WHERE b.companyId = :companyId
         AND b.employeeId = :employeeId
         AND (:start < b.endTime AND :end > b.startTime)
+        AND (:excludeBlockId IS NULL OR b.id <> :excludeBlockId)
         ORDER BY b.startTime ASC
         """,
     )
@@ -44,5 +46,6 @@ interface ScheduleBlockRepository : JpaRepository<ScheduleBlock, UUID> {
         employeeId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
+        excludeBlockId: UUID? = null,
     ): List<ScheduleBlock>
 }

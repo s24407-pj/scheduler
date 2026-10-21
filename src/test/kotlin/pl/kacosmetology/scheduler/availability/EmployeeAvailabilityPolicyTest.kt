@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
+import io.mockk.verify
 import java.time.LocalDateTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -97,6 +98,21 @@ class EmployeeAvailabilityPolicyTest {
 
         assertEquals(1, conflicts.size)
         assertEquals(EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK, conflicts.first().source)
+    }
+
+    @Test
+    fun `findConflicts should pass the edited block exclusion to the repository`() {
+        val excludedBlockId = testId(20)
+        every { reservationRepository.findOverlapping(companyId, employeeId, start, end) } returns emptyList()
+        every { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end, excludedBlockId) } returns
+            emptyList()
+
+        assertEquals(
+            emptyList<EmployeeAvailabilityConflict>(),
+            policy.findConflicts(companyId, employeeId, start, end, excludedBlockId),
+        )
+
+        verify { scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end, excludedBlockId) }
     }
 
     @Test
