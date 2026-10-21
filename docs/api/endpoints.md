@@ -119,6 +119,7 @@ See [reservations](../reservations.md).
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
 | POST | `/api/schedule-blocks` | OWNER, EMPLOYEE | OWNER may target any company employee; EMPLOYEE only own, explicit unauthorized target rejected |
+| PUT | `/api/schedule-blocks/{id}` | OWNER, EMPLOYEE | Changes interval only; requires `If-Match`; employee may update only own blocks |
 | DELETE | `/api/schedule-blocks/{id}` | OWNER, EMPLOYEE | EMPLOYEE only own blocks |
 | GET | `/api/schedule-blocks/employee?start&end[&employeeId]` | OWNER, EMPLOYEE | Either staff role may read coworkers’ intervals/reasons within company |
 

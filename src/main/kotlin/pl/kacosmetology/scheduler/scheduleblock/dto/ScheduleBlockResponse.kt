@@ -11,6 +11,7 @@ data class ScheduleBlockResponse(
     val endTime: LocalDateTime,
     val reason: String?,
     val createdAt: LocalDateTime?,
+    val revision: Long = 0,
 )
 
 /** Maps a [ScheduleBlock] to its response DTO. */
@@ -21,4 +22,5 @@ fun ScheduleBlock.toResponse() =
         endTime = endTime,
         reason = reason,
         createdAt = createdAt,
+        revision = version,
     )
