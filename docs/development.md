@@ -164,7 +164,7 @@ are checked in one invocation. The wrapper download has a SHA-256 checksum, a
 JAR before execution.
 
 CI uses Ubuntu 24.04, Temurin 25.0.4.1+1, commit-pinned actions, UTC, read-only repository
-permissions and a 20-minute job timeout. Only master/develop runs may write the Gradle
+permissions and a 20-minute job timeout. Only main/develop runs may write the Gradle
 cache. Dependabot maintains action pins; review JDK and wrapper updates explicitly.
 The hosted runner image and Testcontainers image tags still receive upstream updates.
 A newer run cancels an obsolete run for the same event and PR/branch; workflow dispatch
