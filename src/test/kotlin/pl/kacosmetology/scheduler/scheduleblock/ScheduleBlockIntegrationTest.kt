@@ -24,9 +24,11 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.put
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
@@ -35,6 +37,7 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
@@ -759,5 +762,194 @@ class ScheduleBlockIntegrationTest {
                 status { isBadRequest() }
                 jsonPath("$.code") { value("INVALID_LOCAL_TIME") }
             }
+    }
+
+    private fun savedBlock(employeeId: UUID = employee.id!!, startHour: Int = 10): ScheduleBlock =
+        scheduleBlockRepository.saveAndFlush(
+            ScheduleBlock(
+                companyId = companyId,
+                employeeId = employeeId,
+                startTime = testDate.atTime(startHour, 0),
+                endTime = testDate.atTime(startHour + 1, 0),
+                reason = "Przerwa",
+            ),
+        )
+
+    private fun moveBlock(
+        block: ScheduleBlock,
+        start: LocalDateTime = testDate.atTime(10, 15),
+        end: LocalDateTime = start.plusHours(1),
+        session: Cookie = employeeSession,
+        revision: String? = block.version.toString(),
+    ): ResultActionsDsl =
+        mockMvc.put("/api/schedule-blocks/${block.id}") {
+            with(csrf())
+            cookie(session)
+            if (revision != null) header("If-Match", revision)
+            contentType = MediaType.APPLICATION_JSON
+            content =
+                objectMapper.writeValueAsString(mapOf("startTime" to start.toString(), "endTime" to end.toString()))
+        }
+
+    @Test
+    fun `overlap query excludes only the requested block and includes all blocks by default`() {
+        val editedBlock = savedBlock()
+        val otherBlock = savedBlock(startHour = 12)
+        val start = testDate.atTime(10, 0)
+        val end = testDate.atTime(13, 0)
+
+        assertEquals(
+            listOf(editedBlock.id, otherBlock.id),
+            scheduleBlockRepository.findOverlapping(companyId, employee.id!!, start, end).map { it.id },
+        )
+        assertEquals(
+            listOf(otherBlock.id),
+            scheduleBlockRepository.findOverlapping(companyId, employee.id!!, start, end, editedBlock.id).map { it.id },
+        )
+    }
+
+    @Test
+    fun `PUT moves a block across its old interval preserving identity and returns new revision`() {
+        val block = savedBlock()
+        val createdAt = scheduleBlockRepository.findById(block.id!!).orElseThrow().createdAt
+        moveBlock(block, revision = "\"0\"").andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(block.id.toString()) }
+            jsonPath("$.reason") { value("Przerwa") }
+            jsonPath("$.revision") { value(1) }
+        }
+        val updated = scheduleBlockRepository.findById(block.id!!).orElseThrow()
+        assertEquals(testDate.atTime(10, 15), updated.startTime)
+        assertEquals(testDate.atTime(11, 15), updated.endTime)
+        assertEquals(block.employeeId, updated.employeeId)
+        assertEquals(createdAt, updated.createdAt)
+        assertEquals(1L, scheduleBlockRepository.count())
+        moveBlock(block, start = testDate.atTime(12, 0)).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("CONCURRENT_MODIFICATION") }
+        }
+        assertEquals(updated.startTime, scheduleBlockRepository.findById(block.id!!).orElseThrow().startTime)
+    }
+
+    @Test
+    fun `PUT rejects overlapping block atomically but allows adjacent interval`() {
+        val block = savedBlock()
+        savedBlock(startHour = 12)
+        moveBlock(block, testDate.atTime(11, 15)).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
+        }
+        assertEquals(block.startTime, scheduleBlockRepository.findById(block.id!!).orElseThrow().startTime)
+        moveBlock(block, testDate.atTime(11, 0)).andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `PUT rejects occupied reservation interval`() {
+        val block = savedBlock()
+        val offering =
+            serviceRepository.save(Offering(companyId = companyId, name = "Test", durationMinutes = 60, price = 100))
+        reservationRepository.saveAndFlush(
+            Reservation(
+                companyId = companyId,
+                employeeId = employee.id!!,
+                customerId = owner.id!!,
+                serviceId = offering.id!!,
+                price = 100,
+                startTime = testDate.atTime(12, 0),
+                endTime = testDate.atTime(13, 0),
+            ),
+        )
+        moveBlock(block, testDate.atTime(12, 0)).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("SLOT_UNAVAILABLE") }
+        }
+    }
+
+    @Test
+    fun `PUT employee cannot move colleague block but owner can`() {
+        val block = savedBlock(employeeId = owner.id!!)
+        moveBlock(block).andExpect { status { isForbidden() } }
+        moveBlock(block, session = ownerSession).andExpect { status { isOk() } }
+    }
+
+    @Test
+    fun `PUT hides blocks belonging to another company from employee and owner`() {
+        val otherCompany = companyRepository.save(Company(name = "Inna firma"))
+        companyEmployeeRepository.save(
+            CompanyEmployee(companyId = otherCompany.id!!, userId = employee.id!!, role = "EMPLOYEE"),
+        )
+        val block =
+            scheduleBlockRepository.saveAndFlush(
+                ScheduleBlock(
+                    companyId = otherCompany.id!!,
+                    employeeId = employee.id!!,
+                    startTime = testDate.atTime(10, 0),
+                    endTime = testDate.atTime(11, 0),
+                ),
+            )
+        for (session in listOf(employeeSession, ownerSession)) {
+            moveBlock(block, session = session).andExpect { status { isNotFound() } }
+        }
+    }
+
+    @Test
+    fun `PUT requires valid revision CSRF and interval`() {
+        val block = savedBlock()
+        for (revision in listOf(null, "invalid", "-1")) {
+            moveBlock(block, revision = revision).andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("REVISION_REQUIRED") }
+            }
+        }
+        moveBlock(block, end = testDate.atTime(10, 15)).andExpect { status { isBadRequest() } }
+        mockMvc
+            .put("/api/schedule-blocks/${block.id}") {
+                cookie(employeeSession)
+                header("If-Match", "0")
+                contentType = MediaType.APPLICATION_JSON
+                content = "{}"
+            }
+            .andExpect { status { isForbidden() } }
+        mockMvc
+            .put("/api/schedule-blocks/${block.id}") {
+                with(csrf())
+                cookie(employeeSession)
+                header("If-Match", "0")
+                contentType = MediaType.APPLICATION_JSON
+                content = "{}"
+            }
+            .andExpect { status { isBadRequest() } }
+    }
+
+    @Test
+    fun `PUT rejects ambiguous or nonexistent Warsaw endpoints`() {
+        val block = savedBlock()
+        for (day in listOf(LocalDate.of(2030, 3, 31), LocalDate.of(2030, 10, 27))) {
+            moveBlock(block, start = day.atTime(2, 15), end = day.atTime(3, 30)).andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("INVALID_LOCAL_TIME") }
+            }
+        }
+    }
+
+    @Test
+    fun `concurrent PUT with the same revision accepts exactly one change`() {
+        val block = savedBlock()
+        val ready = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val changes =
+                listOf(14, 16).map { hour ->
+                    executor.submit<Int> {
+                        ready.await()
+                        moveBlock(block, start = testDate.atTime(hour, 0)).andReturn().response.status
+                    }
+                }
+            ready.countDown()
+            assertEquals(listOf(200, 409), changes.map { it.get(10, TimeUnit.SECONDS) }.sorted())
+            assertEquals(1L, scheduleBlockRepository.findById(block.id!!).orElseThrow().version)
+        } finally {
+            executor.shutdownNow()
+        }
     }
 }

@@ -33,6 +33,7 @@ class EmployeeAvailabilityPolicy(
         employeeId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
+        excludeBlockId: UUID? = null,
     ): List<EmployeeAvailabilityConflict> {
         val reservationConflicts =
             reservationRepository.findOverlapping(companyId, employeeId, start, end).map {
@@ -43,7 +44,7 @@ class EmployeeAvailabilityPolicy(
                 )
             }
         val blockConflicts =
-            scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end).map {
+            scheduleBlockRepository.findOverlapping(companyId, employeeId, start, end, excludeBlockId).map {
                 EmployeeAvailabilityConflict(
                     source = EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK,
                     startTime = it.startTime,
@@ -60,7 +61,8 @@ class EmployeeAvailabilityPolicy(
         employeeId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
-    ): EmployeeAvailabilityConflict? = findConflicts(companyId, employeeId, start, end).firstOrNull()
+        excludeBlockId: UUID? = null,
+    ): EmployeeAvailabilityConflict? = findConflicts(companyId, employeeId, start, end, excludeBlockId).firstOrNull()
 
     /** Returns true when [start, end) overlaps any busy range in [conflicts]. */
     fun overlapsAny(

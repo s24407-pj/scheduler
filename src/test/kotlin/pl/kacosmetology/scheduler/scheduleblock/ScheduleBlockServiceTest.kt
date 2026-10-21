@@ -334,4 +334,77 @@ class ScheduleBlockServiceTest {
         assertEquals(ErrorCode.SCHEDULE_BLOCK_NOT_FOUND, exception.code)
         verify(exactly = 0) { scheduleBlockRepository.delete(any()) }
     }
+
+    @Test
+    fun `updateBlock preserves agreement and excludes itself from conflicts`() {
+        val blockId = testId(99)
+        val block =
+            ScheduleBlock(
+                id = blockId,
+                companyId = companyId,
+                employeeId = employeeId,
+                startTime = startTime,
+                endTime = endTime,
+                reason = "Przerwa",
+            )
+        every { scheduleBlockRepository.findByIdAndCompanyId(blockId, companyId) } returns block
+        every {
+            employeeAvailabilityPolicy.findFirstConflict(
+                companyId,
+                employeeId,
+                startTime.plusMinutes(15),
+                endTime.plusMinutes(15),
+                blockId,
+            )
+        } returns null
+        every { scheduleBlockRepository.saveAndFlush(block) } answers { firstArg() }
+        val result =
+            scheduleBlockService.updateBlock(
+                blockId,
+                employeeId,
+                false,
+                companyId,
+                0,
+                startTime.plusMinutes(15),
+                endTime.plusMinutes(15),
+            )
+        assertEquals(blockId, result.id)
+        assertEquals("Przerwa", result.reason)
+        assertEquals(startTime.plusMinutes(15), result.startTime)
+        verifyOrder {
+            companyRepository.findByIdForUpdate(companyId)
+            scheduleBlockRepository.findByIdAndCompanyId(blockId, companyId)
+            companyEmployeeRepository.findByCompanyIdAndUserIdForUpdate(companyId, employeeId)
+            scheduleBlockRepository.saveAndFlush(block)
+        }
+    }
+
+    @Test
+    fun `updateBlock rejects stale revision before changing interval`() {
+        val blockId = testId(99)
+        val block =
+            ScheduleBlock(
+                id = blockId,
+                companyId = companyId,
+                employeeId = employeeId,
+                startTime = startTime,
+                endTime = endTime,
+            )
+        every { scheduleBlockRepository.findByIdAndCompanyId(blockId, companyId) } returns block
+        val failure =
+            assertThrows<ApiException> {
+                scheduleBlockService.updateBlock(
+                    blockId,
+                    employeeId,
+                    false,
+                    companyId,
+                    1,
+                    startTime.plusMinutes(15),
+                    endTime.plusMinutes(15),
+                )
+            }
+        assertEquals(ErrorCode.CONCURRENT_MODIFICATION, failure.code)
+        assertEquals(startTime, block.startTime)
+        verify(exactly = 0) { scheduleBlockRepository.saveAndFlush(any()) }
+    }
 }

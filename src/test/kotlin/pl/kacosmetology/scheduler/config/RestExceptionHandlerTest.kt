@@ -3,8 +3,15 @@ package pl.kacosmetology.scheduler.config
 import java.sql.SQLException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import org.springframework.core.MethodParameter
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.http.ProblemDetail
+import org.springframework.mock.web.MockHttpServletRequest
+import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.orm.ObjectOptimisticLockingFailureException
+import org.springframework.web.bind.MissingRequestHeaderException
+import org.springframework.web.context.request.ServletWebRequest
+import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockController
 
 class RestExceptionHandlerTest {
 
@@ -19,6 +26,33 @@ class RestExceptionHandlerTest {
         assertEquals("RESERVATION_NOT_FOUND", response.body!!.properties!!["code"])
         assertEquals("Rezerwacja nie istnieje", response.body!!.detail)
     }
+
+    @Test
+    fun `missing If-Match should be reported as a required revision regardless of header case`() {
+        for (headerName in listOf("If-Match", "if-match")) {
+            val response = missingHeaderResponse(headerName)
+
+            assertEquals(400, response!!.statusCode.value())
+            assertEquals("REVISION_REQUIRED", (response.body as ProblemDetail).properties!!["code"])
+        }
+    }
+
+    @Test
+    fun `other missing headers should retain the generic bad request code`() {
+        val response = missingHeaderResponse("Idempotency-Key")
+
+        assertEquals(400, response!!.statusCode.value())
+        assertEquals("BAD_REQUEST", (response.body as ProblemDetail).properties!!["code"])
+    }
+
+    private fun missingHeaderResponse(headerName: String) =
+        handler.handleException(
+            MissingRequestHeaderException(
+                headerName,
+                MethodParameter(ScheduleBlockController::class.java.methods.single { it.name == "updateBlock" }, 1),
+            ),
+            ServletWebRequest(MockHttpServletRequest(), MockHttpServletResponse()),
+        )
 
     @Test
     fun `exclusion constraint violation should be reported as an unavailable slot`() {

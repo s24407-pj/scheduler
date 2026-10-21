@@ -16,6 +16,7 @@ import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.security.core.AuthenticationException
 import org.springframework.web.bind.MethodArgumentNotValidException
+import org.springframework.web.bind.MissingRequestHeaderException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -132,6 +133,12 @@ class RestExceptionHandler : ResponseEntityExceptionHandler() {
                 problem.coded(ErrorCode.MALFORMED_REQUEST, "Nieprawidłowy format żądania")
             is MissingServletRequestParameterException ->
                 problem.coded(ErrorCode.INVALID_PARAMETER, "Brak wymaganego parametru '${ex.parameterName}'")
+            is MissingRequestHeaderException ->
+                if (ex.headerName.equals("If-Match", ignoreCase = true)) {
+                    problem.coded(ErrorCode.REVISION_REQUIRED, "Nagłówek If-Match z aktualną wersją jest wymagany")
+                } else {
+                    problem.setProperty("code", fallbackCode(statusCode))
+                }
             is TypeMismatchException ->
                 problem.coded(ErrorCode.INVALID_PARAMETER, "Nieprawidłowa wartość parametru '${ex.propertyName}'")
             else ->

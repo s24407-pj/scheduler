@@ -8,8 +8,11 @@ import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.server.ResponseStatusException
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.scheduleblock.dto.CreateScheduleBlockRequest
 import pl.kacosmetology.scheduler.scheduleblock.dto.ScheduleBlockResponse
+import pl.kacosmetology.scheduler.scheduleblock.dto.UpdateScheduleBlockRequest
 import pl.kacosmetology.scheduler.scheduleblock.dto.toResponse
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
@@ -47,6 +50,31 @@ class ScheduleBlockController(
                 startTime = requireNotNull(request.startTime) { "Czas rozpoczęcia jest wymagany" },
                 endTime = requireNotNull(request.endTime) { "Czas zakończenia jest wymagany" },
                 reason = request.reason,
+            )
+            .toResponse()
+    }
+
+    /** Updates only the interval. OWNER may update company blocks; EMPLOYEE only their own. */
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('OWNER', 'EMPLOYEE')")
+    fun updateBlock(
+        @PathVariable id: UUID,
+        @RequestHeader("If-Match") revision: String,
+        @Valid @RequestBody request: UpdateScheduleBlockRequest,
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
+    ): ScheduleBlockResponse {
+        val expected =
+            revision.removeSurrounding("\"").toLongOrNull()?.takeIf { it >= 0 }
+                ?: throw ApiException(ErrorCode.REVISION_REQUIRED, "If-Match musi zawierać aktualną wersję blokady")
+        return scheduleBlockService
+            .updateBlock(
+                blockId = id,
+                requesterId = userDetails.id,
+                isOwner = userDetails.authorities.any { it.authority == "ROLE_OWNER" },
+                companyId = userDetails.requireCompanyId(),
+                revision = expected,
+                startTime = requireNotNull(request.startTime),
+                endTime = requireNotNull(request.endTime),
             )
             .toResponse()
     }

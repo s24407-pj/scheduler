@@ -35,28 +35,7 @@ class ScheduleBlockService(
     ): ScheduleBlock {
         lockCompanyMembership(companyId, employeeId)
 
-        if (!endTime.isAfter(startTime)) {
-            throw IllegalArgumentException("Czas zakończenia musi być późniejszy niż czas rozpoczęcia")
-        }
-
-        if (
-            BUSINESS_ZONE.rules.getValidOffsets(startTime).size != 1 ||
-                BUSINESS_ZONE.rules.getValidOffsets(endTime).size != 1
-        ) {
-            throw ApiException(
-                ErrorCode.INVALID_LOCAL_TIME,
-                "Granice blokady muszą istnieć jednoznacznie w strefie Europe/Warsaw",
-            )
-        }
-        val conflict = employeeAvailabilityPolicy.findFirstConflict(companyId, employeeId, startTime, endTime)
-        if (conflict != null) {
-            val message =
-                when (conflict.source) {
-                    EmployeeAvailabilityConflictSource.RESERVATION -> "W tym czasie istnieje już rezerwacja"
-                    EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK -> "W tym czasie istnieje już blokada"
-                }
-            throw ApiException(ErrorCode.SLOT_UNAVAILABLE, message)
-        }
+        validateInterval(companyId, employeeId, startTime, endTime)
 
         return scheduleBlockRepository.save(
             ScheduleBlock(
@@ -87,6 +66,66 @@ class ScheduleBlockService(
 
         lockCompanyMembership(companyId, block.employeeId)
         scheduleBlockRepository.delete(block)
+    }
+
+    /** Updates an interval atomically, retaining block identity and checking the observed revision. */
+    @Transactional
+    fun updateBlock(
+        blockId: UUID,
+        requesterId: UUID,
+        isOwner: Boolean,
+        companyId: UUID,
+        revision: Long,
+        startTime: LocalDateTime,
+        endTime: LocalDateTime,
+    ): ScheduleBlock {
+        companyRepository.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
+        val block =
+            scheduleBlockRepository.findByIdAndCompanyId(blockId, companyId)
+                ?: throw ApiException(ErrorCode.SCHEDULE_BLOCK_NOT_FOUND, "Blokada nie istnieje")
+        if (!isOwner && block.employeeId != requesterId) {
+            throw ApiException(ErrorCode.ACCESS_DENIED, "Nie możesz zmieniać cudzej blokady")
+        }
+        lockCompanyMembership(companyId, block.employeeId)
+        if (block.version != revision) {
+            throw ApiException(ErrorCode.CONCURRENT_MODIFICATION, "Blokada została zmieniona; odśwież kalendarz")
+        }
+        validateInterval(companyId, block.employeeId, startTime, endTime, blockId)
+        block.startTime = startTime
+        block.endTime = endTime
+        return scheduleBlockRepository.saveAndFlush(block)
+    }
+
+    private fun validateInterval(
+        companyId: UUID,
+        employeeId: UUID,
+        startTime: LocalDateTime,
+        endTime: LocalDateTime,
+        excludeBlockId: UUID? = null,
+    ) {
+        if (!endTime.isAfter(startTime)) {
+            throw IllegalArgumentException("Czas zakończenia musi być późniejszy niż czas rozpoczęcia")
+        }
+
+        if (
+            BUSINESS_ZONE.rules.getValidOffsets(startTime).size != 1 ||
+                BUSINESS_ZONE.rules.getValidOffsets(endTime).size != 1
+        ) {
+            throw ApiException(
+                ErrorCode.INVALID_LOCAL_TIME,
+                "Granice blokady muszą istnieć jednoznacznie w strefie Europe/Warsaw",
+            )
+        }
+        val conflict =
+            employeeAvailabilityPolicy.findFirstConflict(companyId, employeeId, startTime, endTime, excludeBlockId)
+        if (conflict != null) {
+            val message =
+                when (conflict.source) {
+                    EmployeeAvailabilityConflictSource.RESERVATION -> "W tym czasie istnieje już rezerwacja"
+                    EmployeeAvailabilityConflictSource.SCHEDULE_BLOCK -> "W tym czasie istnieje już blokada"
+                }
+            throw ApiException(ErrorCode.SLOT_UNAVAILABLE, message)
+        }
     }
 
     /** Returns all schedule blocks for an employee in [companyId] that overlap [start, end). */
