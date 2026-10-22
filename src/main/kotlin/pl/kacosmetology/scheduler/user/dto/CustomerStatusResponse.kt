@@ -25,4 +25,5 @@ data class CustomerVisitResponse(
     val end: java.time.LocalDateTime,
     val status: pl.kacosmetology.scheduler.reservation.ReservationStatus,
     val createdAt: java.time.LocalDateTime?,
+    val internalNotes: String? = null,
 )

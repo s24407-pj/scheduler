@@ -27,6 +27,10 @@ class ReservationDashboardIntegrationTest : ReservationContractTestSupport() {
     fun `owner and employee may read any company employee booking with local customer names`() {
         val id = reservation()
         jdbc.update(
+            "UPDATE reservations SET internal_notes='Notatka tylko dla personelu' WHERE id=?",
+            id,
+        )
+        jdbc.update(
             "UPDATE company_customers SET first_name='Company',last_name='Customer' WHERE company_id=? AND user_id=?",
             salon.company,
             salon.customer,
@@ -38,6 +42,7 @@ class ReservationDashboardIntegrationTest : ReservationContractTestSupport() {
             assertEquals(id, UUID.fromString(tree(response)[0]["id"].asString()))
             assertEquals("Company", tree(response)[0]["customerFirstName"].stringValue())
             assertEquals("Customer", tree(response)[0]["customerLastName"].stringValue())
+            assertEquals("Notatka tylko dla personelu", tree(response)[0]["internalNotes"].stringValue())
         }
     }
 

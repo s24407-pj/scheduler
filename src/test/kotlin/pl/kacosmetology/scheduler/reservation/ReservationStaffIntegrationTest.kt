@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.reservation
 
+import java.time.LocalDateTime
 import java.util.UUID
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
@@ -270,5 +271,72 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
         assertEquals(201, manual(manualBody(future.plusHours(1)), key).response.status)
         assertEquals(2L, count("reservations"))
         assertEquals(2L, count("booking_submissions"))
+    }
+
+    @Test
+    fun `staff can create and edit internalNotes including after completion while keeping it hidden from customer`() {
+        val note =
+            "Klientka zgłasza podrażnienie po poprzednim zabiegu. Podczas kolejnej wizyty sprawdzić reakcję skóry"
+        val employee = newEmployee()
+        val created =
+            manual(
+                manualBody() + mapOf("internalNotes" to note),
+                cookie = staffCookie(employee.second),
+            )
+        assertEquals(201, created.response.status, created.response.contentAsString)
+        val id = id(created)
+        assertEquals(note, tree(created)["internalNotes"].stringValue())
+
+        // Customer endpoints never expose internalNotes
+        val customerList = mvc.perform(get("/api/reservations/me").cookie(customerCookie())).andReturn()
+        assertEquals(200, customerList.response.status)
+        assertFalse(customerList.response.contentAsString.contains(note))
+        assertNull(tree(customerList)[0]["internalNotes"])
+
+        // Rescheduling without passing internalNotes preserves the existing note
+        val rescheduled = edit(id, mapOf("startTime" to future.plusHours(1).toString()))
+        assertEquals(200, rescheduled.response.status, rescheduled.response.contentAsString)
+        assertEquals(note, tree(rescheduled)["internalNotes"].stringValue())
+
+        // Complete the visit and advance time past end
+        setLocalNow(future.plusHours(2))
+        assertEquals(204, action(id, "complete").response.status)
+        assertEquals("COMPLETED", state(id))
+
+        // Note remains attached after completion and can be edited without changing time or status
+        val updatedNote = "Reakcja skóry prawidłowa, można kontynuować serię."
+        val editedAfterCompletion =
+            edit(id, mapOf("internalNotes" to updatedNote), cookie = staffCookie(employee.second))
+        assertEquals(200, editedAfterCompletion.response.status, editedAfterCompletion.response.contentAsString)
+        assertEquals("COMPLETED", tree(editedAfterCompletion)["status"].stringValue())
+        assertEquals(
+            future.plusHours(1),
+            LocalDateTime.parse(tree(editedAfterCompletion)["startTime"].stringValue()),
+        )
+        assertEquals(updatedNote, tree(editedAfterCompletion)["internalNotes"].stringValue())
+
+        // Staff schedule and customer visit history include internalNotes for the salon's staff
+        val employeeSchedule =
+            mvc.perform(
+                    get("/api/reservations/employee")
+                        .cookie(staffCookie())
+                        .param("start", future.toString())
+                        .param("end", future.plusDays(1).toString()),
+                )
+                .andReturn()
+        assertEquals(200, employeeSchedule.response.status)
+        assertEquals(updatedNote, tree(employeeSchedule)[0]["internalNotes"].stringValue())
+
+        val customerVisits =
+            mvc.perform(get("/api/customers/${salon.customer}/visits").cookie(staffCookie(employee.second))).andReturn()
+        assertEquals(200, customerVisits.response.status)
+        assertEquals(updatedNote, tree(customerVisits)[0]["internalNotes"].stringValue())
+
+        // Foreign salon staff cannot read or edit the reservation note
+        val foreign = fixtures.salon()
+        assertEquals(
+            404,
+            edit(id, mapOf("internalNotes" to "Obca notatka"), cookie = staffCookie(foreign.staff)).response.status,
+        )
     }
 }

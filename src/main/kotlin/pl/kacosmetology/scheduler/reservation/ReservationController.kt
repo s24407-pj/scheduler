@@ -77,9 +77,10 @@ class ReservationController(
                     request.overrideEmployeeBlock,
                     userDetails.isOwner(),
                     request.notifyCustomer,
+                    request.internalNotes,
                 )
             }
-            .toResponseEntity()
+            .toResponseEntity(includeInternal = true)
 
     /** Direct edits preserve ID/creation time and require the last observed revision. */
     @PutMapping("/{id}")
@@ -98,6 +99,7 @@ class ReservationController(
                 request,
                 user.isOwner(),
             ),
+            includeInternal = true,
         )
 
     /** Owning customers may cancel strictly before the scheduled start. */
@@ -242,10 +244,10 @@ class ReservationController(
     ): List<DashboardReservationResponse> =
         reservationService.getCompanyReservations(userDetails.requireCompanyId(), employeeId, start, end)
 
-    private fun BookingResult.toResponseEntity(): ResponseEntity<ReservationResponse> =
+    private fun BookingResult.toResponseEntity(includeInternal: Boolean = false): ResponseEntity<ReservationResponse> =
         ResponseEntity.status(if (created) HttpStatus.CREATED else HttpStatus.OK)
             .eTag(reservation.version.toString())
-            .body(reservationService.response(reservation))
+            .body(reservationService.response(reservation, includeInternal))
 
     private fun revision(header: String): Long =
         header.removeSurrounding("\"").toLongOrNull()?.takeIf { it >= 0 }

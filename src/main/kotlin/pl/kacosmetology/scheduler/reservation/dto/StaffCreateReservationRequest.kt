@@ -18,6 +18,7 @@ data class StaffCreateReservationRequest(
     @field:Min(value = 1, message = "Czas musi wynosić co najmniej minutę")
     @field:Max(value = 1440, message = "Czas nie może przekraczać 1440 minut")
     val durationMinutes: Int? = null,
+    @field:Size(max = 2000, message = "Notatka może mieć najwyżej 2000 znaków") val internalNotes: String? = null,
     val overrideEmployeeBlock: Boolean = false,
     val notifyCustomer: Boolean = false,
 )
