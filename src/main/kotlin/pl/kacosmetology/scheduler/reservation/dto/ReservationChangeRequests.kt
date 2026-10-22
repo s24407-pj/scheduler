@@ -19,7 +19,7 @@ data class EditReservationRequest(
     @field:Max(value = 1440, message = "Czas nie może przekraczać 1440 minut")
     val durationMinutes: Int? = null,
     @param:JsonSetter(nulls = Nulls.SET)
-    @field:Size(max = 2000, message = "Notatka może mieć najwyżej 2000 znaków")
+    @field:Size(max = 500, message = "Notatka może mieć najwyżej 500 znaków")
     val internalNotes: String? = UNSET_INTERNAL_NOTES,
     val overrideEmployeeBlock: Boolean = false,
     val notifyCustomer: Boolean = false,
