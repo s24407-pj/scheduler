@@ -31,10 +31,11 @@ OTP_GLOBAL_DAILY_SMS_CAP=<positive production limit>
 TWILIO_ACCOUNT_SID=<AC... account SID>
 TWILIO_API_KEY_SID=<SK... API key SID>
 TWILIO_API_KEY_SECRET=<API key secret>
+TWILIO_AUTH_TOKEN=<optional account Auth Token instead of API key SID/secret>
 TWILIO_MESSAGING_SERVICE_SID=<MG... Messaging Service SID>
 ```
 
-Create a Twilio Messaging Service with an SMS sender in its sender pool. Create an API key for the same account, then supply its SID and secret with the account and Messaging Service SIDs. The app uses API key HTTP Basic authentication and the Messaging Service chooses the sender; no `From` number is configured. Keep the secret in Dokploy's protected environment settings.
+Create a Twilio Messaging Service with an SMS sender in its sender pool. Supply the account and Messaging Service SIDs plus either an API key SID/secret for that account or its Auth Token. If `TWILIO_AUTH_TOKEN` is set, it takes precedence and the SDK authenticates with the Account SID; otherwise it uses the API key. Leave the unused credential fields empty. The Messaging Service chooses the sender; no `From` number is configured. SDK and HTTP-client retries are disabled so each durable attempt makes one provider request. Keep secrets in Dokploy's protected environment settings. A 401 response with Twilio code `70051` means Twilio rejected the credentials; check the account, key status and Messages permission for a Restricted key.
 
 Keep frontend and API on HTTPS subdomains of the same site. Production enables Secure, HttpOnly, host-only `SESSION` cookies with SameSite=Lax. Use explicit CORS origins and credentials, with no broad cookie Domain. Verify forwarded HTTPS detection for the CSRF cookie.
 

@@ -43,6 +43,9 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("tools.jackson.module:jackson-module-kotlin")
 
+    // Production SMS provider
+    implementation("com.twilio.sdk:twilio:13.0.2")
+
     // ImageIO decoder verifies actual WebP payloads as well as standard JPEG/PNG.
     implementation("com.twelvemonkeys.imageio:imageio-webp:3.15.3")
 

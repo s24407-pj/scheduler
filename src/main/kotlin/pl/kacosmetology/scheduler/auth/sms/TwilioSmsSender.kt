@@ -1,30 +1,41 @@
 package pl.kacosmetology.scheduler.auth.sms
 
-import java.net.HttpURLConnection
+import com.twilio.constant.EnumConstants.ContentType
+import com.twilio.http.HttpClient
+import com.twilio.http.HttpMethod
+import com.twilio.http.NetworkHttpClient
+import com.twilio.http.Request
+import com.twilio.http.Response
+import com.twilio.http.TwilioRestClient
+import com.twilio.rest.api.v2010.account.Message
 import java.net.URI
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
-import java.util.Base64
-import tools.jackson.databind.ObjectMapper
+import org.apache.hc.client5.http.config.ConnectionConfig
+import org.apache.hc.client5.http.config.RequestConfig
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder
+import org.apache.hc.core5.util.Timeout
+import org.slf4j.LoggerFactory
 
-/** Sends SMS through Twilio's Messages API and classifies the initial provider response. */
+/** Sends SMS with Twilio's Java SDK while preserving one provider request per durable attempt. */
 class TwilioSmsSender(
     accountSid: String,
-    apiKeySid: String,
-    apiKeySecret: String,
+    private val credentialSid: String,
+    private val credentialSecret: String,
     private val messagingServiceSid: String,
-    private val mapper: ObjectMapper,
-    baseUri: URI = URI.create("https://api.twilio.com"),
-    private val readTimeoutMillis: Int = 10_000,
+    transport: HttpClient = productionTransport(),
+    private val baseUri: URI = URI.create("https://api.twilio.com"),
 ) : SmsSender {
-    private val endpoint = baseUri.resolve("/2010-04-01/Accounts/$accountSid/Messages.json")
-    private val authorization =
-        "Basic " + Base64.getEncoder().encodeToString("$apiKeySid:$apiKeySecret".toByteArray(StandardCharsets.UTF_8))
+    private val log = LoggerFactory.getLogger(TwilioSmsSender::class.java)
+    private val endpoint = "/2010-04-01/Accounts/$accountSid/Messages.json"
+    private val client =
+        TwilioRestClient.Builder(credentialSid, credentialSecret).accountSid(accountSid).httpClient(transport).build()
 
     init {
         require(accountSid.matches(Regex("AC[a-fA-F0-9]{32}"))) { "Invalid Twilio account SID" }
-        require(apiKeySid.matches(Regex("SK[a-fA-F0-9]{32}"))) { "Invalid Twilio API key SID" }
-        require(apiKeySecret.isNotBlank()) { "Missing Twilio API key secret" }
+        require(credentialSid == accountSid || credentialSid.matches(Regex("SK[a-fA-F0-9]{32}"))) {
+            "Invalid Twilio credential SID"
+        }
+        require(credentialSecret.isNotBlank()) { "Missing Twilio credential secret" }
         require(messagingServiceSid.matches(Regex("MG[a-fA-F0-9]{32}"))) { "Invalid Twilio Messaging Service SID" }
     }
 
@@ -33,44 +44,35 @@ class TwilioSmsSender(
         deliverMessage(phoneNumber, "Kod logowania: $code. Ważny przez 5 minut.")
 
     /** Submits one message; only an explicit 429 is safe to retry automatically. */
-    override fun deliverMessage(phoneNumber: String, message: String): SmsDeliveryResult {
-        val form =
-            listOf("To" to phoneNumber, "Body" to message, "MessagingServiceSid" to messagingServiceSid).joinToString(
-                "&",
-            ) { (key, value) ->
-                "$key=${URLEncoder.encode(value, StandardCharsets.UTF_8)}"
-            }
-        val bytes = form.toByteArray(StandardCharsets.UTF_8)
-        return try {
-            val connection = endpoint.toURL().openConnection() as HttpURLConnection
-            try {
-                connection.requestMethod = "POST"
-                connection.connectTimeout = 3_000
-                connection.readTimeout = readTimeoutMillis
-                connection.instanceFollowRedirects = false
-                connection.setRequestProperty("Authorization", authorization)
-                connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-                connection.setRequestProperty("Accept", "application/json")
-                // Fixed-length streaming prevents HttpURLConnection from replaying this POST.
-                connection.setFixedLengthStreamingMode(bytes.size)
-                connection.doOutput = true
-                connection.outputStream.use { it.write(bytes) }
-                classify(connection)
-            } finally {
-                connection.disconnect()
-            }
+    override fun deliverMessage(phoneNumber: String, message: String): SmsDeliveryResult =
+        try {
+            val request = Request(HttpMethod.POST, baseUri.resolve(endpoint).toString())
+            request.setContentType(ContentType.FORM_URLENCODED)
+            request.addPostParam("To", phoneNumber)
+            request.addPostParam("Body", message)
+            request.addPostParam("MessagingServiceSid", messagingServiceSid)
+            request.setAuth(credentialSid, credentialSecret)
+            // The SDK's default request retries 5xx; this overload makes exactly one attempt.
+            val response =
+                client.httpClient.reliableRequest(request, intArrayOf(), 1, 0) ?: return SmsDeliveryResult.AMBIGUOUS
+            classify(response)
         } catch (_: Exception) {
             SmsDeliveryResult.AMBIGUOUS
         }
-    }
 
-    private fun classify(connection: HttpURLConnection): SmsDeliveryResult =
-        when (connection.responseCode) {
-            429 -> SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
-            in 400..499 -> SmsDeliveryResult.PERMANENT_REJECTION
+    private fun classify(response: Response): SmsDeliveryResult =
+        when (response.statusCode) {
+            429 -> {
+                logRejection(response)
+                SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
+            }
+            in 400..499 -> {
+                logRejection(response)
+                SmsDeliveryResult.PERMANENT_REJECTION
+            }
             201 ->
                 try {
-                    val sid = connection.inputStream.use { mapper.readTree(it).get("sid")?.stringValue() }
+                    val sid = response.stream.use { Message.fromJson(it, client.objectMapper).sid }
                     if (sid != null && sid.matches(Regex("SM[a-fA-F0-9]{32}"))) SmsDeliveryResult.ACCEPTED
                     else SmsDeliveryResult.AMBIGUOUS
                 } catch (_: Exception) {
@@ -78,6 +80,16 @@ class TwilioSmsSender(
                 }
             else -> SmsDeliveryResult.AMBIGUOUS
         }
+
+    private fun logRejection(response: Response) {
+        val code =
+            try {
+                response.stream.use { client.objectMapper.readTree(it)?.get("code")?.asText()?.toIntOrNull() }
+            } catch (_: Exception) {
+                null
+            }
+        log.warn("Twilio SMS rejected: httpStatus={} providerCode={}", response.statusCode, code)
+    }
 
     /** Legacy callers receive a generic failure without provider response or message details. */
     override fun sendOtp(phoneNumber: String, code: String) {
@@ -88,4 +100,24 @@ class TwilioSmsSender(
     override fun sendMessage(phoneNumber: String, message: String) {
         require(deliverMessage(phoneNumber, message) == SmsDeliveryResult.ACCEPTED) { "SMS was not accepted" }
     }
+}
+
+private fun productionTransport(): HttpClient {
+    val connections =
+        PoolingHttpClientConnectionManagerBuilder.create()
+            .setDefaultConnectionConfig(
+                ConnectionConfig.custom().setConnectTimeout(Timeout.ofMilliseconds(3_000)).build(),
+            )
+            .build()
+    val config =
+        RequestConfig.custom()
+            .setConnectionRequestTimeout(Timeout.ofMilliseconds(3_000))
+            .setResponseTimeout(Timeout.ofMilliseconds(10_000))
+            .build()
+    return NetworkHttpClient(
+        HttpClientBuilder.create()
+            .setConnectionManager(connections)
+            .setDefaultRequestConfig(config)
+            .disableAutomaticRetries(),
+    )
 }
