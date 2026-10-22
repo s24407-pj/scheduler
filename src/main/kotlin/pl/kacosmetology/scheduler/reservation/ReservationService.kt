@@ -139,6 +139,7 @@ class ReservationService(
         overrideEmployeeBlock: Boolean = false,
         owner: Boolean = false,
         notifyCustomer: Boolean = false,
+        internalNotes: String? = null,
     ): BookingResult {
         lockCompany(requesterCompanyId)
         val offering = offeringRepository.findByIdAndCompanyId(serviceId, requesterCompanyId) ?: missingReservation()
@@ -182,6 +183,7 @@ class ReservationService(
                     acceptedServiceName = offering.name,
                     agreedDurationMinutes = duration,
                     creationSource = "STAFF",
+                    internalNotes = internalNotes?.trim()?.ifBlank { null },
                 ),
             )
         notify(saved, "CREATE", notifyCustomer)
@@ -204,8 +206,33 @@ class ReservationService(
             companyId,
             request.employeeId ?: reservation.employeeId,
         )
+        if (reservation.archived) invalidTransition("Można edytować tylko trwającą lub przyszłą zarezerwowaną wizytę")
+        val internalNotes =
+            if (request.isInternalNotesPresent) request.normalizedInternalNotes else reservation.internalNotes
+        val notesChanged = internalNotes != reservation.internalNotes
+        val hasScheduleOrCommercialInput =
+            request.employeeId != null ||
+                request.serviceId != null ||
+                request.startTime != null ||
+                request.price != null ||
+                request.durationMinutes != null
+        if (!hasScheduleOrCommercialInput && request.isInternalNotesPresent) {
+            if (notesChanged) {
+                val previousRevision = reservation.version
+                audit.capture()
+                reservation.internalNotes = internalNotes
+                reservationRepository.saveAndFlush(reservation)
+                jdbc.update(
+                    "UPDATE notification_deliveries SET reservation_revision=? WHERE reservation_id=? AND reservation_revision=? AND state IN ('PENDING','TEMPORARY_FAILURE','PAUSED')",
+                    reservation.version,
+                    id,
+                    previousRevision,
+                )
+            }
+            return reservation
+        }
         val now = LocalDateTime.ofInstant(clock.instant(), BUSINESS_ZONE)
-        if (reservation.archived || reservation.status != ReservationStatus.BOOKED || !reservation.endTime.isAfter(now))
+        if (reservation.status != ReservationStatus.BOOKED || !reservation.endTime.isAfter(now))
             invalidTransition("Można edytować tylko trwającą lub przyszłą zarezerwowaną wizytę")
         val serviceId = request.serviceId ?: reservation.serviceId
         val offering = offeringRepository.findByIdAndCompanyId(serviceId, companyId) ?: missingReservation()
@@ -230,14 +257,15 @@ class ReservationService(
         checkEmployee(companyId, employeeId, serviceId)
         checkEmployeeConflict(companyId, employeeId, start, end, id, request.overrideEmployeeBlock, owner)
         checkCustomerConflict(companyId, reservation.customerId, start, end, id)
-        val changed =
+        val detailsChanged =
             employeeId != reservation.employeeId ||
                 serviceId != reservation.serviceId ||
                 start != reservation.startTime ||
                 end != reservation.endTime ||
                 price != reservation.price ||
                 name != reservation.acceptedServiceName
-        if (changed) {
+        if (detailsChanged || notesChanged) {
+            val previousRevision = reservation.version
             audit.capture()
             reservation.employeeId = employeeId
             reservation.serviceId = serviceId
@@ -246,9 +274,19 @@ class ReservationService(
             reservation.price = price
             reservation.agreedDurationMinutes = duration
             reservation.acceptedServiceName = name
+            reservation.internalNotes = internalNotes
             if (changedService) reservation.serviceNameSource = "ACCEPTED"
             reservationRepository.saveAndFlush(reservation)
-            notify(reservation, "EDIT", request.notifyCustomer)
+            if (detailsChanged) {
+                notify(reservation, "EDIT", request.notifyCustomer)
+            } else {
+                jdbc.update(
+                    "UPDATE notification_deliveries SET reservation_revision=? WHERE reservation_id=? AND reservation_revision=? AND state IN ('PENDING','TEMPORARY_FAILURE','PAUSED')",
+                    reservation.version,
+                    id,
+                    previousRevision,
+                )
+            }
         }
         return reservation
     }
@@ -374,7 +412,7 @@ class ReservationService(
 
     /** Response combines historical commercial values with current company and employee presentation. */
     @Transactional(readOnly = true)
-    fun response(reservation: Reservation): ReservationResponse {
+    fun response(reservation: Reservation, includeInternal: Boolean = false): ReservationResponse {
         val company = companyRepository.findById(reservation.companyId).orElseThrow()
         val employee =
             companyEmployeeRepository.findAllByCompanyId(reservation.companyId).first {
@@ -388,6 +426,7 @@ class ReservationService(
                 companyAddress = company.address,
                 serviceName = reservation.acceptedServiceName,
                 employeeName = "${employee.firstName} ${employee.lastName}",
+                internalNotes = if (includeInternal) reservation.internalNotes else null,
             )
     }
 

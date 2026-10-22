@@ -35,6 +35,7 @@ class Reservation(
     @Column(name = "creation_source", nullable = false) val creationSource: String = "LEGACY",
     @Column(nullable = false) var archived: Boolean = false,
     @Column(name = "internal_cancellation_reason") var internalCancellationReason: String? = null,
+    @Column(name = "internal_notes") var internalNotes: String? = null,
     @Column(name = "customer_explanation") var customerExplanation: String? = null,
     @Column(name = "outcome_explanation") var outcomeExplanation: String? = null,
     @Column(name = "reminder_sent", nullable = false) var reminderSent: Boolean = false,

@@ -1,5 +1,6 @@
 package pl.kacosmetology.scheduler.reservation.dto
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import java.time.LocalDateTime
 import java.util.UUID
 import pl.kacosmetology.scheduler.reservation.Reservation
@@ -24,6 +25,7 @@ data class ReservationResponse(
     val companyAddress: String? = null,
     val employeeName: String = "",
     val archived: Boolean = false,
+    @field:JsonInclude(JsonInclude.Include.NON_NULL) val internalNotes: String? = null,
 )
 
 /** Staff-facing DTO — includes customerId for the employee's schedule view. */
@@ -38,6 +40,7 @@ data class EmployeeReservationResponse(
     val createdAt: LocalDateTime?,
     val revision: Long = 0,
     val internalCancellationReason: String? = null,
+    val internalNotes: String? = null,
 )
 
 /** Dashboard DTO — includes both customerId and employeeId for the owner's cross-employee view. */
@@ -55,6 +58,7 @@ data class DashboardReservationResponse(
     val createdAt: LocalDateTime?,
     val revision: Long = 0,
     val internalCancellationReason: String? = null,
+    val internalNotes: String? = null,
 )
 
 /** Maps a [Reservation] to the customer-facing [ReservationResponse]. */
@@ -89,6 +93,7 @@ fun Reservation.toEmployeeResponse() =
         createdAt = createdAt,
         revision = version,
         internalCancellationReason = internalCancellationReason,
+        internalNotes = internalNotes,
     )
 
 /** Maps a [Reservation] to the owner dashboard [DashboardReservationResponse] with full employee+customer context. */
@@ -107,4 +112,5 @@ fun Reservation.toDashboardResponse(customerFirstName: String, customerLastName:
         createdAt = createdAt,
         revision = version,
         internalCancellationReason = internalCancellationReason,
+        internalNotes = internalNotes,
     )

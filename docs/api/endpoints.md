@@ -101,8 +101,8 @@ See [reservations](../reservations.md).
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
 | POST | `/api/reservations` | CUSTOMER | Required Idempotency-Key; optional employee means atomic any-employee allocation; first local profile requires names; 201 or current replay 200 |
-| POST | `/api/reservations/staff` | OWNER, EMPLOYEE | Required Idempotency-Key; manual regular-price booking, explicit duration/price/block override and SMS opt-in |
-| PUT | `/api/reservations/{id}` | OWNER, EMPLOYEE | Direct edit, required If-Match; preserves ID/creation time/customer |
+| POST | `/api/reservations/staff` | OWNER, EMPLOYEE | Required Idempotency-Key; manual regular-price booking, explicit duration/price/block override, internalNotes and SMS opt-in |
+| PUT | `/api/reservations/{id}` | OWNER, EMPLOYEE | Direct edit or staff-only internalNotes update, required If-Match; preserves ID/creation time/customer |
 | PATCH | `/api/reservations/{id}/cancel` | CUSTOMER | Required If-Match; own booking strictly before start; optional reason |
 | PATCH | `/api/reservations/{id}/cancel-by-staff` | OWNER, EMPLOYEE | Required If-Match and private reason; optional separate customer explanation |
 | PATCH | `/api/reservations/{id}/complete` | OWNER, EMPLOYEE | Required If-Match; from scheduled start; supports no-show correction |

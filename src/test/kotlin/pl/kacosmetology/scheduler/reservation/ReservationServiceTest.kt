@@ -121,6 +121,7 @@ class ReservationServiceTest {
                         acceptedServiceName = r.acceptedServiceName,
                         agreedDurationMinutes = r.agreedDurationMinutes,
                         creationSource = r.creationSource,
+                        internalNotes = r.internalNotes,
                     )
             }
         every { profiles.findByCompanyIdAndUserId(testId(1), testId(10)) } returns
@@ -397,5 +398,73 @@ class ReservationServiceTest {
         existing.status = ReservationStatus.CANCELLED
         service.archiveReservation(testId(50), testId(1), 0, true)
         assertTrue(existing.archived)
+    }
+
+    @Test
+    fun `internal notes can be set on staff creation and edited without changing time or status even after completion`() {
+        val created =
+            service.createReservationByStaff(
+                testId(20),
+                testId(30),
+                start,
+                "+48500100200",
+                "Local",
+                "Name",
+                testId(1),
+                internalNotes = "  Klientka zgłasza podrażnienie po poprzednim zabiegu.  ",
+            )
+        assertEquals(
+            "Klientka zgłasza podrażnienie po poprzednim zabiegu.",
+            created.reservation.internalNotes,
+        )
+
+        clearMocks(audit, reservations, events, answers = false)
+        existing.status = ReservationStatus.COMPLETED
+        every { clock.instant() } returns existing.endTime.plusDays(2).atZone(BUSINESS_ZONE).toInstant()
+
+        val updated =
+            service.editReservation(
+                testId(50),
+                testId(1),
+                0,
+                EditReservationRequest(
+                    internalNotes =
+                        "Klientka zgłasza podrażnienie po poprzednim zabiegu. Podczas kolejnej wizyty sprawdzić reakcję skóry",
+                    notifyCustomer = true,
+                ),
+                false,
+            )
+        assertEquals(ReservationStatus.COMPLETED, updated.status)
+        assertEquals(start, updated.startTime)
+        assertEquals(
+            "Klientka zgłasza podrażnienie po poprzednim zabiegu. Podczas kolejnej wizyty sprawdzić reakcję skóry",
+            updated.internalNotes,
+        )
+        verify(exactly = 1) {
+            audit.capture()
+            reservations.saveAndFlush(existing)
+        }
+        verify(exactly = 0) { events.publishEvent(any<ReservationChangedEvent>()) }
+
+        val cleared =
+            service.editReservation(
+                testId(50),
+                testId(1),
+                0,
+                EditReservationRequest(internalNotes = "   "),
+                false,
+            )
+        assertNull(cleared.internalNotes)
+
+        existing.internalNotes = "Ponowna notatka"
+        val clearedByNull =
+            service.editReservation(
+                testId(50),
+                testId(1),
+                0,
+                EditReservationRequest(internalNotes = null),
+                false,
+            )
+        assertNull(clearedByNull.internalNotes)
     }
 }
