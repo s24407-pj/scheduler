@@ -332,6 +332,14 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
         assertEquals(200, customerVisits.response.status)
         assertEquals(updatedNote, tree(customerVisits)[0]["internalNotes"].stringValue())
 
+        // Explicit null clears an existing note even on a completed reservation
+        val clearedByNull = edit(id, mapOf("internalNotes" to null), cookie = staffCookie(employee.second))
+        assertEquals(200, clearedByNull.response.status, clearedByNull.response.contentAsString)
+        assertNull(tree(clearedByNull)["internalNotes"])
+        val visitsAfterClear =
+            mvc.perform(get("/api/customers/${salon.customer}/visits").cookie(staffCookie(employee.second))).andReturn()
+        assertTrue(tree(visitsAfterClear)[0]["internalNotes"].isNull)
+
         // Foreign salon staff cannot read or edit the reservation note
         val foreign = fixtures.salon()
         assertEquals(

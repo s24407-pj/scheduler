@@ -208,8 +208,7 @@ class ReservationService(
         )
         if (reservation.archived) invalidTransition("Można edytować tylko trwającą lub przyszłą zarezerwowaną wizytę")
         val internalNotes =
-            if (request.internalNotes != null) request.internalNotes.trim().ifBlank { null }
-            else reservation.internalNotes
+            if (request.isInternalNotesPresent) request.normalizedInternalNotes else reservation.internalNotes
         val notesChanged = internalNotes != reservation.internalNotes
         val hasScheduleOrCommercialInput =
             request.employeeId != null ||
@@ -217,7 +216,7 @@ class ReservationService(
                 request.startTime != null ||
                 request.price != null ||
                 request.durationMinutes != null
-        if (!hasScheduleOrCommercialInput && request.internalNotes != null) {
+        if (!hasScheduleOrCommercialInput && request.isInternalNotesPresent) {
             if (notesChanged) {
                 val previousRevision = reservation.version
                 audit.capture()

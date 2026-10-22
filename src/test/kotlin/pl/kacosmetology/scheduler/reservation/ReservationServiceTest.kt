@@ -455,5 +455,16 @@ class ReservationServiceTest {
                 false,
             )
         assertNull(cleared.internalNotes)
+
+        existing.internalNotes = "Ponowna notatka"
+        val clearedByNull =
+            service.editReservation(
+                testId(50),
+                testId(1),
+                0,
+                EditReservationRequest(internalNotes = null),
+                false,
+            )
+        assertNull(clearedByNull.internalNotes)
     }
 }
