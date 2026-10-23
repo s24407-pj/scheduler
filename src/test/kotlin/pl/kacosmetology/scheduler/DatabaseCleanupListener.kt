@@ -10,6 +10,10 @@ class DatabaseCleanupListener : AbstractTestExecutionListener() {
 
     override fun beforeTestMethod(testContext: TestContext) {
         testContext.applicationContext
+            .getBeansOfType(pl.kacosmetology.scheduler.config.SmsWorkers::class.java)
+            .values
+            .forEach { check(it.awaitIdle()) { "SMS workers did not settle before fixture cleanup" } }
+        testContext.applicationContext
             .getBeansOfType(org.springframework.data.redis.core.StringRedisTemplate::class.java)
             .values
             .firstOrNull()

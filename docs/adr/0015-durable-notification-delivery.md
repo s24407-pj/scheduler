@@ -14,6 +14,12 @@ Run reminders at 09:00 Warsaw on the previous calendar date, deadline 09:05. Onl
 
 Automatic completion remains a separate audited reservation job and catches up after restart. V1 remains one backend instance, without distributed scheduler locks. OTP and notification sends share one Redis-time UTC-day operator budget. Issuance atomically reserves the first OTP attempt; additional definite-temporary retries reserve another allowance without resetting phone issuance/cooldown counters. Ambiguous OTP outcomes are never retried.
 
+## Bounded asynchronous execution (2026-10-23)
+
+Use two isolated in-process SMS worker pools over the existing PostgreSQL outboxes: OTP concurrency 2 and notification concurrency 4 by default, independently configurable from 1 to 16. After-commit and scheduler entrypoints only wake a coalescing coordinator. Bound admitted work to pool capacity; keep the backlog durable, claim only during execution, and refill on completion. Provider calls never run on request or scheduler threads and never hold database transactions open.
+
+Serialize OTP by phone and notifications by company/customer, with reminder priority and a locked recheck of state, retry time and current eligibility. Recheck deadlines immediately before invoking the provider. Already-started requests retain their actual outcomes; pending expired work is discarded. Result-persistence uncertainty blocks related work instead of repeating an unknown send. Graceful shutdown stops admission and waits at most 15 seconds across both pools before interruption. Preserve existing restart, retry, budget and reminder-run semantics; introducing RabbitMQ or multiple instances is outside this decision.
+
 ## Consequences
 
 Delivery intent and its state survive process failure. Provider failure never rolls back an appointment. Database state supports operator investigation without exposing OTP codes or internal cancellation reasons. A real provider must classify definite temporary rejection explicitly; timeouts and unknown failures are ambiguous. See [notification rules](../notifications.md).

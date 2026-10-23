@@ -7,13 +7,17 @@ import io.mockk.slot
 import io.mockk.verify
 import java.sql.Timestamp
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import javax.sql.DataSource
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -30,12 +34,16 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
+import pl.kacosmetology.scheduler.auth.AuthService
+import pl.kacosmetology.scheduler.auth.OtpDeliveryService
 import pl.kacosmetology.scheduler.auth.OtpStore
 import pl.kacosmetology.scheduler.auth.RateLimitExceededException
+import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.sms.DailySmsBudget
 import pl.kacosmetology.scheduler.auth.sms.SmsDeliveryResult
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
+import pl.kacosmetology.scheduler.config.SmsWorkers
 import pl.kacosmetology.scheduler.reservation.CustomerBlockedBookingsEvent
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationChangedEvent
@@ -47,6 +55,9 @@ import software.amazon.awssdk.services.s3.S3Client
 @SpringBootTest(properties = ["scheduler.jobs.enabled=false"])
 @Import(TestcontainersConfiguration::class, NotificationDeliveryIntegrationTest.TestTime::class)
 class NotificationDeliveryIntegrationTest {
+    @Autowired private lateinit var workers: SmsWorkers
+    @Autowired private lateinit var auth: AuthService
+    @Autowired private lateinit var otpDeliveries: OtpDeliveryService
     @Autowired private lateinit var service: NotificationService
     @Autowired private lateinit var repository: NotificationDeliveryRepository
     @Autowired private lateinit var details: NotificationDetails
@@ -67,6 +78,7 @@ class NotificationDeliveryIntegrationTest {
 
     @BeforeEach
     fun reset() {
+        awaitWorkers()
         clock.set(nine)
         transactions = TransactionTemplate(manager)
         jdbc.execute("TRUNCATE companies,customer_accounts RESTART IDENTITY CASCADE")
@@ -147,7 +159,7 @@ class NotificationDeliveryIntegrationTest {
         assertTrue(text.captured.contains("Accepted name"))
         assertTrue(text.captured.contains("Company Employee"))
         assertFalse(text.captured.contains("Current catalog"))
-        service.dispatchDue()
+        dispatchAndAwait()
         verify(exactly = 1) { sender.deliverMessage(any(), any()) }
     }
 
@@ -159,7 +171,7 @@ class NotificationDeliveryIntegrationTest {
         changed(id)
         assertEquals("TEMPORARY_FAILURE", state())
         clock.set(nine.plusSeconds(31))
-        service.dispatchDue()
+        dispatchAndAwait()
         assertEquals("ACCEPTED", state())
         verify(exactly = 2) { sender.deliverMessage(any(), any()) }
         edit(id)
@@ -167,14 +179,14 @@ class NotificationDeliveryIntegrationTest {
         changed(id, "EDIT")
         assertEquals("AMBIGUOUS", state())
         clock.set(nine.plusSeconds(90))
-        service.dispatchDue()
+        dispatchAndAwait()
         verify(exactly = 3) { sender.deliverMessage(any(), any()) }
         edit(id)
         every { sender.deliverMessage(any(), any()) } throws IllegalStateException("timeout")
         changed(id, "EDIT")
         assertEquals("AMBIGUOUS", state())
         clock.set(nine.plusSeconds(120))
-        service.dispatchDue()
+        dispatchAndAwait()
         verify(exactly = 4) { sender.deliverMessage(any(), any()) }
     }
 
@@ -189,7 +201,7 @@ class NotificationDeliveryIntegrationTest {
         assertEquals("TEMPORARY_FAILURE", state())
         verify(exactly = 1) { sender.deliverMessage(any(), any()) }
         clock.set(nine.plusSeconds(31))
-        service.dispatchDue()
+        dispatchAndAwait()
         assertEquals("ACCEPTED", state())
         verify(exactly = 2) { sender.deliverMessage(any(), any()) }
     }
@@ -200,7 +212,7 @@ class NotificationDeliveryIntegrationTest {
         every { sender.deliverMessage(any(), any()) } returns SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
         changed(id)
         clock.set(nine.plusSeconds(60))
-        service.dispatchDue()
+        dispatchAndAwait()
         assertEquals("DISCARDED", state())
         verify(exactly = 1) { sender.deliverMessage(any(), any()) }
         val ongoing = booking(nine.minusSeconds(60), "CANCELLED")
@@ -217,7 +229,7 @@ class NotificationDeliveryIntegrationTest {
         queue(id)
         jdbc.update("UPDATE notification_deliveries SET state='SENDING',attempts=1")
         service.recoverAfterRestart()
-        service.dispatchDue()
+        dispatchAndAwait()
         assertEquals("AMBIGUOUS", state())
         verify(exactly = 0) { sender.deliverMessage(any(), any()) }
     }
@@ -230,7 +242,7 @@ class NotificationDeliveryIntegrationTest {
         edit(id, nine.plusSeconds(7200))
         changed(id, "EDIT", false)
         clock.set(nine.plusSeconds(31))
-        service.dispatchDue()
+        dispatchAndAwait()
         assertEquals("DISCARDED", state())
         verify(exactly = 1) { sender.deliverMessage(any(), any()) }
         edit(id, nine.plusSeconds(10800))
@@ -251,7 +263,7 @@ class NotificationDeliveryIntegrationTest {
         changed(id)
         assertEquals("DISCARDED", state())
         clock.set(nine.plusSeconds(31))
-        service.dispatchDue()
+        dispatchAndAwait()
         verify(exactly = 1) { sender.deliverMessage(any(), any()) }
         edit(id)
         jdbc.update("UPDATE reservations SET status='CANCELLED',end_time=? WHERE id=?", Timestamp.from(nine), id)
@@ -269,13 +281,13 @@ class NotificationDeliveryIntegrationTest {
         jdbc.update("UPDATE reservations SET status='BOOKED' WHERE id=?", first)
         val text = slot<String>()
         every { sender.deliverMessage(any(), capture(text)) } returns SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
-        service.dispatchDue()
+        dispatchAndAwait()
         assertTrue(text.captured.contains("11:00"))
         assertFalse(text.captured.contains("10:00"))
         assertEquals("TEMPORARY_FAILURE", state())
         jdbc.update("UPDATE reservations SET status='BOOKED' WHERE id=?", second)
         clock.set(nine.plusSeconds(31))
-        service.dispatchDue()
+        dispatchAndAwait()
         assertEquals("DISCARDED", state())
         verify(exactly = 1) { sender.deliverMessage(any(), any()) }
     }
@@ -295,15 +307,15 @@ class NotificationDeliveryIntegrationTest {
     @Test
     fun `reminder previous day run has same date identity and allows new appointment date`() {
         val id = booking(nine.plusSeconds(86400 + 3600))
-        service.startReminderRun()
+        startAndAwait()
         assertEquals("ACCEPTED", state())
         edit(id, nine.plusSeconds(86400 + 7200))
         changed(id, "EDIT", false)
-        service.startReminderRun()
+        startAndAwait()
         verify(exactly = 1) { sender.deliverMessage(any(), any()) }
         edit(id, nine.plusSeconds(2 * 86400 + 3600))
         clock.set(nine.plusSeconds(86400))
-        service.startReminderRun()
+        startAndAwait()
         assertEquals(2L, count())
         verify(exactly = 2) { sender.deliverMessage(any(), any()) }
     }
@@ -318,7 +330,7 @@ class NotificationDeliveryIntegrationTest {
         edit(movedSameDay, nine.plusSeconds(86400 + 14400))
         val sameDay = booking(nine.plusSeconds(86400 + 18000))
         edit(sameDay)
-        service.startReminderRun()
+        startAndAwait()
         assertEquals(1L, count())
         assertEquals(
             sameDay,
@@ -330,13 +342,13 @@ class NotificationDeliveryIntegrationTest {
     fun `temporary reminder retry uses active run only until nine oh five`() {
         booking(nine.plusSeconds(86400 + 3600))
         every { sender.deliverMessage(any(), any()) } returns SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
-        service.startReminderRun()
+        startAndAwait()
         assertEquals("TEMPORARY_FAILURE", state())
         clock.set(nine.plusSeconds(31))
-        service.dispatchDue()
+        dispatchAndAwait()
         verify(exactly = 2) { sender.deliverMessage(any(), any()) }
         clock.set(nine.plusSeconds(300))
-        service.dispatchDue()
+        dispatchAndAwait()
         assertEquals("DISCARDED", state())
         verify(exactly = 2) { sender.deliverMessage(any(), any()) }
     }
@@ -345,18 +357,18 @@ class NotificationDeliveryIntegrationTest {
     fun `restart discards interrupted reminder retries and never catches up missed run`() {
         booking(nine.plusSeconds(86400 + 3600))
         every { sender.deliverMessage(any(), any()) } returns SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
-        service.startReminderRun()
+        startAndAwait()
         service.recoverAfterRestart()
         clock.set(nine.plusSeconds(31))
-        service.dispatchDue()
+        dispatchAndAwait()
         assertEquals("DISCARDED", state())
         verify(exactly = 1) { sender.deliverMessage(any(), any()) }
         jdbc.execute("TRUNCATE notification_delivery_reservations,notification_deliveries RESTART IDENTITY CASCADE")
         service.recoverAfterRestart()
-        service.dispatchDue()
+        dispatchAndAwait()
         assertEquals(0L, count())
         clock.set(nine.plusSeconds(301))
-        service.startReminderRun()
+        startAndAwait()
         assertEquals(0L, count())
     }
 
@@ -364,7 +376,7 @@ class NotificationDeliveryIntegrationTest {
     fun `accepted reminder suppresses pending confirmation while ambiguous reminder pauses it`() {
         val id = booking(nine.plusSeconds(86400 + 3600))
         queue(id)
-        service.startReminderRun()
+        startAndAwait()
         assertEquals("DISCARDED", state("CREATE"))
         assertEquals("ACCEPTED", state("REMINDER"))
         verify(exactly = 1) { sender.deliverMessage(any(), any()) }
@@ -372,7 +384,7 @@ class NotificationDeliveryIntegrationTest {
         service.recoverAfterRestart()
         queue(id)
         every { sender.deliverMessage(any(), any()) } returns SmsDeliveryResult.AMBIGUOUS
-        service.startReminderRun()
+        startAndAwait()
         assertEquals("PAUSED", state("CREATE"))
         assertEquals("AMBIGUOUS", state("REMINDER"))
         edit(id)
@@ -396,7 +408,7 @@ class NotificationDeliveryIntegrationTest {
         }
         jdbc.update("UPDATE notification_deliveries SET state='SENDING',attempts=1 WHERE kind='REMINDER'")
         service.recoverAfterRestart()
-        service.dispatchDue()
+        dispatchAndAwait()
         assertEquals("AMBIGUOUS", state("REMINDER"))
         assertEquals("PAUSED", state("CREATE"))
         verify(exactly = 0) { sender.deliverMessage(any(), any()) }
@@ -413,31 +425,193 @@ class NotificationDeliveryIntegrationTest {
         assertThrows<RateLimitExceededException> { capped.issueCode("+48882222222") }
     }
 
-    private fun booking(start: Instant, status: String = "BOOKED", created: Instant = nine.minusSeconds(86400)): UUID =
-        transactions.execute {
-            jdbc.queryForObject(
-                "SELECT set_config('scheduler.audit_time',?,true)",
-                String::class.java,
-                created.toString(),
+    @Test
+    fun `blocked notification pool does not block after commit listeners scheduler or OTP`() {
+        val entered = CountDownLatch(4)
+        val release = CountDownLatch(1)
+        val otpSent = CountDownLatch(1)
+        every { sender.deliverMessage(any(), any()) } answers
+            {
+                entered.countDown()
+                check(release.await(10, TimeUnit.SECONDS))
+                SmsDeliveryResult.ACCEPTED
+            }
+        every { sender.deliverOtp(any(), any()) } answers
+            {
+                otpSent.countDown()
+                SmsDeliveryResult.ACCEPTED
+            }
+        val ids =
+            (1..5).map { index ->
+                val customer =
+                    jdbc.queryForObject(
+                        "INSERT INTO customer_accounts(phone_number) VALUES (?) RETURNING id",
+                        UUID::class.java,
+                        "+4888010000$index",
+                    )!!
+                booking(nine.plusSeconds(index * 3600L), customer = customer)
+            }
+        ids.take(4).forEach(::queue)
+        otpDeliveries.recoverAfterRestart()
+        try {
+            assertTimeoutPreemptively(Duration.ofSeconds(2)) { service.dispatchDue() }
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            assertTimeoutPreemptively(Duration.ofSeconds(2)) {
+                transactions.executeWithoutResult {
+                    events.publishEvent(ReservationChangedEvent(ids.last(), "CREATE", true))
+                }
+                service.startReminderRun()
+                auth.requestCode(RequestCodeRequest("+48889999999"), "isolated-otp")
+            }
+            assertTrue(otpSent.await(5, TimeUnit.SECONDS))
+            assertEquals(
+                4,
+                jdbc.queryForObject(
+                    "SELECT count(*) FROM notification_deliveries WHERE state='SENDING'",
+                    Int::class.java,
+                ),
             )
-            jdbc.queryForObject(
-                """
-                INSERT INTO reservations(company_id,customer_id,employee_id,service_id,price,start_time,end_time,status,
-                    accepted_service_name,agreed_duration_minutes,creation_source,created_at)
-                VALUES (?,?,?,?,100,?,?,?,'Accepted name',30,'STAFF',?) RETURNING id
-                """
-                    .trimIndent(),
-                UUID::class.java,
-                companyId,
-                customerId,
-                employeeId,
-                offeringId,
-                Timestamp.from(start),
-                Timestamp.from(start.plusSeconds(1800)),
-                status,
-                Timestamp.from(created),
-            )!!
+            assertEquals(
+                1,
+                jdbc.queryForObject(
+                    "SELECT count(*) FROM notification_deliveries WHERE state='PENDING'",
+                    Int::class.java,
+                ),
+            )
+        } finally {
+            release.countDown()
+            awaitWorkers()
         }
+        assertEquals(
+            5,
+            jdbc.queryForObject("SELECT count(*) FROM notification_deliveries WHERE state='ACCEPTED'", Int::class.java),
+        )
+    }
+
+    @Test
+    fun `queued reminder is discarded at 0905 while earlier provider attempts retain their real outcome`() {
+        val entered = CountDownLatch(4)
+        val release = CountDownLatch(1)
+        every { sender.deliverMessage(any(), any()) } answers
+            {
+                entered.countDown()
+                check(release.await(10, TimeUnit.SECONDS))
+                SmsDeliveryResult.ACCEPTED
+            }
+        repeat(5) { index ->
+            val customer =
+                jdbc.queryForObject(
+                    "INSERT INTO customer_accounts(phone_number) VALUES (?) RETURNING id",
+                    UUID::class.java,
+                    "+4888020000$index",
+                )!!
+            booking(nine.plusSeconds(86400 + index * 3600L), customer = customer)
+        }
+        try {
+            service.startReminderRun()
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            clock.set(nine.plusSeconds(300))
+        } finally {
+            release.countDown()
+            awaitWorkers()
+        }
+        assertEquals(
+            4,
+            jdbc.queryForObject("SELECT count(*) FROM notification_deliveries WHERE state='ACCEPTED'", Int::class.java),
+        )
+        assertEquals(
+            1,
+            jdbc.queryForObject(
+                "SELECT count(*) FROM notification_deliveries WHERE state='DISCARDED' AND attempts=0",
+                Int::class.java,
+            ),
+        )
+        verify(exactly = 4) { sender.deliverMessage(any(), any()) }
+    }
+
+    @Test
+    fun `repeated wakeups serialize one customer and suppress confirmation after reminder outcome`() {
+        val id = booking(nine.plusSeconds(86400))
+        queue(id)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        every { sender.deliverMessage(any(), any()) } answers
+            {
+                entered.countDown()
+                check(release.await(10, TimeUnit.SECONDS))
+                SmsDeliveryResult.ACCEPTED
+            }
+        try {
+            service.startReminderRun()
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            repeat(100) { service.dispatchDue() }
+            assertEquals(
+                1,
+                jdbc.queryForObject(
+                    "SELECT count(*) FROM notification_deliveries WHERE state='SENDING' AND kind='REMINDER'",
+                    Int::class.java,
+                ),
+            )
+            assertEquals(
+                "PENDING",
+                jdbc.queryForObject(
+                    "SELECT state FROM notification_deliveries WHERE kind='CREATE'",
+                    String::class.java,
+                ),
+            )
+        } finally {
+            release.countDown()
+            awaitWorkers()
+        }
+        verify(exactly = 1) { sender.deliverMessage(any(), any()) }
+        assertEquals("DISCARDED", state("CREATE"))
+        assertEquals("ACCEPTED", state("REMINDER"))
+    }
+
+    @AfterEach
+    fun awaitWorkers() {
+        assertTrue(workers.awaitIdle(), "SMS workers did not settle")
+    }
+
+    private fun dispatchAndAwait() {
+        service.dispatchDue()
+        awaitWorkers()
+    }
+
+    private fun startAndAwait() {
+        service.startReminderRun()
+        awaitWorkers()
+    }
+
+    private fun booking(
+        start: Instant,
+        status: String = "BOOKED",
+        created: Instant = nine.minusSeconds(86400),
+        customer: UUID = customerId,
+    ): UUID = transactions.execute {
+        jdbc.queryForObject(
+            "SELECT set_config('scheduler.audit_time',?,true)",
+            String::class.java,
+            created.toString(),
+        )
+        jdbc.queryForObject(
+            """
+            INSERT INTO reservations(company_id,customer_id,employee_id,service_id,price,start_time,end_time,status,
+                accepted_service_name,agreed_duration_minutes,creation_source,created_at)
+            VALUES (?,?,?,?,100,?,?,?,'Accepted name',30,'STAFF',?) RETURNING id
+            """
+                .trimIndent(),
+            UUID::class.java,
+            companyId,
+            customer,
+            employeeId,
+            offeringId,
+            Timestamp.from(start),
+            Timestamp.from(start.plusSeconds(1800)),
+            status,
+            Timestamp.from(created),
+        )!!
+    }
 
     private fun edit(id: UUID, start: Instant? = null) {
         transactions.executeWithoutResult {
@@ -459,6 +633,7 @@ class NotificationDeliveryIntegrationTest {
 
     private fun changed(id: UUID, kind: String = "CREATE", notify: Boolean = true) {
         transactions.executeWithoutResult { events.publishEvent(ReservationChangedEvent(id, kind, notify)) }
+        awaitWorkers()
     }
 
     private fun queue(id: UUID) {
@@ -467,14 +642,16 @@ class NotificationDeliveryIntegrationTest {
         }
     }
 
-    private fun state(kind: String? = null): String =
-        jdbc.queryForObject(
+    private fun state(kind: String? = null): String {
+        awaitWorkers()
+        return jdbc.queryForObject(
             "SELECT state FROM notification_deliveries" +
                 (if (kind == null) "" else " WHERE kind=?") +
                 " ORDER BY id DESC LIMIT 1",
             String::class.java,
             *if (kind == null) emptyArray() else arrayOf(kind),
         )!!
+    }
 
     private fun count(): Long = jdbc.queryForObject("SELECT count(*) FROM notification_deliveries", Long::class.java)!!
 

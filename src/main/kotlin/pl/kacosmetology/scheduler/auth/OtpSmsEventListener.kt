@@ -26,7 +26,7 @@ class OtpSmsEventListener(private val deliveries: OtpDeliveryService) {
     @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
     fun consumed(event: OtpConsumedEvent) = deliveries.discardConsumed(event)
 
-    /** Dispatches only committed intent and isolates all worker/provider failures from the request. */
+    /** Nonblocking wake for committed intent; the request never waits for a provider or worker slot. */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     fun onOtpIssued(event: OtpIssuedEvent) {
         try {

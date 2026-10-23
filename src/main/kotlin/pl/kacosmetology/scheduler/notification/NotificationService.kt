@@ -1,9 +1,11 @@
 package pl.kacosmetology.scheduler.notification
 
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -13,6 +15,7 @@ import pl.kacosmetology.scheduler.auth.sms.DailySmsBudget
 import pl.kacosmetology.scheduler.auth.sms.SmsDeliveryResult
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
+import pl.kacosmetology.scheduler.config.SmsWorkers
 
 /** Single-instance durable SMS dispatcher with conservative ambiguous-send recovery and bounded retries. */
 @Service
@@ -23,6 +26,7 @@ class NotificationService(
     private val budget: DailySmsBudget,
     transactionManager: PlatformTransactionManager,
     private val clock: Clock,
+    workers: SmsWorkers,
 ) {
     private val log = LoggerFactory.getLogger(NotificationService::class.java)
     private val transactions =
@@ -31,41 +35,70 @@ class NotificationService(
         }
     @Volatile private var activeRun: ReminderRun? = null
     @Volatile private var recovered = false
+    private val reminderRequested = AtomicBoolean()
+    private val worker =
+        workers.create(
+            "notification",
+            { excluded, limit ->
+                if (!recovered) emptyList()
+                else {
+                    if (reminderRequested.getAndSet(false)) beginReminderRun()
+                    transactions.execute { repository.due(clock.instant(), excluded, limit) }.orEmpty()
+                }
+            },
+            ::deliver,
+            repository::pendingCount,
+        )
 
     /**
      * Recovers only delivery state; missed 09:00 reminder runs are deliberately never started at application startup.
      */
     fun recoverAfterRestart() {
         recovered = false
+        check(worker.awaitIdle(Duration.ofSeconds(15))) { "Cannot recover an active notification worker" }
+        reminderRequested.set(false)
         activeRun = null
         transactions.executeWithoutResult { repository.recover(clock.instant()) }
         recovered = true
     }
 
-    /** Claims each due item in a committed transaction, calls the provider outside it, then persists its outcome. */
-    @Synchronized
+    /** Wakes the isolated coordinator without doing database or provider work on the caller's thread. */
     fun dispatchDue() {
-        if (!recovered) return
-        val ids = transactions.execute { repository.due(clock.instant()) }.orEmpty()
-        ids.forEach { id ->
-            try {
-                val attempt = transactions.execute { prepare(id) } ?: return@forEach
-                val result =
-                    try {
-                        smsSender.deliverMessage(attempt.phone, attempt.message)
-                    } catch (_: Exception) {
-                        SmsDeliveryResult.AMBIGUOUS
-                    }
-                transactions.executeWithoutResult { finish(attempt, result) }
-            } catch (failure: Exception) {
-                log.warn("Notification worker deferred delivery {}: type={}", id, failure.javaClass.simpleName)
-            }
-        }
+        if (recovered) worker.wake()
     }
 
-    /** Begins only the scheduled current run and gives temporary failures the same in-memory token until 09:05. */
-    @Synchronized
+    private fun deliver(id: UUID) {
+        val attempt = transactions.execute { prepare(id) } ?: return
+        // A task can cross its deadline while committing SENDING; do not begin a late provider request.
+        val now = clock.instant()
+        if (
+            !now.isBefore(attempt.deadline) ||
+                (attempt.delivery.kind == "REMINDER" && activeRun?.token != attempt.delivery.runToken)
+        ) {
+            transactions.executeWithoutResult {
+                val current = repository.lock(id)
+                if (current?.state == DeliveryState.SENDING)
+                    repository.state(id, DeliveryState.DISCARDED, clock.instant())
+            }
+            return
+        }
+        val result =
+            try {
+                smsSender.deliverMessage(attempt.phone, attempt.message)
+            } catch (_: Exception) {
+                SmsDeliveryResult.AMBIGUOUS
+            }
+        transactions.executeWithoutResult { finish(attempt, result) }
+    }
+
+    /** Schedules initialization of today's run on the notification coordinator, never on the cron thread. */
     fun startReminderRun() {
+        if (!recovered) return
+        reminderRequested.set(true)
+        worker.wake()
+    }
+
+    private fun beginReminderRun() {
         if (!recovered) return
         val now = clock.instant()
         val local = now.atZone(BUSINESS_ZONE)
@@ -83,7 +116,6 @@ class NotificationService(
                         repository.insert("REMINDER", reservation, now, deadline, run.token)
                 }
             }
-            dispatchDue()
         } catch (failure: Exception) {
             activeRun = null
             throw failure
@@ -93,7 +125,11 @@ class NotificationService(
     private fun prepare(id: UUID): Attempt? {
         val now = clock.instant()
         val delivery = repository.lock(id) ?: return null
-        if (delivery.state !in setOf(DeliveryState.PENDING, DeliveryState.TEMPORARY_FAILURE)) return null
+        if (
+            delivery.state !in setOf(DeliveryState.PENDING, DeliveryState.TEMPORARY_FAILURE) ||
+                delivery.nextAttemptAt.isAfter(now)
+        )
+            return null
         val members =
             if (delivery.kind == "BLOCK_SUMMARY")
                 repository.summaryMembers(id).mapNotNull(details::reservation).filter {

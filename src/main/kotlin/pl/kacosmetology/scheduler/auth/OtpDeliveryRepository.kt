@@ -5,6 +5,7 @@ import java.time.Instant
 import java.util.UUID
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
+import pl.kacosmetology.scheduler.auth.sms.SmsWork
 
 /** Durable phone-only OTP delivery metadata. Plaintext exists only while a still-live code needs delivery. */
 @Repository
@@ -53,15 +54,41 @@ class OtpDeliveryRepository(private val jdbc: JdbcTemplate) {
         )
     }
 
-    /** Enumerates due work; claiming is separately protected by the row lock and current-state check. */
-    fun due(now: Instant): List<UUID> =
-        jdbc
-            .queryForList(
-                "SELECT id FROM otp_deliveries WHERE state IN ('PENDING','TEMPORARY_FAILURE') AND next_attempt_at<=? ORDER BY created_at,id LIMIT 100",
-                UUID::class.java,
-                Timestamp.from(now),
-            )
-            .filterNotNull()
+    /** Selects one due item per free phone lane, without loading any OTP or raw phone into the executor queue. */
+    fun due(now: Instant, excluded: Set<String>, limit: Int): List<SmsWork> {
+        if (limit == 0) return emptyList()
+        val exclusion =
+            if (excluded.isEmpty()) "" else "AND md5(d.phone_number) NOT IN (${excluded.joinToString { "?" }})"
+        return jdbc.query(
+            """
+            SELECT * FROM (
+                SELECT DISTINCT ON (d.phone_number) d.id,md5(d.phone_number) AS lane,d.created_at
+                FROM otp_deliveries d
+                WHERE d.state IN ('PENDING','TEMPORARY_FAILURE') AND d.next_attempt_at<=?
+                AND NOT EXISTS (SELECT 1 FROM otp_deliveries active
+                    WHERE active.phone_number=d.phone_number AND active.state='SENDING')
+                $exclusion
+                ORDER BY d.phone_number,d.created_at,d.id
+            ) candidates ORDER BY created_at,id LIMIT ?
+            """
+                .trimIndent(),
+            { rs, _ ->
+                SmsWork(
+                    rs.getObject("id", UUID::class.java),
+                    rs.getString("lane"),
+                    rs.getTimestamp("created_at").toInstant(),
+                )
+            },
+            *(listOf<Any>(Timestamp.from(now)) + excluded + limit).toTypedArray(),
+        )
+    }
+
+    /** Last observed durable backlog, including pending retries whose next-attempt time is still future. */
+    fun pendingCount(): Long =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM otp_deliveries WHERE state IN ('PENDING','TEMPORARY_FAILURE')",
+            Long::class.java,
+        )!!
 
     /** Locks and reads one work item without generating secret-bearing data-class diagnostics. */
     fun lock(id: UUID): OtpDelivery? =
@@ -76,6 +103,7 @@ class OtpDeliveryRepository(private val jdbc: JdbcTemplate) {
                         rs.getString("state"),
                         rs.getTimestamp("expires_at").toInstant(),
                         rs.getInt("attempts"),
+                        rs.getTimestamp("next_attempt_at").toInstant(),
                     )
                 },
                 id,
@@ -104,12 +132,12 @@ class OtpDeliveryRepository(private val jdbc: JdbcTemplate) {
     }
 
     /** Unknown in-flight sends become ambiguous; old secrets are scrubbed even when their retry time is later. */
-    fun recoverAndExpire(now: Instant, restart: Boolean) {
+    fun recoverAndExpire(now: Instant, restart: Boolean, active: Set<String> = emptySet()) {
+        val exclusion = if (active.isEmpty()) "" else "AND md5(phone_number) NOT IN (${active.joinToString { "?" }})"
         jdbc.update(
-            "UPDATE otp_deliveries SET state='AMBIGUOUS',code=NULL,updated_at=? WHERE state='SENDING' AND (? OR expires_at<=?)",
+            "UPDATE otp_deliveries SET state='AMBIGUOUS',code=NULL,updated_at=? WHERE state='SENDING' AND (? OR expires_at<=?) $exclusion",
             Timestamp.from(now),
-            restart,
-            Timestamp.from(now),
+            *(listOf<Any>(restart, Timestamp.from(now)) + active).toTypedArray(),
         )
         jdbc.update(
             "UPDATE otp_deliveries SET state='DISCARDED',code=NULL,updated_at=? WHERE state IN ('PENDING','TEMPORARY_FAILURE') AND expires_at<=?",
@@ -130,4 +158,5 @@ class OtpDelivery(
     val state: String,
     val expiresAt: Instant,
     val attempts: Int,
+    val nextAttemptAt: Instant,
 )
