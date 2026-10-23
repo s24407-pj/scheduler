@@ -7,19 +7,57 @@ import java.time.LocalDate
 import java.util.UUID
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
+import pl.kacosmetology.scheduler.auth.sms.SmsSendingStats
+import pl.kacosmetology.scheduler.auth.sms.SmsWork
 
 /** JDBC outbox persistence; callers establish transaction boundaries before claiming or finishing a delivery. */
 @Repository
 class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
-    /** Returns pending work without claiming it; each claim subsequently locks and verifies the current row. */
-    fun due(now: Instant): List<UUID> =
-        jdbc
-            .queryForList(
-                "SELECT id FROM notification_deliveries WHERE state IN ('PENDING','TEMPORARY_FAILURE') AND next_attempt_at<=? ORDER BY CASE WHEN kind='REMINDER' THEN 0 ELSE 1 END,id LIMIT 100",
-                UUID::class.java,
-                Timestamp.from(now),
-            )
-            .filterNotNull()
+    /** Picks the highest-priority due item per free company/customer lane without loading SMS content. */
+    fun due(now: Instant, excluded: Set<String>, limit: Int): List<SmsWork> {
+        if (limit == 0) return emptyList()
+        val exclusion =
+            if (excluded.isEmpty()) ""
+            else "AND (d.company_id::text || ':' || d.customer_id::text) NOT IN (${excluded.joinToString { "?" }})"
+        return jdbc.query(
+            """
+            SELECT * FROM (
+                SELECT DISTINCT ON (d.company_id,d.customer_id) d.id,
+                    d.company_id::text || ':' || d.customer_id::text AS lane,d.created_at,d.deadline,
+                    CASE WHEN d.kind='REMINDER' THEN 0 ELSE 1 END AS priority
+                FROM notification_deliveries d
+                WHERE d.state IN ('PENDING','TEMPORARY_FAILURE') AND d.next_attempt_at<=?
+                AND NOT EXISTS (SELECT 1 FROM notification_deliveries active
+                    WHERE active.company_id=d.company_id AND active.customer_id=d.customer_id AND active.state='SENDING')
+                $exclusion
+                ORDER BY d.company_id,d.customer_id,priority,d.deadline,d.id
+            ) candidates ORDER BY priority,deadline,id LIMIT ?
+            """
+                .trimIndent(),
+            { rs, _ ->
+                SmsWork(
+                    rs.getObject("id", UUID::class.java),
+                    rs.getString("lane"),
+                    rs.getTimestamp("created_at").toInstant(),
+                )
+            },
+            *(listOf<Any>(Timestamp.from(now)) + excluded + limit).toTypedArray(),
+        )
+    }
+
+    /** Last observed durable backlog, including pending retries but excluding terminal and paused records. */
+    fun pendingCount(): Long =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM notification_deliveries WHERE state IN ('PENDING','TEMPORARY_FAILURE')",
+            Long::class.java,
+        )!!
+
+    /** Aggregate active-send diagnostics, with no recipient or payload data leaving the repository. */
+    fun sendingStats(): SmsSendingStats =
+        jdbc.queryForObject(
+            "SELECT count(*) AS count,min(updated_at) AS oldest FROM notification_deliveries WHERE state='SENDING'",
+            { rs, _ -> SmsSendingStats(rs.getLong("count"), rs.getTimestamp("oldest")?.toInstant()) },
+        )
 
     /** Locks one delivery so a provider attempt can be durably claimed once. */
     fun lock(id: UUID): Delivery? =
@@ -207,6 +245,7 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
             rs.getInt("attempts"),
             rs.getTimestamp("deadline").toInstant(),
             rs.getObject("run_token", UUID::class.java),
+            rs.getTimestamp("next_attempt_at").toInstant(),
         )
 }
 
@@ -234,4 +273,5 @@ data class Delivery(
     val attempts: Int,
     val deadline: Instant,
     val runToken: UUID?,
+    val nextAttemptAt: Instant,
 )

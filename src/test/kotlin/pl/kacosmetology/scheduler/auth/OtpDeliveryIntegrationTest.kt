@@ -1,14 +1,21 @@
 package pl.kacosmetology.scheduler.auth
 
 import com.ninjasquad.springmockk.MockkBean
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import java.nio.file.Files
+import java.nio.file.Path
+import java.sql.Timestamp
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import javax.sql.DataSource
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -29,6 +36,8 @@ import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
 import pl.kacosmetology.scheduler.auth.sms.DailySmsBudget
 import pl.kacosmetology.scheduler.auth.sms.SmsDeliveryResult
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
+import pl.kacosmetology.scheduler.config.SmsWorkerProperties
+import pl.kacosmetology.scheduler.config.SmsWorkers
 import software.amazon.awssdk.services.s3.S3Client
 
 /**
@@ -37,6 +46,7 @@ import software.amazon.awssdk.services.s3.S3Client
 @SpringBootTest
 @Import(TestcontainersConfiguration::class, OtpDeliveryIntegrationTest.TestBeans::class)
 class OtpDeliveryIntegrationTest {
+    @Autowired private lateinit var workers: SmsWorkers
     @Autowired private lateinit var auth: AuthService
     @Autowired private lateinit var deliveries: OtpDeliveryService
     @Autowired private lateinit var store: OtpStore
@@ -54,6 +64,7 @@ class OtpDeliveryIntegrationTest {
 
     @BeforeEach
     fun reset() {
+        awaitWorkers()
         transactions = TransactionTemplate(manager)
         redis.connectionFactory!!.connection.use { it.serverCommands().flushAll() }
         clock.set(now)
@@ -66,6 +77,7 @@ class OtpDeliveryIntegrationTest {
         assertThrows<IllegalStateException> {
             transactions.executeWithoutResult {
                 auth.requestCode(RequestCodeRequest(phone), "ip")
+                awaitWorkers()
                 error("rollback")
             }
         }
@@ -89,6 +101,7 @@ class OtpDeliveryIntegrationTest {
             }
         }
         auth.requestCode(RequestCodeRequest(phone), "ip")
+        awaitWorkers()
         assertEquals("ACCEPTED", state())
         assertEquals(1, provider.calls.get())
         assertScrubbed()
@@ -96,7 +109,7 @@ class OtpDeliveryIntegrationTest {
         val expiry =
             jdbc.queryForObject("SELECT expires_at FROM otp_deliveries", java.sql.Timestamp::class.java)!!.toInstant()
         assertTrue(Duration.between(now, expiry).toMillis() in 298_000..300_000)
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals(1, provider.calls.get())
     }
 
@@ -104,12 +117,13 @@ class OtpDeliveryIntegrationTest {
     fun `definite temporary retry reserves an extra global allowance without another phone issuance`() {
         provider.outcome = SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
         auth.requestCode(RequestCodeRequest(phone), "ip")
+        awaitWorkers()
         assertEquals("TEMPORARY_FAILURE", state())
         assertEquals(1, provider.calls.get())
         assertEquals("1", redis.opsForHash<String, String>().get("otp:global-daily", "count"))
         clock.set(now.plusSeconds(31))
         provider.outcome = SmsDeliveryResult.ACCEPTED
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals("ACCEPTED", state())
         assertEquals(2, provider.calls.get())
         assertEquals("2", redis.opsForHash<String, String>().get("otp:global-daily", "count"))
@@ -120,23 +134,33 @@ class OtpDeliveryIntegrationTest {
     fun `one send daily budget permits pre reserved first attempt but rejects a temporary retry`() {
         provider.outcome = SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
         auth.requestCode(RequestCodeRequest(phone), "ip")
+        awaitWorkers()
         assertEquals(1, provider.calls.get())
-        val cappedWorker = OtpDeliveryService(repository, store, provider, DailySmsBudget(redis, 1), manager, clock)
-        cappedWorker.recoverAfterRestart()
-        clock.set(now.plusSeconds(31))
-        cappedWorker.dispatchDue()
-        assertEquals("DISCARDED", state())
-        assertEquals(1, provider.calls.get())
-        assertEquals("1", redis.opsForHash<String, String>().get("otp:global-daily", "count"))
-        assertEquals(1L, redis.opsForZSet().zCard("rate:sms:$phone"))
-        assertScrubbed()
+        val cappedRegistry = SimpleMeterRegistry()
+        val cappedWorkers = SmsWorkers(SmsWorkerProperties(), cappedRegistry, clock)
+        try {
+            val cappedWorker =
+                OtpDeliveryService(repository, store, provider, DailySmsBudget(redis, 1), manager, clock, cappedWorkers)
+            cappedWorker.recoverAfterRestart()
+            clock.set(now.plusSeconds(31))
+            cappedWorker.dispatchDue()
+            assertTrue(cappedWorkers.awaitIdle())
+            assertEquals("DISCARDED", state())
+            assertEquals(1, provider.calls.get())
+            assertEquals("1", redis.opsForHash<String, String>().get("otp:global-daily", "count"))
+            assertEquals(1L, redis.opsForZSet().zCard("rate:sms:$phone"))
+            assertScrubbed()
+        } finally {
+            cappedWorkers.stop()
+            cappedRegistry.close()
+        }
     }
 
     @Test
     fun `first delivery on a new Redis UTC day renews allowance even if intent was staged later`() {
         queue(phone)
         redis.opsForValue().set("otp:delivery-day:$phone", "0", Duration.ofMinutes(5))
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals("ACCEPTED", state())
         assertEquals(1, provider.calls.get())
         assertEquals("2", redis.opsForHash<String, String>().get("otp:global-daily", "count"))
@@ -148,10 +172,11 @@ class OtpDeliveryIntegrationTest {
     fun `temporary retry is discarded at exact original expiry and plaintext is removed`() {
         provider.outcome = SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
         auth.requestCode(RequestCodeRequest(phone), "ip")
+        awaitWorkers()
         val expiry =
             jdbc.queryForObject("SELECT expires_at FROM otp_deliveries", java.sql.Timestamp::class.java)!!.toInstant()
         clock.set(expiry)
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals("DISCARDED", state())
         assertEquals(1, provider.calls.get())
         assertScrubbed()
@@ -162,16 +187,18 @@ class OtpDeliveryIntegrationTest {
     fun `ambiguous provider response and unclassified exception are terminal and never blindly retried`() {
         provider.outcome = SmsDeliveryResult.AMBIGUOUS
         auth.requestCode(RequestCodeRequest(phone), "ip")
+        awaitWorkers()
         assertEquals("AMBIGUOUS", state())
         assertScrubbed()
         clock.set(now.plusSeconds(31))
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals(1, provider.calls.get())
         provider.throwUnknown = true
         auth.requestCode(RequestCodeRequest("+48880000002"), "other")
+        awaitWorkers()
         assertEquals(2, countState("AMBIGUOUS"))
         clock.set(now.plusSeconds(62))
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals(2, provider.calls.get())
         assertScrubbed()
     }
@@ -182,7 +209,7 @@ class OtpDeliveryIntegrationTest {
         jdbc.update("UPDATE otp_deliveries SET state='SENDING',attempts=1")
         queue("+48880000002")
         deliveries.recoverAfterRestart()
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals(1, countState("AMBIGUOUS"))
         assertEquals(1, countState("ACCEPTED"))
         assertEquals(1, provider.calls.get())
@@ -194,12 +221,12 @@ class OtpDeliveryIntegrationTest {
         queue(phone)
         jdbc.update("UPDATE otp_deliveries SET state='SENDING',attempts=1")
         clock.set(now.plusSeconds(301))
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals("AMBIGUOUS", state())
         assertScrubbed()
         assertEquals(0, provider.calls.get())
         assertEquals(1, jdbc.queryForObject("SELECT attempts FROM otp_deliveries", Int::class.java))
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals(0, provider.calls.get())
     }
 
@@ -212,7 +239,7 @@ class OtpDeliveryIntegrationTest {
             deliveries.stage(event)
         }
         assertEquals(1, count("otp_deliveries"))
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals(1, provider.calls.get())
         assertEquals("ACCEPTED", state())
         assertScrubbed()
@@ -226,7 +253,7 @@ class OtpDeliveryIntegrationTest {
         transactions.executeWithoutResult { deliveries.stage(OtpIssuedEvent(phone, old)) }
         assertEquals(2, countState("DISCARDED"))
         assertEquals(1, countState("PENDING"))
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals(1, provider.calls.get())
         assertEquals(1, countState("ACCEPTED"))
         assertScrubbed()
@@ -237,7 +264,7 @@ class OtpDeliveryIntegrationTest {
     fun `consumed Redis code invalidates unsent intent even without a consumption event`() {
         val code = queue(phone)
         assertEquals(OtpVerificationResult.VERIFIED, store.verifyAndConsumeCode(phone, code))
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals("DISCARDED", state())
         assertEquals(0, provider.calls.get())
         assertScrubbed()
@@ -248,12 +275,13 @@ class OtpDeliveryIntegrationTest {
     fun `successful verification atomically scrubs pending delivery through a consumed event`() {
         provider.outcome = SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
         auth.requestCode(RequestCodeRequest(phone), "ip")
+        awaitWorkers()
         val code = requireNotNull(redis.opsForValue().get("otp:$phone"))
         auth.verifyCode(VerifyCodeRequest(phone, code), "ip")
         assertEquals("DISCARDED", state())
         assertScrubbed()
         clock.set(now.plusSeconds(31))
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals(1, provider.calls.get())
         assertEquals(1, count("customer_accounts"))
         assertEquals(0, count("company_customers"))
@@ -263,16 +291,86 @@ class OtpDeliveryIntegrationTest {
     fun `expired Redis state or exhausted verification allowance makes pending code undeliverable`() {
         queue(phone)
         redis.delete("otp:$phone")
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals("DISCARDED", state())
         val other = "+48880000002"
         val code = queue(other)
         val wrong = if (code == "000000") "000001" else "000000"
         repeat(3) { store.verifyAndConsumeCode(other, wrong) }
-        deliveries.dispatchDue()
+        dispatchAndAwait()
         assertEquals(2, countState("DISCARDED"))
         assertEquals(0, provider.calls.get())
         assertScrubbed()
+    }
+
+    @Test
+    fun `two OTP slots run concurrently and waiting expired code is never sent`() {
+        val entered = CountDownLatch(2)
+        val release = CountDownLatch(1)
+        provider.beforeSend = {
+            entered.countDown()
+            check(release.await(10, TimeUnit.SECONDS))
+        }
+        repeat(3) { queue("+4888030000$it") }
+        try {
+            deliveries.dispatchDue()
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            repeat(100) { deliveries.dispatchDue() }
+            assertEquals(2, provider.calls.get())
+            assertEquals(2, countState("SENDING"))
+            assertEquals(1, countState("PENDING"))
+            clock.set(now.plusSeconds(301))
+        } finally {
+            release.countDown()
+            awaitWorkers()
+        }
+        assertEquals(2, countState("ACCEPTED"))
+        assertEquals(1, countState("DISCARDED"))
+        assertEquals(2, provider.calls.get())
+        assertScrubbed()
+    }
+
+    @Test
+    fun `operator resolution requires a stale unchanged OTP attempt and scrubs it without retry`() {
+        queue(phone)
+        jdbc.update("UPDATE otp_deliveries SET state='SENDING',attempts=1,updated_at=CURRENT_TIMESTAMP")
+        val id = jdbc.queryForObject("SELECT id FROM otp_deliveries", java.util.UUID::class.java)!!
+        val recent = jdbc.queryForObject("SELECT updated_at FROM otp_deliveries", Timestamp::class.java)!!.toInstant()
+        fun resolve(expected: Instant) {
+            val sql =
+                Files.readString(Path.of("scripts/ops/resolve-otp-sending.sql"))
+                    .lineSequence()
+                    .filterNot { it.startsWith("\\") }
+                    .joinToString("\n")
+                    .replace(":'delivery_id'", "'$id'")
+                    .replace(":'expected_updated_at'", "'$expected'")
+            jdbc.execute(sql)
+        }
+        resolve(recent)
+        assertEquals("SENDING", state(), "An active-looking attempt must not be resolved")
+        jdbc.update("UPDATE otp_deliveries SET updated_at=CURRENT_TIMESTAMP - INTERVAL '3 minutes'")
+        resolve(recent)
+        assertEquals("SENDING", state(), "A changed row must not be resolved using an outdated snapshot")
+        val stale = jdbc.queryForObject("SELECT updated_at FROM otp_deliveries", Timestamp::class.java)!!.toInstant()
+        assertEquals(1L, repository.sendingStats().count)
+        resolve(stale)
+        assertEquals("AMBIGUOUS", state())
+        assertScrubbed()
+        assertEquals(0L, repository.sendingStats().count)
+        resolve(stale)
+        dispatchAndAwait()
+        assertEquals(0, provider.calls.get())
+        assertEquals(1, jdbc.queryForObject("SELECT attempts FROM otp_deliveries", Int::class.java))
+    }
+
+    @AfterEach
+    fun awaitWorkers() {
+        assertTrue(workers.awaitIdle(), "SMS workers did not settle")
+    }
+
+    private fun dispatchAndAwait() {
+        deliveries.dispatchDue()
+        awaitWorkers()
     }
 
     private fun queue(phone: String): String {

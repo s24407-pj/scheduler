@@ -97,7 +97,8 @@ Blocks and durable no-show penalties are company-local. Manual and automatic pro
 
 - Customer booking sends no confirmation SMS/email. Staff create/edit/restore/cancel SMS is explicit opt-in, default off; actual edits invalidate obsolete pending messages even when opting out. Blocking produces a mandatory filtered summary.
 - Transactional events persist delivery intent **before commit**. Provider calls run **after commit** using durable state. `SENDING` is committed before each attempt; restart converts an unknown in-flight outcome to `AMBIGUOUS`, never blindly retried. Provider failure cannot roll back a booking.
-- Reminders run at 09:00 Warsaw on the previous calendar day, with a 09:05 deadline and uninterrupted in-memory run token. Durable audit excludes post-cutoff creations/start-time moves; unique reservation/date identity prevents same-date repeats. Missed reminder runs are not recovered after restart.
+- OTP and notifications use separate bounded SMS pools (default 2/4 calls) over PostgreSQL outboxes. Listeners and scheduler triggers only wake coordinators; provider latency cannot occupy their threads. Work is serialized per phone or company/customer, with deadlines rechecked before dispatch.
+- Reminders run at 09:00 Warsaw on the previous calendar day, with a 10:00 deadline and uninterrupted in-memory run token. Durable audit excludes post-cutoff creations/start-time moves; unique reservation/date identity prevents same-date repeats. Missed reminder runs are not recovered after restart.
 - Reservation completion has a separate audited job that catches up after restart. Jobs assume one instance ([ADR-0007](./adr/0007-single-instance-deployment.md)).
 - See [complete delivery rules](./notifications.md) and [ADR-0015](./adr/0015-durable-notification-delivery.md). A sent boolean does not establish crash-safe delivery. Production uses JustSend for single-message SMS; the development console adapter is disabled in prod.
 

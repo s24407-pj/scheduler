@@ -10,6 +10,7 @@ import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -26,11 +27,13 @@ import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.sms.SmsDeliveryResult
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
+import pl.kacosmetology.scheduler.config.SmsWorkers
 import software.amazon.awssdk.services.s3.S3Client
 
 @SpringBootTest
 @Import(TestcontainersConfiguration::class)
 class OtpRedisIntegrationTest {
+    @Autowired private lateinit var workers: SmsWorkers
     @Autowired private lateinit var redis: StringRedisTemplate
     @Autowired private lateinit var store: OtpStore
     @Autowired private lateinit var requests: OtpRequestRateLimiter
@@ -45,6 +48,7 @@ class OtpRedisIntegrationTest {
 
     @BeforeEach
     fun reset() {
+        awaitWorkers()
         redis.connectionFactory!!.connection.use { it.serverCommands().flushAll() }
         clearMocks(smsSender)
         every { smsSender.sendOtp(any(), any()) } just Runs
@@ -175,7 +179,13 @@ class OtpRedisIntegrationTest {
         verify(exactly = 0) { smsSender.sendOtp(any(), any()) }
         every { smsSender.sendOtp(any(), any()) } throws IllegalStateException("provider rejected")
         authService.requestCode(RequestCodeRequest("+48444444444"), "other")
+        awaitWorkers()
         verify(exactly = 1) { smsSender.sendOtp("+48444444444", any()) }
+    }
+
+    @AfterEach
+    fun awaitWorkers() {
+        assertTrue(workers.awaitIdle(), "SMS workers did not settle")
     }
 
     private fun expireWindow(key: String, window: Long, oneOnly: Boolean = false) {

@@ -106,6 +106,7 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 | `CORS_ORIGINS` | required by Compose | Comma-separated allowed origins; set to the exact dashboard origin(s) |
 | `OTP_GLOBAL_DAILY_SMS_CAP` | required by Compose | Positive operator-configured shared SMS attempt budget required in prod, UTC calendar day; OTP issuance reserves the first attempt and definite-temporary retries reserve again. Fixed OTP rules: 5-minute lifetime, 60-second cooldown, 3 failed attempts, 3 accepted phone issuances/rolling 5 minutes, 10 issuance requests/IP/rolling 15 minutes, 10 verification requests/IP/rolling 5 minutes. |
 | `JUSTSEND_APP_KEY`, `JUSTSEND_SENDER` | required in prod | JustSend API App-Key and permitted sender; passed through by Compose. Keep the key in a local ignored `.env` or deployment secrets. |
+| `SMS_WORKER_OTP_CONCURRENCY`, `SMS_WORKER_NOTIFICATION_CONCURRENCY` | `2`, `4` | Isolated provider concurrency, each 1–16; durable backlog stays in PostgreSQL. Passed through by Compose. |
 | `TRUSTED_PROXIES` | empty | Regex of trusted direct proxy peers; empty trusts none. See [deployment.md](./deployment.md#client-ip-for-rate-limiting). |
 | `SERVER_TOMCAT_REMOTEIP_REMOTE_IP_HEADER` | `X-Forwarded-For` in Compose | Client-IP header accepted only from trusted peers; Cloudflare prerequisites in [deployment.md](./deployment.md#client-ip-for-rate-limiting). |
 | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` | 10 / 1 | Staff logins per IP per window (not passed through by Compose; edit `docker-compose.yml` to override) |
@@ -122,7 +123,7 @@ Every request gets an ID (`RequestIdFilter`): a valid incoming `X-Request-Id` (u
 
 ## Production deployment
 
-See [deployment.md](./deployment.md) for Dokploy networking, required environment variables, proxy trust, persistence, and verification. Production SMS is implemented by `JustSendSmsSender` (ECO variant). Missing or blank JustSend credentials fail startup. See [SMS operations](./notifications.md#sms-observability-and-segment-estimates) for safe request logs, multipart warnings and the segment metric; the daily budget limits attempts, not billable segments.
+See [deployment.md](./deployment.md) for Dokploy networking, required environment variables, proxy trust, persistence, and verification. Production SMS is implemented by `JustSendSmsSender` (ECO variant). Missing or blank JustSend credentials fail startup. See [SMS operations](./notifications.md#sms-observability-and-segment-estimates) for safe request logs, multipart warnings, segment and worker metrics, and asynchronous delivery behavior; the daily budget limits attempts, not billable segments.
 
 ## Testing
 

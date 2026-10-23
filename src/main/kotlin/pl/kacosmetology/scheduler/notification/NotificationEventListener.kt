@@ -23,11 +23,11 @@ class NotificationEventListener(
     @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
     fun onCustomerBlocked(event: CustomerBlockedBookingsEvent) = outbox.record(event)
 
-    /** Provider or worker failure after commit cannot roll back the successful staff operation. */
+    /** Nonblocking wake after commit; provider calls run on isolated SMS threads. */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     fun afterReservationChanged(event: ReservationChangedEvent) = wake()
 
-    /** Starts delivery of a committed summary; durable retry state survives a worker failure. */
+    /** Wakes delivery of a committed summary; durable retry state survives a worker failure. */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     fun afterCustomerBlocked(event: CustomerBlockedBookingsEvent) = wake()
 
