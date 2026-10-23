@@ -393,30 +393,47 @@ class StaffIdentityIntegrationTest {
     private fun consume(token: String, password: String = "password123") =
         postJson("/api/auth/staff-password", mapOf("token" to token, "newPassword" to password)).response.status
 
+    private val expectedContexts = mutableMapOf<String, String>()
+
     private fun login(companyId: UUID, email: String, password: String = "password123"): Cookie =
         requireNotNull(
-            postJson("/api/auth/login-staff", mapOf("companyId" to companyId, "email" to email, "password" to password))
-                .also { assertEquals(200, it.response.status, it.response.contentAsString) }
-                .response
-                .getCookie("SESSION"),
-        )
+                postJson(
+                        "/api/auth/login-staff",
+                        mapOf("companyId" to companyId, "email" to email, "password" to password),
+                    )
+                    .also { assertEquals(200, it.response.status, it.response.contentAsString) }
+                    .response
+                    .getCookie("SESSION"),
+            )
+            .also { cookie ->
+                val identity =
+                    mapper.readTree(
+                        mvc.perform(get("/api/auth/me").cookie(cookie)).andReturn().response.contentAsString,
+                    )
+                expectedContexts[cookie.value] =
+                    "v1:${identity["userId"].asString()}:${identity["companyId"].asString()}:${identity["employmentId"].asString()}:${identity["authorities"][0].asString()}"
+            }
 
     private fun me(cookie: Cookie) = mvc.perform(get("/api/auth/me").cookie(cookie)).andReturn().response.status
 
     private fun postJson(path: String, body: Any?, cookie: Cookie? = null): MvcResult {
         val request = post(path).with(csrf())
-        cookie?.let { request.cookie(it) }
+        cookie?.let {
+            request.cookie(it)
+            expectedContexts[it.value]?.let { context -> request.header("X-Expected-Session-Context", context) }
+        }
         body?.let { request.contentType("application/json").content(mapper.writeValueAsString(it)) }
         return mvc.perform(request).andReturn()
     }
 
-    private fun putJson(path: String, body: Any, cookie: Cookie): MvcResult =
-        mvc.perform(
-                put(path)
-                    .with(csrf())
-                    .cookie(cookie)
-                    .contentType("application/json")
-                    .content(mapper.writeValueAsString(body)),
-            )
-            .andReturn()
+    private fun putJson(path: String, body: Any, cookie: Cookie): MvcResult {
+        val request =
+            put(path)
+                .with(csrf())
+                .cookie(cookie)
+                .contentType("application/json")
+                .content(mapper.writeValueAsString(body))
+        expectedContexts[cookie.value]?.let { request.header("X-Expected-Session-Context", it) }
+        return mvc.perform(request).andReturn()
+    }
 }

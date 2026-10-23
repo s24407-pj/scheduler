@@ -18,6 +18,7 @@ import org.springdoc.core.customizers.OpenApiCustomizer
 import org.springdoc.core.utils.SpringDocUtils
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import pl.kacosmetology.scheduler.security.ExpectedSessionContextFilter
 
 /** OpenAPI metadata for springdoc. The spec and Swagger UI are enabled only in the `dev` profile. */
 @Configuration
@@ -51,6 +52,19 @@ class OpenApiConfig {
                     ),
             )
             .also { api ->
+                api.components.addSecuritySchemes(
+                    "expectedSessionContext",
+                    SecurityScheme()
+                        .type(SecurityScheme.Type.APIKEY)
+                        .`in`(SecurityScheme.In.HEADER)
+                        .name(ExpectedSessionContextFilter.HEADER)
+                        .description(
+                            "Required equality precondition for staff writes, not an authentication credential: " +
+                                "v1:userId:companyId:employmentId:ROLE_OWNER (or ROLE_EMPLOYEE), captured from auth/me " +
+                                "when opening the form. Missing/malformed: 400 SESSION_CONTEXT_REQUIRED; " +
+                                "changed cookie scope: 409 SESSION_CONTEXT_CHANGED. Not required for customer logout-all.",
+                        ),
+                )
                 api.components.addSecuritySchemes(
                     "csrfToken",
                     SecurityScheme()
@@ -102,6 +116,11 @@ class OpenApiConfig {
                 val requirement = SecurityRequirement()
                 if (!public) requirement.addList(SESSION_AUTH)
                 if (unsafe) requirement.addList("csrfToken")
+                val customerOnly =
+                    (path == "/api/quotes" && method == PathItem.HttpMethod.POST) ||
+                        (path == "/api/reservations" && method == PathItem.HttpMethod.POST) ||
+                        (path == "/api/reservations/{id}/cancel" && method == PathItem.HttpMethod.PATCH)
+                if (!public && unsafe && !customerOnly) requirement.addList("expectedSessionContext")
                 operation.security = if (requirement.isEmpty()) emptyList() else listOf(requirement)
                 listOf("400", "401", "403", "404", "409", "429").forEach { code ->
                     operation.responses.putIfAbsent(

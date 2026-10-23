@@ -513,6 +513,11 @@ class AuthFlowIntegrationTest {
             .post("/api/auth/logout-all") {
                 with(csrf())
                 cookie(sessions[0])
+                val identity = identity(sessions[0])
+                header(
+                    "X-Expected-Session-Context",
+                    "v1:${identity["userId"].asString()}:${identity["companyId"].asString()}:${identity["employmentId"].asString()}:${identity["authorities"][0].asString()}",
+                )
             }
             .andExpect { status { isNoContent() } }
 

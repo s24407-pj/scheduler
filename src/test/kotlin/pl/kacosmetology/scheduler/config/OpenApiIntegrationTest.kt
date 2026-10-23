@@ -49,6 +49,10 @@ class OpenApiIntegrationTest {
             jsonPath("$.paths['/api/auth/login-staff-email'].post.security[0].csrfToken") { exists() }
             jsonPath("$.paths['/api/auth/complete-staff-login'].post.security[0].sessionAuth") { doesNotExist() }
             jsonPath("$.paths['/api/auth/complete-staff-login'].post.security[0].csrfToken") { exists() }
+            jsonPath("$.components.securitySchemes.expectedSessionContext.name") { value("X-Expected-Session-Context") }
+            jsonPath("$.paths['/api/offering-categories'].post.security[0].expectedSessionContext") { exists() }
+            jsonPath("$.paths['/api/auth/logout'].post.security[0].expectedSessionContext") { doesNotExist() }
+            jsonPath("$.paths['/api/reservations'].post.security[0].expectedSessionContext") { doesNotExist() }
             jsonPath("$.components.schemas.StaffEmailLoginRequest.properties.companyId") { doesNotExist() }
             jsonPath("$.components.schemas.StaffLoginCompany.properties.passwordHash") { doesNotExist() }
             jsonPath("$.paths['/api/auth/staff-password'].post.security[0].sessionAuth") { doesNotExist() }
