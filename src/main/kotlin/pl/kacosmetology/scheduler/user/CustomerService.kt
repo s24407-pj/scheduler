@@ -98,6 +98,7 @@ class CustomerService(
                 it.endTime,
                 it.status,
                 it.createdAt,
+                it.internalNotes,
             )
         }
     }
