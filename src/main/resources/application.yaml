@@ -62,6 +62,10 @@ otp:
   # Mandatory positive operator-configured cap in prod; zero disables this cap in development only.
   global-daily-sms-cap: ${OTP_GLOBAL_DAILY_SMS_CAP:0}
 
+justsend:
+  app-key: ${JUSTSEND_APP_KEY:}
+  sender: ${JUSTSEND_SENDER:}
+
 login:
   max-attempts: ${LOGIN_MAX_ATTEMPTS:10}
   rate-window-minutes: ${LOGIN_RATE_WINDOW_MINUTES:1}
