@@ -1,115 +1,97 @@
 # AGENTS.md
 
-Instructions for AI coding agents working in this repository. Detailed documentation lives in [`docs/`](./docs/README.md); this file holds commands, invariants, and guardrails.
+Keep diffs focused, match surrounding patterns, and do not commit unless asked. Read relevant docs before changing behavior; [docs index](./docs/README.md).
 
 ## Commands
 
-```bash
-./gradlew test # All tests (requires Docker for Testcontainers)
-./gradlew build # Build including tests
-./gradlew build -x test # Build without tests
-./gradlew spotlessApply # Format Kotlin sources (ktfmt); spotlessCheck runs in build
-docker compose up --build # Full stack (PostgreSQL + Redis + app)
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build # Dev profile + debugger on :5005
-```
-
-Run a single test class:
+Use the repository root, JDK 25 and Gradle wrapper. Versions: [mise.toml](./mise.toml), [version catalog](./gradle/libs.versions.toml), [build](./build.gradle.kts). Integration tests need Docker/rootless Podman; unit/architecture tests need no containers.
 
 ```bash
+./gradlew test                                  # Full suite
 ./gradlew test --tests "pl.kacosmetology.scheduler.auth.AuthFlowIntegrationTest"
+./gradlew build                                 # Build, tests, spotlessCheck; also used by CI
+./gradlew build -x test                         # Build and formatting check without tests
+./gradlew spotlessApply                         # Format Kotlin and Gradle Kotlin scripts
 ```
 
-Run a single test method:
+**Local development:** copy [.env.example](./.env.example) to `.env` only if none exists, then:
 
 ```bash
-./gradlew test --tests "pl.kacosmetology.scheduler.auth.AuthFlowIntegrationTest.full customer registration and login via SMS should create session"
-```
-
-Before finishing a task, run `./gradlew test` (or a relevant subset).
-
-## Local Dev Checklist
-
-```bash
-docker compose up --build # or: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 curl -sf http://localhost:8080/actuator/health
 ```
 
-Dev accounts: owner `gabinet@kacosmetology.pl` / `admin123`, employee `pracownik@kacosmetology.pl` / `employee123`. Seed data has no work schedules, so availability is empty until one is set. Details: [docs/development.md](./docs/development.md).
+The override selects `dev` and binds API `8080`, debugger `5005`, PostgreSQL `5432`, Redis `6379` to loopback. R2 placeholders permit startup; uploads need real settings. [Development](./docs/development.md) covers accounts, host-side running and seed data; availability is empty until schedules are set.
 
-JDK 25 and lefthook are pinned in `mise.toml` (`mise install && lefthook install` once; mise switches to the JDK inside the repo). The lefthook pre-commit hook runs `spotlessApply` on commits that stage Kotlin files and re-stages the result. Testcontainers and `docker compose` use rootless Podman via `DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock`, exported in `~/.zshrc`; non-interactive shells need `zsh -ic '...'` to pick up both. Distrobox is no longer required.
+**Production:** `docker compose -f docker-compose.yml up --build` defaults to `prod`, requires deployment settings (including JustSend credentials and a positive SMS budget), and publishes no host ports. Follow [deployment](./docs/deployment.md); never use the dev override or example credentials in production.
 
-## Project Overview
+### Optional workstation setup
 
-Beauty/barber salon scheduling backend: **Kotlin**, **Spring Boot 4** (Web MVC, Security, Data JPA, Validation, Actuator), **PostgreSQL** + **Flyway**, **Redis** (OTP, rate limiting, cache), **Spring Session Redis**, **Cloudflare R2** for images, **Testcontainers** + **MockK**/**SpringMockK** for tests.
+`mise install && lefthook install` installs pinned tools/hooks. [lefthook.yml](./lefthook.yml) formats and re-stages staged Kotlin changes.
 
-Customers authenticate via SMS OTP; staff via company-scoped email/password. The current staff frontend is the separate repository [scheduler-dashboard](https://github.com/s24407-pj/scheduler-dashboard) (TanStack Start, Bun).
+For rootless Podman, set `DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock`. If exports/mise activation live in `~/.zshrc`, use `zsh -ic '<command>'` when needed. This is workstation-specific; [prerequisites](./docs/development.md#prerequisites) include the long-test-run Podman idle-timeout workaround.
 
-```
-src/main/kotlin/pl/kacosmetology/scheduler/
-├── auth/ # SMS OTP + staff login → Spring Security sessions
-├── availability/ # Available slot calculation (public), shared EmployeeAvailabilityPolicy and BookableSlotPolicy
-├── company/ # Company entity, settings, public booking profile
-├── config/ # Security, CORS, Redis, R2, RestExceptionHandler, DataInitializer (dev seed)
-├── employeeoffering/ # Which offerings an employee performs
-├── notification/ # SMS notifications, durable delivery, 09:00 reminders and audited completion jobs
-├── offering/ # Offering catalog, categories, images
-├── reservation/ # Booking lifecycle
-├── scheduleblock/ # Employee time blocks (breaks, unavailability)
-├── security/ # session authorization filter, CustomUserDetails, CustomUserDetailsService
-├── user/ # Profiles, customers (block/unblock, notes), employee photos
-└── workschedule/ # Employee weekly work schedules
-```
+## Documentation routing
 
-## Where to Read Before Changing Code
+| When changing... | Read |
+| --- | --- |
+| Multi-endpoint journeys | [flows](./docs/flows.md) |
+| Booking, lifecycle, concurrency, idempotency, revisions, audit | [reservations](./docs/reservations.md), [ADR-0016](./docs/adr/0016-reservation-contract-and-durable-submissions.md) |
+| Identity, staff administration, passwords | [identity](./docs/identity.md), [ADR-0012](./docs/adr/0012-separate-account-realms.md) |
+| Sessions, revocation, CSRF, CORS, rate limits | [architecture](./docs/architecture.md), [ADR-0011](./docs/adr/0011-spring-session-redis.md) |
+| Availability, schedules, blocks, qualification, settings | [availability](./docs/availability.md), [ADR-0014](./docs/adr/0014-effective-schedules-and-explicit-qualification.md) |
+| Prices, discounts, quotes | [pricing](./docs/pricing.md), [ADR-0013](./docs/adr/0013-commercial-quotes.md) |
+| SMS/OTP delivery, workers, reminders | [notifications](./docs/notifications.md), [SMS operations](./docs/sms-operations.md), [ADR-0015](./docs/adr/0015-durable-notification-delivery.md) |
+| Dates, clock, DST, jobs | [time handling](./docs/time-handling.md), ADR-0016 above |
+| Controllers, authorization, validation, errors | [endpoints](./docs/api/endpoints.md), [errors](./docs/api/errors.md) |
+| Modules, caching, R2, schema | [architecture](./docs/architecture.md) |
+| Config, seed, tests, build/CI | [development](./docs/development.md), [CI](./.github/workflows/ci.yml) |
+| Deployment, proxy trust, networking, persistence | [deployment](./docs/deployment.md) |
+| Load/performance tests | [perf-tests](./perf-tests/README.md) |
 
-| If you touch... | Read |
-| --------------- | ---- |
-| A user journey spanning several endpoints (setup, booking, sign-in, staff work, visit outcome, jobs) | [docs/flows.md](./docs/flows.md) |
-| Booking, cancellation, status changes, pricing | [docs/reservations.md](./docs/reservations.md), [ADR-0001](./docs/adr/0001-double-booking-prevention.md), [ADR-0002](./docs/adr/0002-reservation-lifecycle-and-cancellation.md), [ADR-0010](./docs/adr/0010-cancellation-window-and-no-show-correction.md) |
-| Availability, work schedules, blocks, assignments, company settings | [docs/availability.md](./docs/availability.md) |
-| Dates, times, "now", scheduled jobs | [docs/time-handling.md](./docs/time-handling.md) |
-| Auth, security, notifications, caching, R2, schema | [docs/architecture.md](./docs/architecture.md) |
-| Controllers, status codes, error bodies | [docs/api/endpoints.md](./docs/api/endpoints.md), [docs/api/errors.md](./docs/api/errors.md) |
-| Config, seed data, test setup | [docs/development.md](./docs/development.md) |
+Check the [ADR index](./docs/adr/README.md). ADR-0016 supersedes ADR-0001/0002/0003/0006/0010. Follow current domain docs/accepted decisions; report discrepancies. Do not implement **Proposed** ADRs without user agreement. Supersede changed accepted decisions with a new ADR, preserving history.
 
-## Invariants
+## Project and architecture
 
-- **Layering:** Controller → Service → Repository. No cross-module service calls; modules communicate through IDs. `EmployeeAvailabilityPolicy` and `BookableSlotPolicy` (slot grid shared by availability and customer booking) are the shared exceptions. `ArchitectureTest` (Konsist) enforces this: no `*Service` imports from another module (except `security`/`config`) and no repositories in controllers.
-- **Company scoping:** staff session principals carry exactly one `employmentId`, `companyId`, and role (`ROLE_OWNER`/`ROLE_EMPLOYEE`). Every staff operation must verify the target belongs to `userDetails.companyId`. Customer sessions carry only `ROLE_CUSTOMER`.
-- **Sessions:** REST login calls `SessionAuthenticationService` after credentials/OTP succeed and the database transaction commits. Run fixation/CSRF strategies and explicitly save the `SecurityContext`. Keep `CustomUserDetails` immutable and scalar-only: no entities, passwords, or session IDs. Use Spring Session's indexed Redis repository, never a second custom store ([ADR-0011](./docs/adr/0011-spring-session-redis.md)).
-- **Immediate revocation:** `SessionAuthorizationFilter` reloads the user and exact employment before authorization; changed user ID, phone, employment ownership, company or role invalidates the session. Never silently update its scope. Authenticate only anonymous browsers; log out before switching employment.
-- **CSRF/cookies:** require CSRF on all unsafe requests, including public login/OTP and logout. SPA clients fetch `/api/auth/csrf`, send `X-XSRF-TOKEN` with cookies, and refresh after login/logout. `SESSION` is HttpOnly, host-only, Path=/, SameSite=Lax, Secure in prod. CORS must use explicit origins with credentials.
-- **Tests:** feature fixtures use real Redis sessions (`TestSessions`) and explicit `csrf()` request processors; session boundary tests use actual cookies/CSRF/login. Never globally bypass CSRF.
-- **Client IP:** use `request.remoteAddr` for rate limiting; never parse `X-Forwarded-For` by hand (Tomcat applies it only for `TRUSTED_PROXIES`).
-- **Double booking:** lock the company row before the company employee row for booking, blocks and policy changes. PostgreSQL exclusions protect both employee and company/customer occupied intervals; completed visits retain the full interval. `@Version` protects edits, not allocation.
-- **Per-company employee time:** reservations, schedule blocks, work schedules, and offering assignments are scoped to (company, employee). Never query them by `employeeId` alone; a person employed by two salons has an independent calendar at each.
-- **Reservation status:** `BOOKED` is automatic booking. There is no PENDING/CONFIRMED workflow. BOOKED and COMPLETED retain their occupied intervals.
-- **Time:** API date-times are Europe/Warsaw local time without offset. Get "now" from the injected `Clock` bean (`LocalDateTime.now(clock)`); never call `now()` without it or hardcode `ZoneId.of(...)`.
-- **Errors:** throw `ApiException(ErrorCode.X, "<Polish detail>")` for business errors; responses are ProblemDetail with a stable `code`. Another company's resource is 404, not 403/409. Add new codes to `ErrorCode` and `docs/api/errors.md`.
-- **Money:** prices are `Int` whole złoty. No grosze, no decimals.
-- **Side effects:** persist notification/OTP intent before commit; claim delivery in a committed transaction before calling the provider after commit. Classify ACCEPTED, DEFINITE_TEMPORARY_FAILURE and AMBIGUOUS. Never blindly retry ambiguous sends; provider failures cannot roll back booking. A sent flag is not sufficient.
-- **Logging:** never log OTP codes, passwords, tokens, or raw constraint-violation messages (they contain row values). `ConsoleSmsSender` logs OTPs and is therefore disabled in `prod`. Log lines carry the MDC `requestId` from `RequestIdFilter`; prod logs are ECS JSON.
-- **Deployment:** single instance; scheduled jobs have no distributed lock.
+Kotlin/Spring Boot 4 MVC backend; PostgreSQL/Flyway, Redis (OTP, limits, cache, indexed Spring Session), Cloudflare R2. Tests: JUnit 5, MockK/SpringMockK, Testcontainers, Konsist. The staff frontend is separate; see [README](./README.md).
 
-## Development Checklist
+Modules under `src/main/kotlin/pl/kacosmetology/scheduler/`:
 
-When adding or modifying backend functionality, always:
+- `auth` (including `sms`): OTP, staff login/selection, limits, OTP outbox, SMS adapters/budget/workers.
+- `availability`: public slots, shared conflict and effective-shift/grid policies.
+- `company`: settings/profile, staff persistence, public employee lists.
+- `config`: security/CORS, clock/conversion, Redis/R2, errors/input, workers, dev seed.
+- `employeeoffering`: qualification mode and offering assignments.
+- `notification`: durable appointment SMS, delivery/recovery, 09:00 reminders.
+- `offering`: catalog, categories, images. `quote`: durable commercial quotes/agreement resolution.
+- `reservation`: submissions, booking/edit/lifecycle, audit, automatic completion.
+- `scheduleblock`: employee unavailability and revision-protected updates.
+- `security`: authentication bridge, immutable principals, session authorization/revocation.
+- `user`: customer identity/local profiles/blocks, staff administration/passwords/photos.
+- `workschedule`: weekly shifts, date replacements, days off.
 
-1. **Tests** — add unit tests (`*ServiceTest`) and integration tests (`*IntegrationTest`) covering the happy path and relevant error cases.
-2. **Flyway migration** — any schema change requires a new versioned migration file in `src/main/resources/db/migration/` (e.g. `V2__description.sql`). Never modify existing migration files.
-3. **Validation** — DTOs must have Jakarta Validation annotations (`@NotBlank`, `@Min`, `@Max`, `@PositiveOrZero`, `@Future`, etc.) on all fields that have constraints. Prefer annotation-based validation on DTOs over manual checks in service methods — services should only validate cross-field or cross-entity business rules (e.g. overlap checks).
-4. **KDocs** — all public classes, functions, and non-trivial properties must have a KDoc comment (`/** ... */`).
-5. **Docs** — update the matching file in `docs/` (and `docs/api/endpoints.md` for any mapping or `@PreAuthorize` change). If the change implements or alters a recorded decision, update the ADR status or add a new ADR.
+Controller → Service → Repository; no repositories in controllers. No cross-module service dependencies except `security`/`config` infrastructure. Share IDs/repositories and domain events; reuse shared policies (`EmployeeAvailabilityPolicy`, `BookableSlotPolicy`, `QuotePolicy`, `CustomerBlockingPolicy`). [ArchitectureTest](./src/test/kotlin/pl/kacosmetology/scheduler/architecture/ArchitectureTest.kt) checks foreign `*Service` imports and controller repository injection; preserve the broader layering rule.
 
-## Guardrails
+## Critical invariants
 
-- Prefer minimal, focused diffs; avoid over-engineering.
-- Do not commit unless explicitly asked.
-- Match naming, types, and patterns in surrounding code.
-- Never modify existing Flyway migration files.
-- Reference existing files with `@` instead of copying large code blocks.
-- Do not build against **Proposed** ADRs without the user's agreement.
+- **Identity/tenants:** customers are global canonical-phone-only accounts; salon profiles arise atomically with successful booking. Staff credentials/presentation are company-owned; matching phone/email never merges realms. Staff principals have exactly one employment, company and OWNER/EMPLOYEE role; CUSTOMER has neither scope. Verify company ownership on every staff operation; foreign/missing resources return opaque 404. Calendars/assignments require `(company, employee)`, never employee alone.
+- **Sessions:** authenticate only anonymous browsers after credentials/OTP succeed and DB commit, through `SessionAuthenticationService`; run fixation/CSRF strategies and explicitly save `SecurityContext`. Principals are immutable scalars, without entities, passwords, OTPs or session IDs. Use indexed Spring Session Redis, never a parallel session store. CUSTOMER expires absolutely after 24h; STAFF after 24h inactivity.
+- **Revocation:** before authorization revalidate exact account/employment, enabled state, identity, company, role/authorities, durable auth version, generation and customer deadline; fail closed. Never update stored scope silently. Password changes/reset increment auth version and revoke after commit. Logout-all generations are realm/account-scoped and never expire; delayed saves cannot revive access. Logout before switching identity/company.
+- **CSRF/cookies:** protect every unsafe request, including public auth/OTP/password and logout. Fetch `/api/auth/csrf`, send cookies plus `X-XSRF-TOKEN`, refresh after login/logout. SESSION is HttpOnly, host-only, Path=/, SameSite=Lax, Secure in prod. Require explicit credentialed CORS origins and same-site deployment. Never globally bypass CSRF.
+- **Limits/IP:** preserve atomic fail-closed Redis limits and shared SMS attempt budgeting. Use `request.remoteAddr`, never manual forwarded-header parsing. Tomcat trusts only explicit `TRUSTED_PROXIES`; default trusts none. Preserve production origin restrictions.
+- **Concurrency:** lock company before employment for booking, blocks and policy mutations; perform authoritative time/rule checks after locking. PostgreSQL exclusions protect company/employee and company/customer occupied intervals; COMPLETED retains its full interval. `@Version` protects edits, not allocation. Availability is advisory; quotes hold no capacity and bypass no hard rules.
+- **Idempotency:** both booking endpoints require permanent realm/account-scoped `Idempotency-Key`/payload binding before validation in a separately committed transaction, including failed validation. Changed payload conflicts; successful replay returns current details forever without repeated allocation/side effects. Preserve bounded waits.
+- **History:** BOOKED is initial, with no approval workflow. `If-Match` revision preconditions and durable command outcomes protect edits/lifecycle retries. Every actual mutation retains audit/versioning, including jobs/block cancellations/archive; no permanent deletion or bulk bypass. Preserve identity, creation time, accepted terms and staff-only field privacy per reservations docs.
+- **Schedules/time:** reuse qualification/shift/grid policies; empty specific assignments mean no services, only explicit `[]` clears a week. API appointment times are offset-free Warsaw local times; reject offsets, DST gaps/overlaps and transition-spanning appointments. Use injected `Clock` and `BUSINESS_ZONE`/`BUSINESS_ZONE_ID`, never default-zone `now()` or ad hoc `ZoneId.of(...)`. Elapsed rules use instants; horizon/no-show windows use Warsaw dates. Preserve explicit persistence conversion and UTC test JVM.
+- **Money/errors:** prices are `Int` whole złoty, with ties-to-even discount rounding and server-owned quote terms. IDs are UUIDs. Business errors use `ApiException(ErrorCode.X, "<Polish detail>")`; ProblemDetail carries stable `code`.
+- **Delivery:** persist OTP/notification intent before commit; commit SENDING before after-commit provider calls outside transactions. Classify/persist provider results as ACCEPTED, DEFINITE_TEMPORARY_FAILURE or AMBIGUOUS; retry only definite temporary failures within eligibility/deadlines, never unknown outcomes. Provider failures cannot roll back bookings. Preserve bounded separate pools, phone/company-customer lanes and budget checks; a sent flag is insufficient.
+- **Notifications/jobs:** customer booking sends no confirmation SMS/email; staff SMS is opt-in, default off, with obsolete-message invalidation; blocking sends a filtered summary. Reminders: 09:00 Warsaw, 10:00 deadline, no missed-run recovery; audited completion catches up. Single instance; no distributed job lock.
+- **Logging:** never log OTPs, passwords, tokens, provider secrets or raw constraint violations. ConsoleSmsSender omits OTP codes and is disabled in prod. Preserve MDC `requestId`, prod ECS JSON and safe provider metadata logging per notifications docs.
 
-## Revised contract invariants
+## Change and verification checklist
 
-Customer accounts are global phone-only; staff credentials and presentation are company-owned. CUSTOMER sessions expire absolutely after 24h; STAFF sessions expire after 24h inactivity. Booking submissions require permanent account-scoped Idempotency-Key binding, including failed validation, and lifecycle/edit writes require revision preconditions. Company then employment locking serializes booking and policy mutations; database exclusions protect both employee and company-local customer overlaps. All actual appointment mutations retain durable audit and versions. No permanent appointment deletion. Notifications use durable provider-result state and after-commit delivery. Tests run with JVM UTC while business time remains Warsaw. The pre-production schema was consolidated into V1 with explicit user authorization; future applied migrations remain immutable.
+- **Tests:** add/extend coverage by risk: unit tests for business branches; integration/repository tests for HTTP/security, tenant isolation, persistence, Redis and concurrency; regressions for defects. Avoid redundant coverage at every layer. Feature fixtures use real Redis sessions (`TestSessions`) and explicit `csrf()`; session-boundary tests use actual login/cookies/CSRF.
+- **Checks:** for code changes run `./gradlew test` or a relevant subset; broaden for shared behavior. CI runs `./gradlew build` including `spotlessCheck`; format Kotlin/Gradle scripts with Spotless. For docs-only changes validate paths, commands and consistency; application tests are optional. Report checks and unavailable verification.
+- **Flyway:** schema changes need a new migration in [db/migration](./src/main/resources/db/migration/). Check the highest existing version and use the next sequential version (`V<n>__description.sql`). Never edit existing migrations, bypass checksum validation, or rebaseline without explicit authorization.
+- **Validation/KDoc:** use Jakarta annotations for field constraints; services/policies enforce cross-field/entity rules. Booking time checks use injected clock under locks, not JVM-dependent `@Future`. KDoc explains meaningful public contracts/invariants or non-obvious behavior, without restating declarations.
+- **Docs:** update matching domain docs for behavior changes, endpoints for mappings/`@PreAuthorize`, errors for new codes/contracts, and ADRs for decision changes.
