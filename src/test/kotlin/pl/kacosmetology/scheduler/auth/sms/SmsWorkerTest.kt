@@ -179,6 +179,59 @@ class SmsWorkerTest {
     }
 
     @Test
+    fun `failed pending or sending diagnostics preserve the last snapshot without blocking selected work`() {
+        for (failedReader in listOf("pending", "sending")) {
+            val registry = SimpleMeterRegistry()
+            val remaining = ConcurrentHashMap.newKeySet<SmsWork>()
+            val processed = AtomicInteger()
+            var failure: String? = null
+            var pendingCount = 17L
+            var stats = SmsSendingStats(1, now.minusSeconds(180))
+            val worker =
+                SmsWorker(
+                    "notification",
+                    2,
+                    registry,
+                    clock,
+                    { excluded, limit -> remaining.filter { it.lane !in excluded }.take(limit) },
+                    { id ->
+                        remaining.removeIf { it.id == id }
+                        processed.incrementAndGet()
+                    },
+                    { if (failure == "pending") error("diagnostic query failed") else pendingCount },
+                    { if (failure == "sending") error("diagnostic query failed") else stats },
+                )
+            try {
+                worker.wake()
+                assertTrue(worker.awaitIdle(Duration.ofSeconds(5)))
+                failure = failedReader
+                pendingCount = 99 // A successful first read must not partially publish a failed snapshot.
+                stats = SmsSendingStats(0, null)
+                repeat(6) { remaining.add(SmsWork(testId(it.toLong()), "lane-$it", now)) }
+                worker.wake()
+                assertTrue(worker.awaitIdle(Duration.ofSeconds(5)))
+                assertTrue(remaining.isEmpty(), "$failedReader diagnostics must not block dispatch or refill")
+                assertEquals(6, processed.get())
+                assertEquals(17.0, registry.get("scheduler.sms.worker.pending").gauge().value())
+                assertEquals(1.0, registry.get("scheduler.sms.worker.sending").gauge().value())
+                assertEquals(180.0, registry.get("scheduler.sms.worker.sending.oldest.age").gauge().value())
+                failure = null
+                pendingCount = 0
+                worker.wake()
+                assertTrue(worker.awaitIdle(Duration.ofSeconds(5)))
+                assertEquals(0.0, registry.get("scheduler.sms.worker.pending").gauge().value())
+                assertEquals(0.0, registry.get("scheduler.sms.worker.sending").gauge().value())
+                assertEquals(0.0, registry.get("scheduler.sms.worker.sending.oldest.age").gauge().value())
+                assertEquals(6, processed.get())
+            } finally {
+                worker.stopAdmission()
+                worker.awaitTermination(System.nanoTime() + Duration.ofSeconds(5).toNanos())
+                registry.close()
+            }
+        }
+    }
+
+    @Test
     fun `failed preparation releases capacity and waits for another wake instead of a busy retry loop`() {
         val registry = SimpleMeterRegistry()
         val calls = AtomicInteger()

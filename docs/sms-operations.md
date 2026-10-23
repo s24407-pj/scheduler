@@ -4,7 +4,7 @@ A provider response can succeed while recording its result fails. The durable ro
 
 ## Detection
 
-Both pools expose `scheduler.sms.worker.sending` (last observed count) and `scheduler.sms.worker.sending.oldest.age` in seconds. Tags contain only `kind=otp|notification`. Age continues to increase from the last observed timestamp even if a later database read fails; diagnostics are sampled on coordinator wake/completion, with the normal 30-second polling fallback. They cannot discover a new database state during a complete database outage. Check database availability as well.
+Both pools expose `scheduler.sms.worker.sending` (last observed count) and `scheduler.sms.worker.sending.oldest.age` in seconds. Tags contain only `kind=otp|notification`. Age continues to increase from the last observed timestamp even if a later database read fails; diagnostics are sampled on coordinator wake/completion, with the normal 30-second polling fallback. Diagnostics are best-effort: if either backlog or sending-statistics read fails, the previous snapshot is retained and selected delivery work still runs and refills the pool. A diagnostic failure logs only its exception type. They cannot discover a new database state during a complete database outage. Check database availability as well.
 
 An age of at least two minutes emits a safe WARN on observation. This is an investigation threshold, not an automatic resolution timeout. An active but unusually delayed request must not be resolved just because it crossed that threshold.
 

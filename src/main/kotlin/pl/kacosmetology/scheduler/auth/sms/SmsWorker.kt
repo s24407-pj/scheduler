@@ -150,12 +150,19 @@ class SmsWorker(
     }
 
     private fun observe() {
-        backlog.set(pending())
-        val stats = sending()
-        sendingCount.set(stats.count)
-        oldestSending.set(stats.oldest)
-        val age = stats.oldest?.let { Duration.between(it, clock.instant()).seconds } ?: 0
-        if (age >= 120) log.warn("SMS {} unresolved SENDING work: count={} oldestAgeSeconds={}", kind, stats.count, age)
+        try {
+            // Read the complete snapshot before publishing; diagnostics must never gate selected delivery work.
+            val pendingCount = pending()
+            val stats = sending()
+            val age = stats.oldest?.let { Duration.between(it, clock.instant()).seconds } ?: 0
+            backlog.set(pendingCount)
+            sendingCount.set(stats.count)
+            oldestSending.set(stats.oldest)
+            if (age >= 120)
+                log.warn("SMS {} unresolved SENDING work: count={} oldestAgeSeconds={}", kind, stats.count, age)
+        } catch (failure: Exception) {
+            log.warn("SMS {} diagnostics unavailable: type={}", kind, failure.javaClass.simpleName)
+        }
     }
 
     /**
