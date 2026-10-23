@@ -105,6 +105,7 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 | `SERVER_SERVLET_SESSION_COOKIE_SECURE` | request HTTPS detection; true in prod | Keep true in production; no cookie Domain; SameSite=Lax |
 | `CORS_ORIGINS` | required by Compose | Comma-separated allowed origins; set to the exact dashboard origin(s) |
 | `OTP_GLOBAL_DAILY_SMS_CAP` | required by Compose | Positive operator-configured shared SMS attempt budget required in prod, UTC calendar day; OTP issuance reserves the first attempt and definite-temporary retries reserve again. Fixed OTP rules: 5-minute lifetime, 60-second cooldown, 3 failed attempts, 3 accepted phone issuances/rolling 5 minutes, 10 issuance requests/IP/rolling 15 minutes, 10 verification requests/IP/rolling 5 minutes. |
+| `JUSTSEND_APP_KEY`, `JUSTSEND_SENDER` | required in prod | JustSend API App-Key and permitted sender; passed through by Compose. Keep the key in a local ignored `.env` or deployment secrets. |
 | `TRUSTED_PROXIES` | empty | Regex of trusted direct proxy peers; empty trusts none. See [deployment.md](./deployment.md#client-ip-for-rate-limiting). |
 | `SERVER_TOMCAT_REMOTEIP_REMOTE_IP_HEADER` | `X-Forwarded-For` in Compose | Client-IP header accepted only from trusted peers; Cloudflare prerequisites in [deployment.md](./deployment.md#client-ip-for-rate-limiting). |
 | `LOGIN_MAX_ATTEMPTS`, `LOGIN_RATE_WINDOW_MINUTES` | 10 / 1 | Staff logins per IP per window (not passed through by Compose; edit `docker-compose.yml` to override) |
@@ -114,14 +115,14 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 Profiles:
 
 - `dev` (`application-dev.yaml`): SQL logging (`org.hibernate.SQL` at DEBUG), DEBUG for the app and Spring Security, extra actuator endpoints, seed data, Swagger UI.
-- `prod` (`application-prod.yaml`): INFO/WARN logging as ECS JSON on the console, no SQL logging. `ConsoleSmsSender` is disabled, so a real `SmsSender` is required.
+- `prod` (`application-prod.yaml`): INFO/WARN logging as ECS JSON on the console, no SQL logging. `JustSendSmsSender` sends real SMS and requires nonblank `JUSTSEND_APP_KEY` and `JUSTSEND_SENDER`; `ConsoleSmsSender` is disabled.
 
 Every request gets an ID (`RequestIdFilter`): a valid incoming `X-Request-Id` (up to 64 characters of `[A-Za-z0-9-]`) is reused, otherwise a UUID is generated. It is returned in the `X-Request-Id` response header and stored in the log MDC as `requestId`, so plain-text log lines show it in brackets and ECS logs carry it as a field.
 - `test`: set by Gradle for every test run; uses local test infrastructure.
 
 ## Production deployment
 
-See [deployment.md](./deployment.md) for Dokploy networking, required environment variables, proxy trust, persistence, and verification. Production startup currently requires the real `SmsSender` integration deferred to a separate PR; the missing bean is a known prerequisite.
+See [deployment.md](./deployment.md) for Dokploy networking, required environment variables, proxy trust, persistence, and verification. Production SMS is implemented by `JustSendSmsSender` (ECO variant). Missing or blank JustSend credentials fail startup. See [SMS operations](./notifications.md#sms-observability-and-segment-estimates) for safe request logs, multipart warnings and the segment metric; the daily budget limits attempts, not billable segments.
 
 ## Testing
 
