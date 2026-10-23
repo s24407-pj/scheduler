@@ -5,7 +5,7 @@ import javax.imageio.ImageIO
 import org.springframework.web.multipart.MultipartFile
 
 /** Verified image payload; media type and extension come from bytes rather than request metadata. */
-data class ValidatedImage(val bytes: ByteArray, val contentType: String, val extension: String)
+class ValidatedImage(val bytes: ByteArray, val contentType: String, val extension: String)
 
 /** Checks size, actual image format and decodability before any upload is persisted. */
 object ImageValidator {

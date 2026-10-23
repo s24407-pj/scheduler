@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.company
 
 import jakarta.persistence.*
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.hibernate.annotations.UuidGenerator
 
 /** Company-owned staff authentication account and presentation; [userId] is its public employee identifier. */

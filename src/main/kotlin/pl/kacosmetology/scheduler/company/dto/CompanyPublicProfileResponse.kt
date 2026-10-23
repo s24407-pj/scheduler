@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.company.dto
 
 import java.time.LocalTime
-import java.util.UUID
+import java.util.*
 import pl.kacosmetology.scheduler.company.Company
 
 /** Public-facing company profile for customer booking pages. */

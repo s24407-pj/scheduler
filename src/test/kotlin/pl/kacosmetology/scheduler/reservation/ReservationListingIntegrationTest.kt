@@ -1,9 +1,9 @@
 package pl.kacosmetology.scheduler.reservation
 
-import java.util.UUID
-import org.junit.jupiter.api.Assertions.*
+import java.util.*
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 
 /** Lists apply realm/company scope, half-open interval filters and archive privacy. */
 class ReservationListingIntegrationTest : ReservationContractTestSupport() {

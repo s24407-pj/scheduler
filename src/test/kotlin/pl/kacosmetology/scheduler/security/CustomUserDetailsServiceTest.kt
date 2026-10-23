@@ -4,7 +4,7 @@ import io.mockk.every
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
-import java.util.Optional
+import java.util.*
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -53,8 +53,6 @@ class CustomUserDetailsServiceTest {
         val user = User(id = testId(1), phoneNumber = testPhone, firstName = "Anna", lastName = "Nowak")
         every { userRepository.findByPhoneNumber(testPhone) } returns user
 
-        // Zwracamy informacje, ze Anna jest wlascicielem (OWNER)
-        val employeeData = CompanyEmployee(companyId = testId(99), userId = testId(1), role = "OWNER")
         val userDetails = customUserDetailsService.loadUserByUsername(testPhone)
 
         Assertions.assertEquals(listOf("ROLE_CUSTOMER"), userDetails.authorities.map { it.authority })

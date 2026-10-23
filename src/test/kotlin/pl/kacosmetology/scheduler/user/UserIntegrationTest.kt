@@ -18,9 +18,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.TestSessions
-import pl.kacosmetology.scheduler.user.dto.UpdateUserProfileRequest
 import software.amazon.awssdk.services.s3.S3Client
-import tools.jackson.databind.ObjectMapper
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -28,8 +26,6 @@ import tools.jackson.databind.ObjectMapper
 class UserIntegrationTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
-
-    @Autowired private lateinit var objectMapper: ObjectMapper
 
     @Autowired private lateinit var userRepository: UserRepository
 
@@ -84,7 +80,7 @@ class UserIntegrationTest {
                 with(csrf())
                 cookie(sessionCookie)
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(UpdateUserProfileRequest("Piotr", "Nowak", null))
+                content = """{"firstName":"Piotr","lastName":"Nowak","email":null}"""
             }
             .andExpect { status { isMethodNotAllowed() } }
     }

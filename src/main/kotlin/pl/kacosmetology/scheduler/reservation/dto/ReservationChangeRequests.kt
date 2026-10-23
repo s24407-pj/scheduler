@@ -3,9 +3,12 @@ package pl.kacosmetology.scheduler.reservation.dto
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonSetter
 import com.fasterxml.jackson.annotation.Nulls
-import jakarta.validation.constraints.*
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
+import jakarta.validation.constraints.PositiveOrZero
+import jakarta.validation.constraints.Size
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 
 private const val UNSET_INTERNAL_NOTES = "\u0000__UNSET_INTERNAL_NOTES__"
 

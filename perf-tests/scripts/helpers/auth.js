@@ -42,7 +42,3 @@ export function authHeaders(session) {
     headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': session.csrfToken },
   };
 }
-
-export function jsonHeaders() {
-  return { headers: { 'Content-Type': 'application/json' } };
-}

@@ -4,7 +4,7 @@ import jakarta.persistence.*
 import java.time.DayOfWeek
 import java.time.LocalTime
 import java.time.OffsetDateTime
-import java.util.UUID
+import java.util.*
 import org.hibernate.annotations.UuidGenerator
 
 /** Represents a single day's working hours for an employee. One entry per [dayOfWeek] per employee. */

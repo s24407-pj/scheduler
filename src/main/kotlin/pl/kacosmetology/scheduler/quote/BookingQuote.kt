@@ -5,7 +5,7 @@ import jakarta.persistence.Entity
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 
 /** Durable commercial agreement for one customer, service and start; never reserves employee capacity. */
 @Entity

@@ -5,7 +5,6 @@ import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
 import jakarta.servlet.http.Cookie
-import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -530,25 +529,6 @@ class AuthFlowIntegrationTest {
             .andExpect { status { isNoContent() } }
     }
 
-    private fun loginForEmployment(password: String, employmentId: UUID): Cookie {
-        val result =
-            mockMvc
-                .post("/api/auth/login-staff") {
-                    with(csrf())
-                    contentType = MediaType.APPLICATION_JSON
-                    content =
-                        objectMapper.writeValueAsString(
-                            StaffLoginRequest("multi@salon.pl", password, employmentId),
-                        )
-                }
-                .andExpect {
-                    status { isOk() }
-                    jsonPath("$.status") { value("AUTHENTICATED") }
-                }
-                .andReturn()
-        return requireNotNull(result.response.getCookie("SESSION"))
-    }
-
     private fun identity(cookie: Cookie) =
         objectMapper.readTree(
             mockMvc
@@ -557,14 +537,5 @@ class AuthFlowIntegrationTest {
                 .andReturn()
                 .response
                 .contentAsString,
-        )
-
-    private fun settingsBody(): String =
-        objectMapper.writeValueAsString(
-            mapOf(
-                "openingTime" to "08:00:00",
-                "closingTime" to "20:00:00",
-                "slotIntervalMinutes" to 15,
-            ),
         )
 }

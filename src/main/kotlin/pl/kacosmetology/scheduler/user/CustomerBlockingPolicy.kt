@@ -3,9 +3,10 @@ package pl.kacosmetology.scheduler.user
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.company.CompanyRepository
@@ -54,9 +55,8 @@ class CustomerBlockingPolicy(
     /** Current counts age out by Warsaw calendar date; aging alone never clears a persisted block. */
     fun currentCount(companyId: UUID, customerId: UUID): Int {
         val today = LocalDate.ofInstant(clock.instant(), BUSINESS_ZONE)
-        return jdbc.queryForObject(
+        return jdbc.queryForObject<Int>(
             "SELECT count(*) FROM no_show_penalties WHERE company_id=? AND customer_id=? AND active AND appointment_date BETWEEN ? AND ?",
-            Int::class.java,
             companyId,
             customerId,
             today.minusYears(1),

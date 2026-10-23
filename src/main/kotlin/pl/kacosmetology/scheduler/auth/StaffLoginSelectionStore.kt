@@ -3,8 +3,7 @@ package pl.kacosmetology.scheduler.auth
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Duration
-import java.util.Base64
-import java.util.UUID
+import java.util.*
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
 import pl.kacosmetology.scheduler.security.AccountSessionRegistry

@@ -9,13 +9,8 @@ import io.mockk.verify
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Timestamp
-import java.time.Clock
-import java.time.Duration
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
-import java.time.ZoneOffset
-import java.util.UUID
+import java.time.*
+import java.util.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -27,14 +22,13 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.ApplicationEventPublisher
-import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
-import org.springframework.context.annotation.Primary
 import org.springframework.dao.DataAccessResourceFailureException
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForObject
+import org.springframework.test.context.bean.override.convention.TestBean
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
@@ -57,7 +51,7 @@ import software.amazon.awssdk.services.s3.S3Client
 
 /** End-to-end transaction, delivery-state and reminder-clock evidence against PostgreSQL and Redis. */
 @SpringBootTest(properties = ["scheduler.jobs.enabled=false"])
-@Import(TestcontainersConfiguration::class, NotificationDeliveryIntegrationTest.TestTime::class)
+@Import(TestcontainersConfiguration::class)
 class NotificationDeliveryIntegrationTest {
     @Autowired private lateinit var workers: SmsWorkers
     @Autowired private lateinit var auth: AuthService
@@ -67,7 +61,12 @@ class NotificationDeliveryIntegrationTest {
     @Autowired private lateinit var details: NotificationDetails
     @Autowired private lateinit var jdbc: JdbcTemplate
     @Autowired private lateinit var source: DataSource
-    @Autowired private lateinit var clock: NotificationClock
+    @TestBean(name = "clock", methodName = "notificationClock", enforceOverride = true)
+    private lateinit var applicationClock: Clock
+
+    private val clock: NotificationClock
+        get() = applicationClock as NotificationClock
+
     @Autowired private lateinit var manager: PlatformTransactionManager
     @Autowired private lateinit var events: ApplicationEventPublisher
     @Autowired private lateinit var redis: StringRedisTemplate
@@ -90,17 +89,14 @@ class NotificationDeliveryIntegrationTest {
         service.recoverAfterRestart()
         clearMocks(sender)
         every { sender.deliverMessage(any(), any()) } returns SmsDeliveryResult.ACCEPTED
-        companyId =
-            jdbc.queryForObject("INSERT INTO companies(name) VALUES ('Local Salon') RETURNING id", UUID::class.java)!!
+        companyId = jdbc.queryForObject<UUID>("INSERT INTO companies(name) VALUES ('Local Salon') RETURNING id")!!
         customerId =
-            jdbc.queryForObject(
+            jdbc.queryForObject<UUID>(
                 "INSERT INTO customer_accounts(phone_number) VALUES ('+48880000001') RETURNING id",
-                UUID::class.java,
             )!!
         offeringId =
-            jdbc.queryForObject(
+            jdbc.queryForObject<UUID>(
                 "INSERT INTO offerings(company_id,name,duration_minutes,price) VALUES (?,'Current catalog',30,100) RETURNING id",
-                UUID::class.java,
                 companyId,
             )!!
         jdbc.update(
@@ -253,9 +249,8 @@ class NotificationDeliveryIntegrationTest {
         changed(id, "EDIT", true)
         assertEquals(
             Timestamp.from(nine.plusSeconds(10800)),
-            jdbc.queryForObject(
+            jdbc.queryForObject<Timestamp>(
                 "SELECT deadline FROM notification_deliveries ORDER BY id DESC LIMIT 1",
-                Timestamp::class.java,
             ),
         )
     }
@@ -338,7 +333,7 @@ class NotificationDeliveryIntegrationTest {
         assertEquals(1L, count())
         assertEquals(
             sameDay,
-            jdbc.queryForObject("SELECT reservation_id FROM notification_deliveries", UUID::class.java),
+            jdbc.queryForObject<UUID>("SELECT reservation_id FROM notification_deliveries"),
         )
     }
 
@@ -367,7 +362,7 @@ class NotificationDeliveryIntegrationTest {
         startAndAwait()
         assertEquals(
             nine.plusSeconds(3600),
-            jdbc.queryForObject("SELECT deadline FROM notification_deliveries", Timestamp::class.java)!!.toInstant(),
+            jdbc.queryForObject<Timestamp>("SELECT deadline FROM notification_deliveries")!!.toInstant(),
         )
         clock.set(nine.plusSeconds(3599))
         every { sender.deliverMessage(any(), any()) } returns SmsDeliveryResult.ACCEPTED
@@ -426,7 +421,7 @@ class NotificationDeliveryIntegrationTest {
                 details.reservation(id)!!,
                 clock.instant(),
                 nine.plusSeconds(3600),
-                java.util.UUID.randomUUID(),
+                UUID.randomUUID(),
             )
         }
         jdbc.update("UPDATE notification_deliveries SET state='SENDING',attempts=1 WHERE kind='REMINDER'")
@@ -467,9 +462,8 @@ class NotificationDeliveryIntegrationTest {
         val ids =
             (1..5).map { index ->
                 val customer =
-                    jdbc.queryForObject(
+                    jdbc.queryForObject<UUID>(
                         "INSERT INTO customer_accounts(phone_number) VALUES (?) RETURNING id",
-                        UUID::class.java,
                         "+4888010000$index",
                     )!!
                 booking(nine.plusSeconds(index * 3600L), customer = customer)
@@ -489,16 +483,14 @@ class NotificationDeliveryIntegrationTest {
             assertTrue(otpSent.await(5, TimeUnit.SECONDS))
             assertEquals(
                 4,
-                jdbc.queryForObject(
+                jdbc.queryForObject<Int>(
                     "SELECT count(*) FROM notification_deliveries WHERE state='SENDING'",
-                    Int::class.java,
                 ),
             )
             assertEquals(
                 1,
-                jdbc.queryForObject(
+                jdbc.queryForObject<Int>(
                     "SELECT count(*) FROM notification_deliveries WHERE state='PENDING'",
-                    Int::class.java,
                 ),
             )
         } finally {
@@ -507,7 +499,7 @@ class NotificationDeliveryIntegrationTest {
         }
         assertEquals(
             5,
-            jdbc.queryForObject("SELECT count(*) FROM notification_deliveries WHERE state='ACCEPTED'", Int::class.java),
+            jdbc.queryForObject<Int>("SELECT count(*) FROM notification_deliveries WHERE state='ACCEPTED'"),
         )
     }
 
@@ -523,9 +515,8 @@ class NotificationDeliveryIntegrationTest {
             }
         repeat(5) { index ->
             val customer =
-                jdbc.queryForObject(
+                jdbc.queryForObject<UUID>(
                     "INSERT INTO customer_accounts(phone_number) VALUES (?) RETURNING id",
-                    UUID::class.java,
                     "+4888020000$index",
                 )!!
             booking(nine.plusSeconds(86400 + index * 3600L), customer = customer)
@@ -540,13 +531,12 @@ class NotificationDeliveryIntegrationTest {
         }
         assertEquals(
             4,
-            jdbc.queryForObject("SELECT count(*) FROM notification_deliveries WHERE state='ACCEPTED'", Int::class.java),
+            jdbc.queryForObject<Int>("SELECT count(*) FROM notification_deliveries WHERE state='ACCEPTED'"),
         )
         assertEquals(
             1,
-            jdbc.queryForObject(
+            jdbc.queryForObject<Int>(
                 "SELECT count(*) FROM notification_deliveries WHERE state='DISCARDED' AND attempts=0",
-                Int::class.java,
             ),
         )
         verify(exactly = 4) { sender.deliverMessage(any(), any()) }
@@ -570,16 +560,14 @@ class NotificationDeliveryIntegrationTest {
             repeat(100) { service.dispatchDue() }
             assertEquals(
                 1,
-                jdbc.queryForObject(
+                jdbc.queryForObject<Int>(
                     "SELECT count(*) FROM notification_deliveries WHERE state='SENDING' AND kind='REMINDER'",
-                    Int::class.java,
                 ),
             )
             assertEquals(
                 "PENDING",
-                jdbc.queryForObject(
+                jdbc.queryForObject<String>(
                     "SELECT state FROM notification_deliveries WHERE kind='CREATE'",
-                    String::class.java,
                 ),
             )
         } finally {
@@ -652,17 +640,15 @@ class NotificationDeliveryIntegrationTest {
         startAndAwait()
         assertEquals("SENDING", state("REMINDER"))
         assertEquals("PENDING", state("CREATE"))
-        val deliveryId =
-            jdbc.queryForObject("SELECT id FROM notification_deliveries WHERE kind='REMINDER'", UUID::class.java)!!
+        val deliveryId = jdbc.queryForObject<UUID>("SELECT id FROM notification_deliveries WHERE kind='REMINDER'")!!
         jdbc.update(
             "UPDATE notification_deliveries SET updated_at=CURRENT_TIMESTAMP - INTERVAL '3 minutes' WHERE id=?",
             deliveryId,
         )
         val updated =
             jdbc
-                .queryForObject(
+                .queryForObject<Timestamp>(
                     "SELECT updated_at FROM notification_deliveries WHERE id=?",
-                    Timestamp::class.java,
                     deliveryId,
                 )!!
                 .toInstant()
@@ -681,7 +667,7 @@ class NotificationDeliveryIntegrationTest {
         verify(exactly = 1) { sender.deliverMessage(any(), any()) }
         assertEquals(
             1,
-            jdbc.queryForObject("SELECT attempts FROM notification_deliveries WHERE id=?", Int::class.java, deliveryId),
+            jdbc.queryForObject<Int>("SELECT attempts FROM notification_deliveries WHERE id=?", deliveryId),
         )
     }
 
@@ -706,19 +692,17 @@ class NotificationDeliveryIntegrationTest {
         created: Instant = nine.minusSeconds(86400),
         customer: UUID = customerId,
     ): UUID = transactions.execute {
-        jdbc.queryForObject(
+        jdbc.queryForObject<String>(
             "SELECT set_config('scheduler.audit_time',?,true)",
-            String::class.java,
             created.toString(),
         )
-        jdbc.queryForObject(
+        jdbc.queryForObject<UUID>(
             """
             INSERT INTO reservations(company_id,customer_id,employee_id,service_id,price,start_time,end_time,status,
                 accepted_service_name,agreed_duration_minutes,creation_source,created_at)
             VALUES (?,?,?,?,100,?,?,?,'Accepted name',30,'STAFF',?) RETURNING id
             """
                 .trimIndent(),
-            UUID::class.java,
             companyId,
             customer,
             employeeId,
@@ -732,9 +716,8 @@ class NotificationDeliveryIntegrationTest {
 
     private fun edit(id: UUID, start: Instant? = null) {
         transactions.executeWithoutResult {
-            jdbc.queryForObject(
+            jdbc.queryForObject<String>(
                 "SELECT set_config('scheduler.audit_time',?,true)",
-                String::class.java,
                 clock.instant().toString(),
             )
             if (start == null) jdbc.update("UPDATE reservations SET version=version+1,price=price+1 WHERE id=?", id)
@@ -761,20 +744,18 @@ class NotificationDeliveryIntegrationTest {
 
     private fun state(kind: String? = null): String {
         awaitWorkers()
-        return jdbc.queryForObject(
+        return jdbc.queryForObject<String>(
             "SELECT state FROM notification_deliveries" +
                 (if (kind == null) "" else " WHERE kind=?") +
                 " ORDER BY id DESC LIMIT 1",
-            String::class.java,
             *if (kind == null) emptyArray() else arrayOf(kind),
         )!!
     }
 
-    private fun count(): Long = jdbc.queryForObject("SELECT count(*) FROM notification_deliveries", Long::class.java)!!
+    private fun count(): Long = jdbc.queryForObject<Long>("SELECT count(*) FROM notification_deliveries")!!
 
-    @TestConfiguration
-    class TestTime {
-        @Bean @Primary fun notificationClock(): NotificationClock = NotificationClock()
+    companion object {
+        @JvmStatic fun notificationClock(): NotificationClock = NotificationClock()
     }
 }
 
@@ -791,5 +772,5 @@ class NotificationClock : Clock() {
 
     override fun getZone(): ZoneId = ZoneOffset.UTC
 
-    override fun withZone(zone: ZoneId): Clock = Clock.fixed(instant(), zone)
+    override fun withZone(zone: ZoneId): Clock = fixed(instant(), zone)
 }

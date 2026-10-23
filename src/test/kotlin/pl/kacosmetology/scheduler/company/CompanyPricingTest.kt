@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.company
 
 import java.time.Instant
 import java.time.LocalDateTime
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 class CompanyPricingTest {

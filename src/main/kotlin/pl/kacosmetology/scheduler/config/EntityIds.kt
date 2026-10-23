@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.config
 
-import java.util.UUID
+import java.util.*
 import org.hibernate.id.uuid.UuidVersion7Strategy
 
 /** Generates RFC 9562 UUIDv7 identifiers for durable records created before persistence. */

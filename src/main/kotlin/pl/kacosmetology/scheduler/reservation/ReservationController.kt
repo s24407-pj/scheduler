@@ -3,7 +3,7 @@ package pl.kacosmetology.scheduler.reservation
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize

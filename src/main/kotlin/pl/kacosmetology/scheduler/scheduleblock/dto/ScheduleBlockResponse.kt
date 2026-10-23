@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.scheduleblock.dto
 
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 
 /** Response DTO for a [ScheduleBlock]. */

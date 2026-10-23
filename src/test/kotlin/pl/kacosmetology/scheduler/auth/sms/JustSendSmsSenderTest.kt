@@ -16,15 +16,13 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.net.http.HttpTimeoutException
 import java.nio.charset.StandardCharsets
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.LinkedBlockingQueue
-import java.util.function.Supplier
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.getBean
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.databind.json.JsonMapper
@@ -224,12 +222,12 @@ class JustSendSmsSenderTest {
         val runner =
             ApplicationContextRunner()
                 .withUserConfiguration(JustSendSmsConfig::class.java)
-                .withBean(ObjectMapper::class.java, Supplier { mapper })
-                .withBean(MeterRegistry::class.java, Supplier { registry })
+                .withBean(ObjectMapper::class.java, { mapper })
+                .withBean(MeterRegistry::class.java, { registry })
                 .withPropertyValues("spring.profiles.active=prod", "justsend.app-key=key", "justsend.sender=JUSTSEND")
         runner.run { context ->
             assertFalse(context.startupFailure != null)
-            assertTrue(context.getBean(SmsSender::class.java) is JustSendSmsSender)
+            assertTrue(context.getBean<SmsSender>() is JustSendSmsSender)
         }
         runner.withPropertyValues("justsend.app-key= ").run { context ->
             assertTrue(context.startupFailure != null)

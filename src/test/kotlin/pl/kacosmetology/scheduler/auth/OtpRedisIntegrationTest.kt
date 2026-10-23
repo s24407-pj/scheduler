@@ -1,11 +1,7 @@
 package pl.kacosmetology.scheduler.auth
 
 import com.ninjasquad.springmockk.MockkBean
-import io.mockk.Runs
-import io.mockk.clearMocks
-import io.mockk.every
-import io.mockk.just
-import io.mockk.verify
+import io.mockk.*
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -190,7 +186,7 @@ class OtpRedisIntegrationTest {
 
     private fun expireWindow(key: String, window: Long, oneOnly: Boolean = false) {
         redis.execute(
-            RedisScript.of<Long>(
+            RedisScript.of(
                 """
                 local t = redis.call('TIME')
                 local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)

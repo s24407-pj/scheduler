@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.company.dto
 
-import java.util.UUID
+import java.util.*
 import pl.kacosmetology.scheduler.company.EmployeeEligibilityMode
 
 /** Represents a single employee of a company, including their basic user info and role. */

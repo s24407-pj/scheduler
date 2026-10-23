@@ -2,6 +2,7 @@ package pl.kacosmetology.scheduler.reservation
 
 import java.time.Clock
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import pl.kacosmetology.scheduler.security.CustomUserDetails
@@ -20,11 +21,10 @@ class ReservationAuditContext(private val jdbc: JdbcTemplate, private val clock:
                 else -> "SYSTEM"
             }
         val account = actor?.let { if (type == "STAFF") "staff:${it.employmentId}" else "customer:${it.id}" } ?: ""
-        jdbc.queryForObject("SELECT set_config('scheduler.actor_type', ?, true)", String::class.java, type)
-        jdbc.queryForObject("SELECT set_config('scheduler.actor_account', ?, true)", String::class.java, account)
-        jdbc.queryForObject(
+        jdbc.queryForObject<String>("SELECT set_config('scheduler.actor_type', ?, true)", type)
+        jdbc.queryForObject<String>("SELECT set_config('scheduler.actor_account', ?, true)", account)
+        jdbc.queryForObject<String>(
             "SELECT set_config('scheduler.audit_time', ?, true)",
-            String::class.java,
             clock.instant().toString(),
         )
     }

@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.config
 
 import com.ninjasquad.springmockk.MockkBean
-import java.util.UUID
+import java.util.*
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest

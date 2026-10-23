@@ -5,7 +5,7 @@ import jakarta.servlet.http.Cookie
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -138,8 +138,8 @@ class WorkScheduleIntegrationTest {
                 companyId = otherCompany.id!!,
                 employeeId = employeeId,
                 dayOfWeek = DayOfWeek.MONDAY,
-                startTime = java.time.LocalTime.of(12, 0),
-                endTime = java.time.LocalTime.of(20, 0),
+                startTime = LocalTime.of(12, 0),
+                endTime = LocalTime.of(20, 0),
             ),
         )
         val body =
@@ -172,7 +172,7 @@ class WorkScheduleIntegrationTest {
 
         val otherSchedule = workScheduleRepository.findAllByCompanyIdAndEmployeeId(otherCompany.id!!, employeeId)
         assertEquals(1, otherSchedule.size)
-        assertEquals(java.time.LocalTime.of(12, 0), otherSchedule.first().startTime)
+        assertEquals(LocalTime.of(12, 0), otherSchedule.first().startTime)
     }
 
     @Test
@@ -182,8 +182,8 @@ class WorkScheduleIntegrationTest {
                 companyId = companyId,
                 employeeId = employeeId,
                 dayOfWeek = DayOfWeek.MONDAY,
-                startTime = java.time.LocalTime.of(9, 0),
-                endTime = java.time.LocalTime.of(17, 0),
+                startTime = LocalTime.of(9, 0),
+                endTime = LocalTime.of(17, 0),
             ),
         )
 
@@ -218,8 +218,8 @@ class WorkScheduleIntegrationTest {
                 companyId = companyId,
                 employeeId = employeeId,
                 dayOfWeek = DayOfWeek.MONDAY,
-                startTime = java.time.LocalTime.of(9, 0),
-                endTime = java.time.LocalTime.of(17, 0),
+                startTime = LocalTime.of(9, 0),
+                endTime = LocalTime.of(17, 0),
             ),
         )
 
@@ -316,8 +316,8 @@ class WorkScheduleIntegrationTest {
                 companyId = companyId,
                 employeeId = employeeId,
                 dayOfWeek = DayOfWeek.THURSDAY,
-                startTime = java.time.LocalTime.of(9, 0),
-                endTime = java.time.LocalTime.of(17, 0),
+                startTime = LocalTime.of(9, 0),
+                endTime = LocalTime.of(17, 0),
             ),
         )
 
@@ -339,8 +339,8 @@ class WorkScheduleIntegrationTest {
                 companyId = companyId,
                 employeeId = employeeId,
                 dayOfWeek = DayOfWeek.MONDAY,
-                startTime = java.time.LocalTime.of(9, 0),
-                endTime = java.time.LocalTime.of(17, 0),
+                startTime = LocalTime.of(9, 0),
+                endTime = LocalTime.of(17, 0),
             ),
         )
 

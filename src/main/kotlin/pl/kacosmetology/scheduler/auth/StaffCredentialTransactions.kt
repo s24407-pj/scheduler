@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.auth
 
-import java.util.UUID
+import java.util.*
 import org.springframework.data.domain.PageRequest
 import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.stereotype.Component

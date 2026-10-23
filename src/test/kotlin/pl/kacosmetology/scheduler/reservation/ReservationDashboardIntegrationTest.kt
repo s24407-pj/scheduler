@@ -1,9 +1,9 @@
 package pl.kacosmetology.scheduler.reservation
 
-import java.util.UUID
-import org.junit.jupiter.api.Assertions.*
+import java.util.*
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import pl.kacosmetology.scheduler.testId
 
 /** Both company staff roles read coworkers' calendars using company-local customer presentation. */

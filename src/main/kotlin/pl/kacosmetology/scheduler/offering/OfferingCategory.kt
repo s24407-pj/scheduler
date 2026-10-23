@@ -1,8 +1,11 @@
 package pl.kacosmetology.scheduler.offering
 
-import jakarta.persistence.*
+import jakarta.persistence.Column
+import jakarta.persistence.Entity
+import jakarta.persistence.Id
+import jakarta.persistence.Table
 import java.time.OffsetDateTime
-import java.util.UUID
+import java.util.*
 import org.hibernate.annotations.UuidGenerator
 
 /** Logical grouping for salon offerings. Scoped to a single company. */

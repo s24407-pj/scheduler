@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.auth
 
 import java.time.Duration
-import java.util.UUID
+import java.util.*
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.stereotype.Component
@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component
 class RedisRollingRateLimiter(private val redisTemplate: StringRedisTemplate) {
     companion object {
         private val script =
-            RedisScript.of<List<*>>(
+            RedisScript.of(
                 """
                 local t = redis.call('TIME')
                 local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)

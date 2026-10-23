@@ -3,7 +3,7 @@ package pl.kacosmetology.scheduler.scheduleblock.dto
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 
 /**
  * Request body for creating a new schedule block. Blocks may be ongoing or span multiple days; [endTime] must be

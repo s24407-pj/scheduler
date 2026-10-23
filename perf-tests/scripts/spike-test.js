@@ -1,14 +1,13 @@
-import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { sleep } from 'k6';
 import {
   getPublicOfferings,
   getAvailability,
   getAuthOfferings,
-  createStaffBooking,
   futureDate,
   loadSetupData,
   randomFrom,
 } from './helpers/endpoints.js';
+import { createRandomStaffBooking } from './helpers/traffic.js';
 
 /**
  * SPIKE TEST
@@ -54,11 +53,7 @@ export default function (data) {
   } else if (rand < 0.90) {
     getAuthOfferings(data.session);
   } else {
-    const hour = 10 + Math.floor(Math.random() * 8);
-    const minute = Math.random() < 0.5 ? '00' : '30';
-    const startTime = `${date}T${hour}:${minute}:00`;
-    const phone = `+48600${String(Math.floor(Math.random() * 1000000)).padStart(6, '0')}`;
-    createStaffBooking(data.session, randomFrom(data.employeeIds), randomFrom(data.offeringIds), startTime, phone);
+    createRandomStaffBooking(data, date);
   }
 
   sleep(thinkTime);

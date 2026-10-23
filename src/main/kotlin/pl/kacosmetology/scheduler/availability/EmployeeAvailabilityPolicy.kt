@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.availability
 
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.springframework.stereotype.Service
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.ErrorCode

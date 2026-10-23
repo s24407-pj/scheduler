@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.scheduleblock
 
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityConflictSource

@@ -1,6 +1,5 @@
 package pl.kacosmetology.scheduler.config
 
-import java.time.Duration
 import java.time.LocalDateTime
 
 /** Validates an unambiguous Warsaw interval that does not cross a daylight-saving transition. */
@@ -18,7 +17,3 @@ fun validateBusinessInterval(start: LocalDateTime, end: LocalDateTime) {
         throw ApiException(ErrorCode.INVALID_LOCAL_TIME, "Wizyta nie może obejmować zmiany czasu")
     }
 }
-
-/** Actual elapsed duration between unambiguous business local times. */
-fun elapsedBusinessTime(start: LocalDateTime, end: LocalDateTime): Duration =
-    Duration.between(start.atZone(BUSINESS_ZONE).toInstant(), end.atZone(BUSINESS_ZONE).toInstant())

@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.scheduleblock
 
 import jakarta.persistence.*
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.hibernate.annotations.UuidGenerator
 
 /** Represents company-scoped employee unavailability, such as a break or personal appointment. */

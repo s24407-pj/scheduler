@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler
 
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForList
 import org.springframework.test.context.TestContext
 import org.springframework.test.context.support.AbstractTestExecutionListener
 
@@ -24,9 +25,8 @@ class DatabaseCleanupListener : AbstractTestExecutionListener() {
         val jdbc =
             testContext.applicationContext.getBeansOfType(JdbcTemplate::class.java).values.firstOrNull() ?: return
         val tables =
-            jdbc.queryForList(
+            jdbc.queryForList<String>(
                 "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> 'flyway_schema_history'",
-                String::class.java,
             )
         if (tables.isNotEmpty()) {
             jdbc.execute(

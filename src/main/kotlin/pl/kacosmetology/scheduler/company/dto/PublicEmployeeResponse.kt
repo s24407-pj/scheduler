@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.company.dto
 
-import java.util.UUID
+import java.util.*
 
 /** Minimal employee info exposed on public booking pages. [id] is the user ID used in reservation APIs. */
 data class PublicEmployeeResponse(

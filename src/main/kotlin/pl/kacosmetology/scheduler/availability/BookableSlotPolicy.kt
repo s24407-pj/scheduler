@@ -4,7 +4,7 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.util.UUID
+import java.util.*
 import org.springframework.stereotype.Service
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
