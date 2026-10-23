@@ -131,11 +131,11 @@ class SecurityConfig(
             .sessionManagement { session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
             }
+            .addFilterBefore(ExpectedSessionContextFilter(exceptionResolver), CsrfFilter::class.java)
             .addFilterBefore(
                 SessionAuthorizationFilter(userDetailsService, logoutHandler(), accountSessions),
-                CsrfFilter::class.java,
+                ExpectedSessionContextFilter::class.java,
             )
-            .addFilterAfter(ExpectedSessionContextFilter(exceptionResolver), SessionAuthorizationFilter::class.java)
 
         return http.build()
     }

@@ -31,7 +31,10 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContext
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.FilterChainProxy
+import org.springframework.security.web.access.intercept.AuthorizationFilter
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY
+import org.springframework.security.web.context.SecurityContextHolderFilter
+import org.springframework.security.web.csrf.CsrfFilter
 import org.springframework.session.FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME
 import org.springframework.session.data.redis.RedisIndexedSessionRepository
 import org.springframework.session.web.http.SessionRepositoryFilter
@@ -51,6 +54,7 @@ import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.AccountSessionRegistry
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.ExpectedSessionContextFilter
+import pl.kacosmetology.scheduler.security.SessionAuthorizationFilter
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -228,6 +232,30 @@ class SessionSecurityIntegrationTest {
         val loggedOut = csrf()
         assertNotEquals(after.token, loggedOut.token)
         assertEquals(200, post(loggedOut, "/api/auth/login-staff", credentials(owner.id!!)).response.status)
+    }
+
+    @Test
+    fun `security filter chain orders session revalidation and expected scope strictly before CSRF`() {
+        val filters = securityFilter.filterChains.single().filters.map { it::class }
+        val expectedOrder =
+            listOf(
+                SecurityContextHolderFilter::class,
+                SessionAuthorizationFilter::class,
+                ExpectedSessionContextFilter::class,
+                CsrfFilter::class,
+                AuthorizationFilter::class,
+            )
+        assertEquals(expectedOrder, filters.filter { it in expectedOrder })
+        val csrfIndex = filters.indexOf(CsrfFilter::class)
+        assertTrue(csrfIndex >= 2)
+        assertEquals(
+            listOf(
+                SessionAuthorizationFilter::class,
+                ExpectedSessionContextFilter::class,
+                CsrfFilter::class,
+            ),
+            filters.subList(csrfIndex - 2, csrfIndex + 1),
+        )
     }
 
     @Test
