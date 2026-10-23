@@ -6,6 +6,8 @@ A short index of paths and authorization rules. Request and response schemas com
 
 All unsafe methods require `X-XSRF-TOKEN` and its cookie, including public auth calls. Successful login returns status and sets HttpOnly `SESSION`; refresh `/api/auth/csrf` after authentication/logout. See the [frontend contract](../architecture.md#csrf-cookies-and-frontend-contract).
 
+Authenticated staff mutations additionally require `X-Expected-Session-Context: v1:userId:companyId:employmentId:ROLE_OWNER` (or `ROLE_EMPLOYEE`) captured from `/api/auth/me` when opening the authenticated UI. Use lowercase canonical UUIDs. This includes `/api/auth/logout-all`, but excludes public authentication, password recovery and `/api/auth/logout`. Missing/malformed/duplicate headers return 400 `SESSION_CONTEXT_REQUIRED`; a changed cookie identity returns 409 `SESSION_CONTEXT_CHANGED` without executing the write. Customer-only requests do not require this header. See the [session-context contract](../architecture.md#csrf-cookies-and-frontend-contract).
+
 Times and dates: see [time handling](../time-handling.md). Errors: see [errors](./errors.md).
 
 ## Quotes — `QuoteController`

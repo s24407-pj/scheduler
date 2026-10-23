@@ -31,7 +31,10 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContext
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.FilterChainProxy
+import org.springframework.security.web.access.intercept.AuthorizationFilter
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY
+import org.springframework.security.web.context.SecurityContextHolderFilter
+import org.springframework.security.web.csrf.CsrfFilter
 import org.springframework.session.FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME
 import org.springframework.session.data.redis.RedisIndexedSessionRepository
 import org.springframework.session.web.http.SessionRepositoryFilter
@@ -50,6 +53,8 @@ import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.security.AccountSessionRegistry
 import pl.kacosmetology.scheduler.security.CustomUserDetails
+import pl.kacosmetology.scheduler.security.ExpectedSessionContextFilter
+import pl.kacosmetology.scheduler.security.SessionAuthorizationFilter
 import pl.kacosmetology.scheduler.user.User
 import pl.kacosmetology.scheduler.user.UserRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -227,6 +232,108 @@ class SessionSecurityIntegrationTest {
         val loggedOut = csrf()
         assertNotEquals(after.token, loggedOut.token)
         assertEquals(200, post(loggedOut, "/api/auth/login-staff", credentials(owner.id!!)).response.status)
+    }
+
+    @Test
+    fun `security filter chain orders session revalidation and expected scope strictly before CSRF`() {
+        val filters = securityFilter.filterChains.single().filters.map { it::class }
+        val expectedOrder =
+            listOf(
+                SecurityContextHolderFilter::class,
+                SessionAuthorizationFilter::class,
+                ExpectedSessionContextFilter::class,
+                CsrfFilter::class,
+                AuthorizationFilter::class,
+            )
+        assertEquals(expectedOrder, filters.filter { it in expectedOrder })
+        val csrfIndex = filters.indexOf(CsrfFilter::class)
+        assertTrue(csrfIndex >= 2)
+        assertEquals(
+            listOf(
+                SessionAuthorizationFilter::class,
+                ExpectedSessionContextFilter::class,
+                CsrfFilter::class,
+            ),
+            filters.subList(csrfIndex - 2, csrfIndex + 1),
+        )
+    }
+
+    @Test
+    fun `staff writes require a well formed expected scope before any business side effect`() {
+        val browser = login(owner.id!!)
+        for (header in listOf(null, "", "invalid", browser.expectedContext!!.uppercase())) {
+            val result =
+                post(browser.copy(expectedContext = header), "/api/offering-categories", mapOf("name" to "Stary szkic"))
+            assertEquals(400, result.response.status, result.response.contentAsString)
+            assertEquals(
+                "SESSION_CONTEXT_REQUIRED",
+                mapper.readTree(result.response.contentAsString)["code"].asString(),
+            )
+        }
+        val duplicate =
+            mvc.perform(
+                    post("/api/offering-categories")
+                        .cookie(browser.session!!, browser.csrf)
+                        .header("X-XSRF-TOKEN", browser.token)
+                        .header(ExpectedSessionContextFilter.HEADER, browser.expectedContext, browser.expectedContext)
+                        .contentType("application/json")
+                        .content("{\"name\":\"Stary szkic\"}"),
+                )
+                .andReturn()
+        assertEquals(400, duplicate.response.status)
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM offering_categories", Int::class.java))
+        val saved = post(browser, "/api/offering-categories", mapOf("name" to "Aktualny szkic"))
+        assertEquals(201, saved.response.status, saved.response.contentAsString)
+    }
+
+    @Test
+    fun `a different account cookie cannot submit the former salon form even with rotated CSRF`() {
+        val original = login(owner.id!!)
+        assertEquals(204, post(original, "/api/auth/logout").response.status)
+        jdbc.update("UPDATE company_employees SET role = 'OWNER' WHERE id = ?", employee.id)
+        val current = login(employee.id!!)
+        val staleForm = current.copy(expectedContext = original.expectedContext, token = original.token)
+        val result = post(staleForm, "/api/offering-categories", mapOf("name" to "Nie ten salon"))
+        assertEquals(409, result.response.status, result.response.contentAsString)
+        assertEquals("SESSION_CONTEXT_CHANGED", mapper.readTree(result.response.contentAsString)["code"].asString())
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM offering_categories", Int::class.java))
+        assertEquals(200, meStatus(current))
+        assertEquals(201, post(current, "/api/offering-categories", mapOf("name" to "Salon beta")).response.status)
+    }
+
+    @Test
+    fun `each expected identity field is checked and valid scope still requires CSRF`() {
+        val browser = login(owner.id!!)
+        val fields = browser.expectedContext!!.split(":")
+        for (index in 1..4) {
+            val changed = fields.toMutableList()
+            changed[index] = if (index == 4) "ROLE_EMPLOYEE" else UUID.randomUUID().toString()
+            val result =
+                post(
+                    browser.copy(expectedContext = changed.joinToString(":")),
+                    "/api/offering-categories",
+                    mapOf("name" to "Nie zapisuj"),
+                )
+            assertEquals(409, result.response.status, "field $index: ${result.response.contentAsString}")
+            assertEquals("SESSION_CONTEXT_CHANGED", mapper.readTree(result.response.contentAsString)["code"].asString())
+        }
+        assertEquals(
+            403,
+            post(browser.copy(token = "wrong"), "/api/offering-categories", mapOf("name" to "Nie zapisuj"))
+                .response
+                .status,
+        )
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM offering_categories", Int::class.java))
+    }
+
+    @Test
+    fun `expired cookie remains unauthorized and relogin to same scope accepts the previous context`() {
+        val original = login(owner.id!!)
+        assertEquals(204, post(original, "/api/auth/logout").response.status)
+        val expired = csrf().copy(session = original.session, expectedContext = original.expectedContext)
+        assertEquals(401, post(expired, "/api/offering-categories", mapOf("name" to "Nie zapisuj")).response.status)
+        val current = login(owner.id!!).copy(expectedContext = original.expectedContext)
+        assertEquals(201, post(current, "/api/offering-categories", mapOf("name" to "To samo konto")).response.status)
     }
 
     @Test
@@ -1011,7 +1118,12 @@ class SessionSecurityIntegrationTest {
         return "$header.$claims.$signature"
     }
 
-    private data class Browser(val session: Cookie?, val csrf: Cookie, val token: String)
+    private data class Browser(
+        val session: Cookie?,
+        val csrf: Cookie,
+        val token: String,
+        val expectedContext: String? = null,
+    )
 
     private fun id(cookie: Cookie) = String(Base64.getDecoder().decode(cookie.value))
 
@@ -1031,12 +1143,24 @@ class SessionSecurityIntegrationTest {
         val body = mapper.readTree(result.response.contentAsString)
         assertEquals("X-XSRF-TOKEN", body["headerName"].asString())
         assertEquals(cookie.value, body["token"].asString())
-        return Browser(session, cookie, body["token"].asString())
+        val principal =
+            session
+                ?.let { sessions.findById(id(it)) }
+                ?.getAttribute<SecurityContext>(SPRING_SECURITY_CONTEXT_KEY)
+                ?.authentication
+                ?.principal as? CustomUserDetails
+        return Browser(
+            session,
+            cookie,
+            body["token"].asString(),
+            principal?.takeIf { it.companyId != null }?.let(ExpectedSessionContextFilter::context),
+        )
     }
 
     private fun post(browser: Browser, path: String, body: Any? = null): MvcResult {
         val builder = post(path).cookie(browser.csrf).header("X-XSRF-TOKEN", browser.token)
         browser.session?.let { builder.cookie(it) }
+        browser.expectedContext?.let { builder.header(ExpectedSessionContextFilter.HEADER, it) }
         if (body != null) builder.contentType("application/json").content(mapper.writeValueAsString(body))
         return mvc.perform(builder).andReturn()
     }

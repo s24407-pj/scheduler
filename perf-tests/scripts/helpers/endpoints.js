@@ -66,6 +66,7 @@ export function getAuthOfferings(session) {
  * Creates a staff booking. Returns the response (may be 201 or 409 on conflict).
  */
 export function createStaffBooking(session, employeeId, offeringId, startTime, phone) {
+  const auth = authHeaders(session);
   const res = http.post(
     `${BASE_URL}/api/reservations/staff`,
     JSON.stringify({
@@ -77,9 +78,9 @@ export function createStaffBooking(session, employeeId, offeringId, startTime, p
       customerLastName: 'Test',
     }),
     {
-      ...authHeaders(session),
+      ...auth,
       headers: {
-        ...authHeaders(session).headers,
+        ...auth.headers,
         'Idempotency-Key': `perf:${__VU}:${__ITER}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
       },
       timeout: '10s',
@@ -112,13 +113,17 @@ export function loadSetupData() {
   }
   const me = http.get(`${BASE_URL}/api/auth/me`, { ...authHeaders(session), timeout: '10s' });
   if (me.status !== 200) return null;
-  const companyId = me.json('companyId');
+  const identity = me.json();
+  const companyId = identity.companyId;
+  const role = Array.isArray(identity.authorities) ? identity.authorities[0] : null;
+  if (!identity.userId || !companyId || !identity.employmentId || !role) return null;
+  session.expectedContext = `v1:${identity.userId}:${companyId}:${identity.employmentId}:${role}`;
 
   // Fetch real offering and employee IDs
   const offeringsRes = http.get(`${BASE_URL}/api/offerings/public/company/${companyId}`, {
     timeout: '10s',
   });
-  let offeringIds = [1, 2, 3];
+  let offeringIds = ['00000000-0000-0000-0000-000000000001'];
   if (offeringsRes.status === 200) {
     const offerings = offeringsRes.json();
     if (Array.isArray(offerings) && offerings.length > 0) {
@@ -130,7 +135,7 @@ export function loadSetupData() {
     ...authHeaders(session),
     timeout: '10s',
   });
-  let employeeIds = [1];
+  let employeeIds = ['00000000-0000-0000-0000-000000000001'];
   if (employeesRes.status === 200) {
     const employees = employeesRes.json();
     if (Array.isArray(employees) && employees.length > 0) {

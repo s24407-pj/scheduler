@@ -4,7 +4,7 @@ import { check } from 'k6';
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const STAFF_EMAIL = __ENV.STAFF_EMAIL || 'gabinet@kacosmetology.pl';
 const STAFF_PASSWORD = __ENV.STAFF_PASSWORD || 'admin123';
-const STAFF_COMPANY_ID = Number(__ENV.STAFF_COMPANY_ID || 1);
+const STAFF_COMPANY_ID = (__ENV.STAFF_COMPANY_ID || '00000000-0000-0000-0000-000000000001').trim();
 
 /** Standard cookie/CSRF login. k6's cookie jar retains HttpOnly cookies as an HTTP client. */
 export function loginStaff() {
@@ -35,10 +35,14 @@ export function loginStaff() {
   };
 }
 
-/** HTTP-client cookie credentials plus the non-credential CSRF header. */
+/** HTTP-client cookie credentials plus the non-credential CSRF and session-context headers. */
 export function authHeaders(session) {
+  const headers = { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': session.csrfToken };
+  if (session.expectedContext) {
+    headers['X-Expected-Session-Context'] = session.expectedContext;
+  }
   return {
     cookies: session.cookies,
-    headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': session.csrfToken },
+    headers,
   };
 }

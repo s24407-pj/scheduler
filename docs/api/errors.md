@@ -8,7 +8,7 @@ Every error is RFC 9457 Problem Details (`application/problem+json`) with stable
 | 401 | Missing/revoked/expired authentication or failed credentials/OTP |
 | 403 | Authenticated role lacks permission or CSRF is invalid |
 | 404 | Opaque nonexistent/foreign resource, including absent local customer relationship |
-| 409 | Booking/current-rule, revision, lifecycle or idempotency conflict |
+| 409 | Booking/current-rule, revision, lifecycle, idempotency or expected session-context conflict |
 | 429 | Atomic request/SMS allowance exceeded; includes Retry-After seconds |
 
 | Code | HTTP |
@@ -32,6 +32,8 @@ Every error is RFC 9457 Problem Details (`application/problem+json`) with stable
 | `CUSTOMER_NOT_FOUND` | 404 |
 | `SCHEDULE_BLOCK_NOT_FOUND` | 404 |
 | `CONFLICT` | 409 |
+| `SESSION_CONTEXT_REQUIRED` | 400 |
+| `SESSION_CONTEXT_CHANGED` | 409 |
 | `IDEMPOTENCY_CONFLICT` | 409 |
 | `IDEMPOTENCY_IN_PROGRESS` | 409 |
 | `QUOTE_RECONFIRMATION_REQUIRED` | 409 |
@@ -50,3 +52,5 @@ Booking keys remain bound after failed input/business validation. `IDEMPOTENCY_C
 Foreign staff/customer/company resources return the same opaque missing error as nonexistent ones. A completed visit may be cancelled by staff with a private reason; elapsed or corrected outcomes follow the current [reservation contract](../reservations.md).
 
 Email-first credentials, overflow beyond five candidates, invalid/expired/reused selection grants and unauthorized selections share 401 `INVALID_CREDENTIALS` with `Nieprawidłowe dane logowania`. No membership information is included. Login while authenticated returns 409; missing CSRF returns 403; IP/email allowances return 429 with Retry-After.
+
+Staff mutations require `X-Expected-Session-Context` with the scope that opened the form: `v1:userId:companyId:employmentId:ROLE_OWNER` (or `ROLE_EMPLOYEE`), with lowercase canonical UUIDs. Missing, malformed or duplicate headers return `400 SESSION_CONTEXT_REQUIRED`. A different current authenticated account/company/employment/role returns `409 SESSION_CONTEXT_CHANGED` before CSRF or business execution; the valid current session is not invalidated. The header is only an equality precondition, never an authentication credential or a substitute for CSRF, role and company authorization. A revoked/expired session still follows the usual 401/CSRF contract. Clients must not automatically replay the rejected write under the new identity.

@@ -4,7 +4,13 @@ import io.swagger.v3.oas.models.Components
 import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.PathItem
 import io.swagger.v3.oas.models.info.Info
-import io.swagger.v3.oas.models.media.*
+import io.swagger.v3.oas.models.media.Content
+import io.swagger.v3.oas.models.media.IntegerSchema
+import io.swagger.v3.oas.models.media.MediaType
+import io.swagger.v3.oas.models.media.ObjectSchema
+import io.swagger.v3.oas.models.media.Schema
+import io.swagger.v3.oas.models.media.StringSchema
+import io.swagger.v3.oas.models.parameters.HeaderParameter
 import io.swagger.v3.oas.models.responses.ApiResponse
 import io.swagger.v3.oas.models.security.SecurityRequirement
 import io.swagger.v3.oas.models.security.SecurityScheme
@@ -13,6 +19,7 @@ import org.springdoc.core.customizers.OpenApiCustomizer
 import org.springdoc.core.utils.SpringDocUtils
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import pl.kacosmetology.scheduler.security.ExpectedSessionContextFilter
 
 /** OpenAPI metadata for springdoc. The spec and Swagger UI are enabled only in the `dev` profile. */
 @Configuration
@@ -46,6 +53,19 @@ class OpenApiConfig {
                     ),
             )
             .also { api ->
+                api.components.addSecuritySchemes(
+                    "expectedSessionContext",
+                    SecurityScheme()
+                        .type(SecurityScheme.Type.APIKEY)
+                        .`in`(SecurityScheme.In.HEADER)
+                        .name(ExpectedSessionContextFilter.HEADER)
+                        .description(
+                            "Required equality precondition for staff writes, not an authentication credential: " +
+                                "v1:userId:companyId:employmentId:ROLE_OWNER (or ROLE_EMPLOYEE), captured from auth/me " +
+                                "when opening the form. Missing/malformed: 400 SESSION_CONTEXT_REQUIRED; " +
+                                "changed cookie scope: 409 SESSION_CONTEXT_CHANGED. Not required for customer logout-all.",
+                        ),
+                )
                 api.components.addSecuritySchemes(
                     "csrfToken",
                     SecurityScheme()
@@ -97,6 +117,27 @@ class OpenApiConfig {
                 val requirement = SecurityRequirement()
                 if (!public) requirement.addList(SESSION_AUTH)
                 if (unsafe) requirement.addList("csrfToken")
+                val customerOnly =
+                    (path == "/api/quotes" && method == PathItem.HttpMethod.POST) ||
+                        (path == "/api/reservations" && method == PathItem.HttpMethod.POST) ||
+                        (path == "/api/reservations/{id}/cancel" && method == PathItem.HttpMethod.PATCH)
+                val logoutAll = path == "/api/auth/logout-all" && method == PathItem.HttpMethod.POST
+                if (!public && unsafe && !customerOnly && !logoutAll) requirement.addList("expectedSessionContext")
+                if (
+                    logoutAll && operation.parameters?.none { it.name == ExpectedSessionContextFilter.HEADER } != false
+                ) {
+                    operation.addParametersItem(
+                        HeaderParameter()
+                            .name(ExpectedSessionContextFilter.HEADER)
+                            .required(false)
+                            .schema(StringSchema())
+                            .description(
+                                "Conditionally required for ROLE_OWNER and ROLE_EMPLOYEE sessions " +
+                                    "(v1:userId:companyId:employmentId:ROLE_OWNER or ROLE_EMPLOYEE); " +
+                                    "not required for ROLE_CUSTOMER.",
+                            ),
+                    )
+                }
                 operation.security = if (requirement.isEmpty()) emptyList() else listOf(requirement)
                 listOf("400", "401", "403", "404", "409", "429").forEach { code ->
                     operation.responses.putIfAbsent(

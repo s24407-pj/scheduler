@@ -26,6 +26,7 @@ import org.springframework.session.web.http.DefaultCookieSerializer
 import org.springframework.web.servlet.HandlerExceptionResolver
 import pl.kacosmetology.scheduler.security.AccountSessionRegistry
 import pl.kacosmetology.scheduler.security.CustomUserDetailsService
+import pl.kacosmetology.scheduler.security.ExpectedSessionContextFilter
 import pl.kacosmetology.scheduler.security.SessionAuthorizationFilter
 
 /** Cookie/session security with explicit REST login persistence, SPA CSRF and immediate scope revalidation. */
@@ -130,9 +131,10 @@ class SecurityConfig(
             .sessionManagement { session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
             }
+            .addFilterBefore(ExpectedSessionContextFilter(exceptionResolver), CsrfFilter::class.java)
             .addFilterBefore(
                 SessionAuthorizationFilter(userDetailsService, logoutHandler(), accountSessions),
-                CsrfFilter::class.java,
+                ExpectedSessionContextFilter::class.java,
             )
 
         return http.build()

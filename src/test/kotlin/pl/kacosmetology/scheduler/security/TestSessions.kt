@@ -55,6 +55,9 @@ class TestSessions(
         accountSessions.sessionAttributes(principal).forEach { (name, value) -> session.setAttribute(name, value) }
         // The concrete Redis repository owns the same Session subtype returned by createSession.
         repository.save(session)
-        return Cookie("SESSION", Base64.getEncoder().encodeToString(session.id.toByteArray()))
+        return FixtureSessionCookie(Base64.getEncoder().encodeToString(session.id.toByteArray()), principal)
     }
 }
+
+/** Carries the client-side scope snapshot alongside a real Redis cookie for feature-test requests. */
+class FixtureSessionCookie(value: String, val principal: CustomUserDetails) : Cookie("SESSION", value)
