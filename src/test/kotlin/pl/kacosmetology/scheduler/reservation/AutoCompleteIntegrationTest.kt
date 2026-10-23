@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForObject
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
@@ -49,7 +50,7 @@ class AutoCompleteIntegrationTest {
         assertEquals(1, result.version)
         assertEquals(
             2L,
-            jdbc.queryForObject("SELECT count(*) FROM reservation_audit WHERE reservation_id=?", Long::class.java, id),
+            jdbc.queryForObject<Long>("SELECT count(*) FROM reservation_audit WHERE reservation_id=?", id),
         )
         assertEquals(0, service.autoCompleteElapsed())
         assertThrows(Exception::class.java) { fixtures.reservation(salon, start.plusMinutes(15)) }

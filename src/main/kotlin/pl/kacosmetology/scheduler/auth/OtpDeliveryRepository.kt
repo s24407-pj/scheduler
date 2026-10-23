@@ -4,6 +4,7 @@ import java.sql.Timestamp
 import java.time.Instant
 import java.util.*
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.stereotype.Repository
 import pl.kacosmetology.scheduler.auth.sms.SmsSendingStats
 import pl.kacosmetology.scheduler.auth.sms.SmsWork
@@ -13,7 +14,7 @@ import pl.kacosmetology.scheduler.auth.sms.SmsWork
 class OtpDeliveryRepository(private val jdbc: JdbcTemplate) {
     /** Serializes replacement intent for one canonical phone without creating an identity or profile. */
     fun lockPhone(phone: String) {
-        jdbc.queryForObject("SELECT pg_advisory_xact_lock(hashtextextended(?,82341))", String::class.java, phone)
+        jdbc.queryForObject<String>("SELECT pg_advisory_xact_lock(hashtextextended(?,82341))", phone)
     }
 
     /** Replacing a still-current code clears older pending plaintext while retaining terminal metadata. */
@@ -86,9 +87,8 @@ class OtpDeliveryRepository(private val jdbc: JdbcTemplate) {
 
     /** Last observed durable backlog, including pending retries whose next-attempt time is still future. */
     fun pendingCount(): Long =
-        jdbc.queryForObject(
+        jdbc.queryForObject<Long>(
             "SELECT count(*) FROM otp_deliveries WHERE state IN ('PENDING','TEMPORARY_FAILURE')",
-            Long::class.java,
         )!!
 
     /** Aggregate active-send diagnostics, with no recipient or payload data leaving the repository. */

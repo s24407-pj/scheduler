@@ -4,6 +4,7 @@ import java.time.LocalDateTime
 import java.util.*
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 
@@ -110,7 +111,7 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
         jdbc.update("DELETE FROM employee_work_schedules WHERE company_id=?", salon.company)
         assertEquals(409, action(id, "restore").response.status)
         assertEquals("CANCELLED", state(id))
-        assertEquals(101, jdbc.queryForObject("SELECT price FROM reservations WHERE id=?", Int::class.java, id))
+        assertEquals(101, jdbc.queryForObject<Int>("SELECT price FROM reservations WHERE id=?", id))
         shift()
         assertEquals(204, action(id, "restore").response.status)
     }
@@ -124,7 +125,7 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
         assertEquals(2L, count("reservations"))
         assertEquals(409, book(customerBody(future.plusHours(2))).response.status)
         assertEquals(201, manual(manualBody(future.plusHours(2))).response.status)
-        assertEquals(3, jdbc.queryForObject("SELECT count(*) FROM reservations WHERE status='BOOKED'", Int::class.java))
+        assertEquals(3, jdbc.queryForObject<Int>("SELECT count(*) FROM reservations WHERE status='BOOKED'"))
     }
 
     @Test
@@ -145,9 +146,8 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
         assertFalse(customer.response.contentAsString.contains("Wewnętrzny powód"))
         assertEquals(
             "Wewnętrzny powód",
-            jdbc.queryForObject(
+            jdbc.queryForObject<String>(
                 "SELECT internal_cancellation_reason FROM reservations WHERE id=?",
-                String::class.java,
                 id,
             ),
         )
@@ -163,8 +163,7 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
     @Test
     fun `direct edit preserves id creation time and same service commercial agreement`() {
         val id = reservation()
-        val created =
-            jdbc.queryForObject("SELECT created_at::text FROM reservations WHERE id=?", String::class.java, id)
+        val created = jdbc.queryForObject<String>("SELECT created_at::text FROM reservations WHERE id=?", id)
         jdbc.update(
             "UPDATE offerings SET name='Renamed',price=999,duration_minutes=90,active=false WHERE id=?",
             salon.service,
@@ -177,7 +176,7 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
         assertEquals("Strzyżenie", tree(edited)["serviceName"].stringValue())
         assertEquals(
             created,
-            jdbc.queryForObject("SELECT created_at::text FROM reservations WHERE id=?", String::class.java, id),
+            jdbc.queryForObject<String>("SELECT created_at::text FROM reservations WHERE id=?", id),
         )
         assertEquals(1L, version(id))
     }
@@ -186,9 +185,8 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
     fun `service change uses current regular name price and duration and customer cannot change`() {
         val id = reservation()
         val service =
-            jdbc.queryForObject(
+            jdbc.queryForObject<UUID>(
                 "INSERT INTO offerings(company_id,name,duration_minutes,price) VALUES(?,'New service',45,222) RETURNING id",
-                UUID::class.java,
                 salon.company,
             )!!
         val result = edit(id, mapOf("serviceId" to service))
@@ -251,13 +249,12 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
         assertEquals(204, action(id, "complete", body = mapOf("reason" to "Zakończono wcześniej")).response.status)
         assertEquals(
             "Zakończono wcześniej",
-            jdbc.queryForObject("SELECT outcome_explanation FROM reservations WHERE id=?", String::class.java, id),
+            jdbc.queryForObject<String>("SELECT outcome_explanation FROM reservations WHERE id=?", id),
         )
         assertEquals(
             "Zakończono wcześniej",
-            jdbc.queryForObject(
+            jdbc.queryForObject<String>(
                 "SELECT after_state->>'outcome_explanation' FROM reservation_audit WHERE reservation_id=? ORDER BY id DESC LIMIT 1",
-                String::class.java,
                 id,
             ),
         )

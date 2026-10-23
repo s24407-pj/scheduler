@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForList
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.security.core.context.SecurityContextHolder
 import pl.kacosmetology.scheduler.availability.BookableSlotPolicy
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
@@ -91,10 +93,10 @@ class ReservationServiceTest {
             )
         every { clock.instant() } returns now
         every { clock.zone } returns BUSINESS_ZONE
-        every { jdbc.queryForList(any<String>(), UUID::class.java, any<UUID>()) } returns listOf(testId(1))
+        every { jdbc.queryForList<UUID>(any<String>(), any<UUID>()) } returns listOf(testId(1))
         every { jdbc.queryForList(any<String>(), any<UUID>(), any<String>(), any<String>()) } returns emptyList()
-        every { jdbc.queryForObject(any<String>(), Long::class.java, *anyVararg()) } returns 0L
-        every { jdbc.queryForObject(any<String>(), Int::class.java, *anyVararg()) } returns 0
+        every { jdbc.queryForObject<Long>(any<String>(), *anyVararg()) } returns 0L
+        every { jdbc.queryForObject<Int>(any<String>(), *anyVararg()) } returns 0
         every { jdbc.update(any<String>(), *anyVararg()) } returns 1
         every { companies.findByIdForUpdate(testId(1)) } returns company
         every { companies.findById(testId(1)) } returns Optional.of(company)
@@ -177,7 +179,7 @@ class ReservationServiceTest {
 
     @Test
     fun `missing catalog resource cannot reveal a foreign company`() {
-        every { jdbc.queryForList(any<String>(), UUID::class.java, testId(30)) } returns emptyList()
+        every { jdbc.queryForList<UUID>(any<String>(), testId(30)) } returns emptyList()
         fails(ErrorCode.RESERVATION_NOT_FOUND) { customer() }
     }
 
@@ -225,7 +227,7 @@ class ReservationServiceTest {
     @Test
     fun `employee overlap and block cannot pass a free customer calendar`() {
         every {
-            jdbc.queryForObject(match { it.contains("FROM reservations") }, Long::class.java, *anyVararg())
+            jdbc.queryForObject<Long>(match { it.contains("FROM reservations") }, *anyVararg())
         } returns 1L
         fails(ErrorCode.SLOT_UNAVAILABLE) { customer() }
     }
@@ -299,7 +301,7 @@ class ReservationServiceTest {
     fun `only owner can bypass block and physical booking conflict still rejects owner`() {
         fails(ErrorCode.ACCESS_DENIED) { manual(override = true) }
         every {
-            jdbc.queryForObject(match { it.contains("FROM reservations") }, Long::class.java, *anyVararg())
+            jdbc.queryForObject<Long>(match { it.contains("FROM reservations") }, *anyVararg())
         } returns 1L
         fails(ErrorCode.SLOT_UNAVAILABLE) { manual(owner = true, override = true) }
     }

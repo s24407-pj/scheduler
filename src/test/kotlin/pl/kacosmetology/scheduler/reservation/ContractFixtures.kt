@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.reservation
 import java.time.LocalDateTime
 import java.util.*
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.stereotype.Component
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 
@@ -13,29 +14,25 @@ class ContractFixtures(private val jdbc: JdbcTemplate) {
 
     fun salon(): Salon {
         val company =
-            jdbc.queryForObject(
+            jdbc.queryForObject<UUID>(
                 "INSERT INTO companies(name,address) VALUES('Salon','Warszawa') RETURNING id",
-                UUID::class.java,
             )!!
-        val employee = jdbc.queryForObject("SELECT uuidv7()", UUID::class.java)!!
+        val employee = jdbc.queryForObject<UUID>("SELECT uuidv7()")!!
         val staff =
-            jdbc.queryForObject(
+            jdbc.queryForObject<UUID>(
                 "INSERT INTO company_employees(company_id,user_id,role,login_email,first_name,last_name) VALUES(?,?,'OWNER',?,'Anna','Pracownik') RETURNING id",
-                UUID::class.java,
                 company,
                 employee,
                 "${UUID.randomUUID()}@example.test",
             )!!
         val service =
-            jdbc.queryForObject(
+            jdbc.queryForObject<UUID>(
                 "INSERT INTO offerings(company_id,name,duration_minutes,price) VALUES(?,'Strzyżenie',30,101) RETURNING id",
-                UUID::class.java,
                 company,
             )!!
         val customer =
-            jdbc.queryForObject(
+            jdbc.queryForObject<UUID>(
                 "INSERT INTO customer_accounts(phone_number) VALUES(?) RETURNING id",
-                UUID::class.java,
                 "+48" + (100000000..999999999).random(),
             )!!
         return Salon(company, employee, staff, service, customer)
@@ -66,9 +63,8 @@ class ContractFixtures(private val jdbc: JdbcTemplate) {
         employee: UUID = s.employee,
     ): UUID {
         profile(s, customer)
-        return jdbc.queryForObject(
+        return jdbc.queryForObject<UUID>(
             "INSERT INTO reservations(company_id,customer_id,employee_id,service_id,price,start_time,end_time,status,accepted_service_name,agreed_duration_minutes,creation_source) VALUES(?,?,?,?,101,?,?,?,'Strzyżenie',30,'CUSTOMER') RETURNING id",
-            UUID::class.java,
             s.company,
             customer,
             employee,

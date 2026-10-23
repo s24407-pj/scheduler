@@ -7,6 +7,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import org.springframework.jdbc.core.queryForList
+import org.springframework.jdbc.core.queryForObject
 
 /** Customer submissions enforce current scheduling rules without approval, holds or confirmation SMS. */
 class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() {
@@ -43,8 +45,8 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
                 .response
                 .status,
         )
-        assertEquals("Jan", jdbc.queryForObject("SELECT first_name FROM company_customers", String::class.java))
-        assertNull(jdbc.queryForObject("SELECT contact_email FROM company_customers", String::class.java))
+        assertEquals("Jan", jdbc.queryForObject<String>("SELECT first_name FROM company_customers"))
+        assertNull(jdbc.queryForObject<String>("SELECT contact_email FROM company_customers"))
     }
 
     @Test
@@ -216,9 +218,8 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
         try {
             val policy = pool.submit {
                 org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult {
-                    jdbc.queryForObject(
+                    jdbc.queryForObject<UUID>(
                         "SELECT id FROM companies WHERE id=? FOR UPDATE",
-                        UUID::class.java,
                         salon.company,
                     )
                     jdbc.update("UPDATE companies SET min_booking_advance_minutes=120 WHERE id=?", salon.company)
@@ -268,14 +269,13 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
         )
         assertEquals(
             1L,
-            jdbc.queryForObject(
+            jdbc.queryForObject<Long>(
                 "SELECT count(*) FROM customer_accounts WHERE phone_number='+48500100200'",
-                Long::class.java,
             ),
         )
         assertEquals(
             setOf("Jan", "Other"),
-            jdbc.queryForList("SELECT first_name FROM company_customers", String::class.java).toSet(),
+            jdbc.queryForList<String>("SELECT first_name FROM company_customers").toSet(),
         )
     }
 

@@ -11,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForObject
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.availability.BookableSlotPolicy
@@ -47,9 +48,8 @@ class TemporalPersistenceIntegrationTest {
         companies.saveAndFlush(company)
         assertEquals(
             "08:15:00",
-            jdbc.queryForObject(
+            jdbc.queryForObject<String>(
                 "SELECT opening_time::text FROM companies WHERE id=?",
-                String::class.java,
                 salon.company,
             ),
         )

@@ -7,6 +7,8 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.*
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForList
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.stereotype.Component
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 
@@ -34,13 +36,12 @@ class NotificationDetails(private val jdbc: JdbcTemplate) {
     /** Lists booked candidates for the next Warsaw calendar date, independent of the old reminder boolean. */
     fun reminderCandidates(date: LocalDate): List<UUID> =
         jdbc
-            .queryForList(
+            .queryForList<UUID>(
                 """
                 SELECT id FROM reservations WHERE status='BOOKED' AND NOT archived
                 AND (start_time AT TIME ZONE 'Europe/Warsaw')::date=? ORDER BY id
                 """
                     .trimIndent(),
-                UUID::class.java,
                 date,
             )
             .filterNotNull()
@@ -50,7 +51,7 @@ class NotificationDetails(private val jdbc: JdbcTemplate) {
      * do not reset reminder identity or cut-off eligibility. Durable audit is authoritative after rescheduling.
      */
     fun eligibleAtCutoff(id: UUID, cutoff: Instant): Boolean =
-        jdbc.queryForObject(
+        jdbc.queryForObject<Boolean>(
             """
             SELECT r.created_at<=? AND NOT EXISTS (
                 SELECT 1 FROM reservation_audit a WHERE a.reservation_id=r.id AND a.occurred_at>?
@@ -59,7 +60,6 @@ class NotificationDetails(private val jdbc: JdbcTemplate) {
             ) FROM reservations r WHERE r.id=?
             """
                 .trimIndent(),
-            Boolean::class.java,
             Timestamp.from(cutoff),
             Timestamp.from(cutoff),
             id,

@@ -6,6 +6,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.util.*
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForList
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.stereotype.Repository
 import pl.kacosmetology.scheduler.auth.sms.SmsSendingStats
 import pl.kacosmetology.scheduler.auth.sms.SmsWork
@@ -47,9 +49,8 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
 
     /** Last observed durable backlog, including pending retries but excluding terminal and paused records. */
     fun pendingCount(): Long =
-        jdbc.queryForObject(
+        jdbc.queryForObject<Long>(
             "SELECT count(*) FROM notification_deliveries WHERE state IN ('PENDING','TEMPORARY_FAILURE')",
-            Long::class.java,
         )!!
 
     /** Aggregate active-send diagnostics, with no recipient or payload data leaving the repository. */
@@ -67,9 +68,8 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
 
     /** A duplicated application event must not invalidate its original successful or pending delivery. */
     fun hasStaffRevision(reservationId: UUID, revision: Long, kind: String): Boolean =
-        jdbc.queryForObject(
+        jdbc.queryForObject<Boolean>(
             "SELECT EXISTS(SELECT 1 FROM notification_deliveries WHERE reservation_id=? AND reservation_revision=? AND kind=?)",
-            Boolean::class.java,
             reservationId,
             revision,
             kind,
@@ -110,13 +110,12 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
     fun insertSummary(companyId: UUID, customerId: UUID, ids: List<UUID>, now: Instant) {
         if (ids.isEmpty()) return
         val id =
-            jdbc.queryForObject(
+            jdbc.queryForObject<UUID>(
                 """
                 INSERT INTO notification_deliveries(kind,company_id,customer_id,state,next_attempt_at,deadline,created_at,updated_at)
                 VALUES ('BLOCK_SUMMARY',?,?,'PENDING',?,?,?,?) RETURNING id
                 """
                     .trimIndent(),
-                UUID::class.java,
                 companyId,
                 customerId,
                 Timestamp.from(now),
@@ -205,9 +204,8 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
     /** Reads summary members; dispatch checks each member's latest tenant, status and start before every attempt. */
     fun summaryMembers(id: UUID): List<UUID> =
         jdbc
-            .queryForList(
+            .queryForList<UUID>(
                 "SELECT reservation_id FROM notification_delivery_reservations WHERE delivery_id=?",
-                UUID::class.java,
                 id,
             )
             .filterNotNull()

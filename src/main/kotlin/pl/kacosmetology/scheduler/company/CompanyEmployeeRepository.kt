@@ -44,8 +44,6 @@ interface CompanyEmployeeRepository : JpaRepository<CompanyEmployee, UUID> {
     @Query("SELECT e FROM CompanyEmployee e WHERE e.id = :id")
     fun findAccountForUpdate(id: UUID): CompanyEmployee?
 
-    fun findAllByUserId(userId: UUID): List<CompanyEmployee>
-
     fun findAllByCompanyId(companyId: UUID): List<CompanyEmployee>
 
     fun existsByCompanyIdAndUserId(companyId: UUID, userId: UUID): Boolean

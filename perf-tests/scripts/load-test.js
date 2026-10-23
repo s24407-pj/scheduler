@@ -1,15 +1,6 @@
-import http from 'k6/http';
-import { check, sleep } from 'k6';
-import {
-  getPublicOfferings,
-  getAvailability,
-  getAuthOfferings,
-  getEmployees,
-  createStaffBooking,
-  futureDate,
-  loadSetupData,
-  randomFrom,
-} from './helpers/endpoints.js';
+import { sleep } from 'k6';
+import { loadSetupData } from './helpers/endpoints.js';
+import { runTrafficIteration } from './helpers/traffic.js';
 
 /**
  * LOAD TEST
@@ -37,8 +28,6 @@ export const options = {
   },
 };
 
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
-
 export function setup() {
   return loadSetupData();
 }
@@ -46,29 +35,8 @@ export function setup() {
 export default function (data) {
   if (!data) return;
 
-  const rand = Math.random();
-  const date = futureDate(Math.floor(Math.random() * 7) + 1);
   const thinkTime = Math.random() * 2.5 + 0.3;
-
-  if (rand < 0.35) {
-    getPublicOfferings(data.companyId);
-  } else if (rand < 0.60) {
-    getAvailability(randomFrom(data.employeeIds), randomFrom(data.offeringIds), date);
-  } else if (rand < 0.75) {
-    getAuthOfferings(data.session);
-  } else if (rand < 0.85) {
-    getEmployees(data.session);
-  } else if (rand < 0.95) {
-    // Staff booking — write operation with company/employee locking and database exclusions
-    const hour = 10 + Math.floor(Math.random() * 8);
-    const minute = Math.random() < 0.5 ? '00' : '30';
-    const startTime = `${date}T${hour}:${minute}:00`;
-    const phone = `+48600${String(Math.floor(Math.random() * 1000000)).padStart(6, '0')}`;
-    createStaffBooking(data.session, randomFrom(data.employeeIds), randomFrom(data.offeringIds), startTime, phone);
-  } else {
-    const res = http.get(`${BASE_URL}/actuator/health`, { timeout: '10s' });
-    check(res, { 'health 200': (r) => r.status === 200 });
-  }
+  runTrafficIteration(data);
 
   sleep(thinkTime);
 }

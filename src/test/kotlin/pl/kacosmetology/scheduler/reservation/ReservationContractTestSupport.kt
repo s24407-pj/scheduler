@@ -13,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.MvcResult
@@ -73,18 +74,16 @@ abstract class ReservationContractTestSupport {
         }
 
     protected fun newCustomer(): UUID =
-        jdbc.queryForObject(
+        jdbc.queryForObject<UUID>(
             "INSERT INTO customer_accounts(phone_number) VALUES(?) RETURNING id",
-            UUID::class.java,
             "+48" + (100000000..999999999).random(),
         )!!
 
     protected fun newEmployee(companyId: UUID = salon.company, role: String = "EMPLOYEE"): Pair<UUID, UUID> {
-        val public = jdbc.queryForObject("SELECT uuidv7()", UUID::class.java)!!
+        val public = jdbc.queryForObject<UUID>("SELECT uuidv7()")!!
         val account =
-            jdbc.queryForObject(
+            jdbc.queryForObject<UUID>(
                 "INSERT INTO company_employees(company_id,user_id,role,login_email,first_name,last_name) VALUES(?,?,?,?,'Other','Employee') RETURNING id",
-                UUID::class.java,
                 companyId,
                 public,
                 role,
@@ -150,7 +149,7 @@ abstract class ReservationContractTestSupport {
         )
 
     protected fun phone(customer: UUID): String =
-        jdbc.queryForObject("SELECT phone_number FROM customer_accounts WHERE id=?", String::class.java, customer)!!
+        jdbc.queryForObject<String>("SELECT phone_number FROM customer_accounts WHERE id=?", customer)!!
 
     protected fun postJson(path: String, body: Any, cookie: Cookie?, key: String? = null): MvcResult {
         val request = post(path).with(csrf()).contentType("application/json").content(json.writeValueAsString(body))
@@ -192,12 +191,12 @@ abstract class ReservationContractTestSupport {
     protected fun tree(result: MvcResult): JsonNode = json.readTree(result.response.contentAsString)
 
     protected fun version(id: UUID): Long =
-        jdbc.queryForObject("SELECT version FROM reservations WHERE id=?", Long::class.java, id)!!
+        jdbc.queryForObject<Long>("SELECT version FROM reservations WHERE id=?", id)!!
 
     protected fun state(id: UUID): String =
-        jdbc.queryForObject("SELECT status FROM reservations WHERE id=?", String::class.java, id)!!
+        jdbc.queryForObject<String>("SELECT status FROM reservations WHERE id=?", id)!!
 
-    protected fun count(table: String): Long = jdbc.queryForObject("SELECT count(*) FROM $table", Long::class.java)!!
+    protected fun count(table: String): Long = jdbc.queryForObject<Long>("SELECT count(*) FROM $table")!!
 
     protected fun profile(customer: UUID = salon.customer) = fixtures.profile(salon, customer)
 

@@ -6,6 +6,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
@@ -19,9 +20,8 @@ class ReservationNoShowIntegrationTest : ReservationContractTestSupport() {
         mvc.perform(patch("/api/customers/${salon.customer}/$operation").cookie(staffCookie()).with(csrf())).andReturn()
 
     private fun flag(id: UUID, column: String) =
-        jdbc.queryForObject(
+        jdbc.queryForObject<Boolean>(
             "SELECT $column FROM company_customer_blocks WHERE company_id=? AND customer_id=?",
-            Boolean::class.java,
             salon.company,
             id,
         )!!
@@ -59,7 +59,7 @@ class ReservationNoShowIntegrationTest : ReservationContractTestSupport() {
         assertEquals(409, edit(id, mapOf("durationMinutes" to 1)).response.status)
         assertEquals(
             30,
-            jdbc.queryForObject("SELECT agreed_duration_minutes FROM reservations WHERE id=?", Int::class.java, id),
+            jdbc.queryForObject<Int>("SELECT agreed_duration_minutes FROM reservations WHERE id=?", id),
         )
     }
 
@@ -73,7 +73,7 @@ class ReservationNoShowIntegrationTest : ReservationContractTestSupport() {
         assertEquals(audits, count("reservation_audit"))
         assertEquals(204, action(id, "complete").response.status)
         assertEquals(409, action(id, "no-show", 0).response.status)
-        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM no_show_penalties WHERE active", Int::class.java))
+        assertEquals(0, jdbc.queryForObject<Int>("SELECT count(*) FROM no_show_penalties WHERE active"))
     }
 
     @Test
@@ -179,14 +179,14 @@ class ReservationNoShowIntegrationTest : ReservationContractTestSupport() {
         assertEquals(409, action(id, "restore").response.status)
         assertEquals("NO_SHOW", state(id))
         assertEquals("BOOKED", state(replacement))
-        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM no_show_penalties WHERE active", Int::class.java))
+        assertEquals(1, jdbc.queryForObject<Int>("SELECT count(*) FROM no_show_penalties WHERE active"))
         assertEquals(
             204,
             action(replacement, "cancel-by-staff", body = mapOf("reason" to "Korekta terminu")).response.status,
         )
         assertEquals(204, action(id, "restore").response.status)
         assertEquals("BOOKED", state(id))
-        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM no_show_penalties WHERE active", Int::class.java))
+        assertEquals(0, jdbc.queryForObject<Int>("SELECT count(*) FROM no_show_penalties WHERE active"))
     }
 
     @Test
@@ -212,7 +212,7 @@ class ReservationNoShowIntegrationTest : ReservationContractTestSupport() {
         block(start = localNow, end = localNow.plusMinutes(30))
         assertEquals(409, action(id, "complete").response.status)
         assertEquals("NO_SHOW", state(id))
-        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM no_show_penalties WHERE active", Int::class.java))
+        assertEquals(1, jdbc.queryForObject<Int>("SELECT count(*) FROM no_show_penalties WHERE active"))
     }
 
     @Test
@@ -228,13 +228,12 @@ class ReservationNoShowIntegrationTest : ReservationContractTestSupport() {
         assertEquals(204, action(id, "no-show").response.status)
         assertEquals(
             future.plusDays(1).toLocalDate(),
-            jdbc.queryForObject(
+            jdbc.queryForObject<java.time.LocalDate>(
                 "SELECT appointment_date FROM no_show_penalties WHERE reservation_id=?",
-                java.time.LocalDate::class.java,
                 id,
             ),
         )
-        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM no_show_penalties WHERE active", Int::class.java))
+        assertEquals(1, jdbc.queryForObject<Int>("SELECT count(*) FROM no_show_penalties WHERE active"))
     }
 
     @Test

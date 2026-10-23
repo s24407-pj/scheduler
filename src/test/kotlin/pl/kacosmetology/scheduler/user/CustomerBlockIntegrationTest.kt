@@ -14,6 +14,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
@@ -185,9 +186,8 @@ class CustomerBlockIntegrationTest {
             }
         assertEquals(
             3,
-            jdbc.queryForObject(
+            jdbc.queryForObject<Int>(
                 "SELECT count(*) FROM no_show_penalties WHERE company_id=? AND customer_id=? AND active",
-                Int::class.java,
                 companyId,
                 customer.id!!,
             ),

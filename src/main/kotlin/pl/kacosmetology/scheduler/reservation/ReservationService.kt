@@ -7,6 +7,8 @@ import java.util.*
 import java.util.concurrent.ThreadLocalRandom
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForList
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -302,9 +304,8 @@ class ReservationService(
     fun cancelReservation(reservationId: UUID, customerId: UUID, revision: Long? = null, reason: String? = null) {
         val companyId =
             jdbc
-                .queryForList(
+                .queryForList<UUID>(
                     "SELECT company_id FROM reservations WHERE id=? AND customer_id=?",
-                    UUID::class.java,
                     reservationId,
                     customerId,
                 )
@@ -498,9 +499,8 @@ class ReservationService(
                 .firstOrNull()
         if (previous != null) {
             val reversed =
-                jdbc.queryForObject(
+                jdbc.queryForObject<Long>(
                     "SELECT count(*) FROM reservation_audit WHERE reservation_id=? AND (after_state->>'version')::bigint > ? AND after_state->>'status' <> ?",
-                    Long::class.java,
                     id,
                     previous["outcome_revision"],
                     target.name,
@@ -623,8 +623,7 @@ class ReservationService(
     }
 
     private fun offeringCompany(id: UUID): UUID =
-        jdbc.queryForList("SELECT company_id FROM offerings WHERE id=?", UUID::class.java, id).firstOrNull()
-            ?: missingReservation()
+        jdbc.queryForList<UUID>("SELECT company_id FROM offerings WHERE id=?", id).firstOrNull() ?: missingReservation()
 
     private fun lockCompany(id: UUID): Company = companyRepository.findByIdForUpdate(id) ?: missingReservation()
 
@@ -706,9 +705,8 @@ class ReservationService(
         if (overrideBlock && !owner)
             throw ApiException(ErrorCode.ACCESS_DENIED, "Tylko właściciel może pominąć blokadę pracownika")
         val occupied =
-            jdbc.queryForObject(
+            jdbc.queryForObject<Long>(
                 "SELECT count(*) FROM reservations WHERE company_id=? AND employee_id=? AND id<>? AND status NOT IN ('CANCELLED','NO_SHOW') AND start_time<? AND end_time>?",
-                Long::class.java,
                 companyId,
                 employeeId,
                 exclude,
@@ -717,9 +715,8 @@ class ReservationService(
             )!! > 0
         val blocked =
             !overrideBlock &&
-                jdbc.queryForObject(
+                jdbc.queryForObject<Long>(
                     "SELECT count(*) FROM schedule_blocks WHERE company_id=? AND employee_id=? AND start_time<? AND end_time>?",
-                    Long::class.java,
                     companyId,
                     employeeId,
                     sqlTime(end),
@@ -759,9 +756,8 @@ class ReservationService(
                     val shift = bookableSlotPolicy.effectiveShift(company.id!!, employee.userId, start.toLocalDate())!!
                     val denominator = shift.durationMinutes
                     val minutes =
-                        jdbc.queryForObject(
+                        jdbc.queryForObject<Double>(
                             "SELECT coalesce(sum(extract(epoch FROM (least(end_time,?) - greatest(start_time,?))))/60,0) FROM reservations WHERE company_id=? AND employee_id=? AND status IN ('BOOKED','COMPLETED') AND start_time<? AND end_time>?",
-                            Double::class.java,
                             sqlTime(start.toLocalDate().plusDays(1).atStartOfDay()),
                             sqlTime(start.toLocalDate().atStartOfDay()),
                             company.id,
@@ -822,9 +818,8 @@ class ReservationService(
     /** Current penalty count uses an inclusive rolling Warsaw calendar year. */
     fun noShowCount(companyId: UUID, customerId: UUID): Int {
         val today = LocalDate.ofInstant(clock.instant(), BUSINESS_ZONE)
-        return jdbc.queryForObject(
+        return jdbc.queryForObject<Int>(
             "SELECT count(*) FROM no_show_penalties WHERE company_id=? AND customer_id=? AND active AND appointment_date BETWEEN ? AND ?",
-            Int::class.java,
             companyId,
             customerId,
             today.minusYears(1),

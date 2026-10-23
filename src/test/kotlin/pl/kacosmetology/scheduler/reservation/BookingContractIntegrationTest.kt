@@ -18,6 +18,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.MvcResult
@@ -102,7 +103,7 @@ class BookingContractIntegrationTest {
     fun `failed submission binds payload and creates profile only when later same request succeeds`() {
         val key = UUID.randomUUID().toString()
         assertEquals(409, book(key).response.status)
-        assertEquals(0L, jdbc.queryForObject("SELECT count(*) FROM company_customers", Long::class.java))
+        assertEquals(0L, jdbc.queryForObject<Long>("SELECT count(*) FROM company_customers"))
         assertEquals(409, book(key, payload() + mapOf("firstName" to "Zmienione")).response.status)
         fixtures.shift(salon, start)
         val created = book(key)
@@ -115,7 +116,7 @@ class BookingContractIntegrationTest {
         assertEquals("Strzyżenie", body["serviceName"].stringValue())
         assertFalse(body["createdAt"].isNull)
         assertEquals(salon.company, UUID.fromString(body["companyId"].asString()))
-        assertEquals(1L, jdbc.queryForObject("SELECT count(*) FROM company_customers", Long::class.java))
+        assertEquals(1L, jdbc.queryForObject<Long>("SELECT count(*) FROM company_customers"))
     }
 
     @Test
@@ -161,9 +162,8 @@ class BookingContractIntegrationTest {
         assertEquals(204, action(id, "unarchive", 5).response.status)
         assertEquals(204, action(id, "restore", 6).response.status)
         assertTrue(
-            jdbc.queryForObject(
+            jdbc.queryForObject<Long>(
                 "SELECT count(*) FROM reservation_audit WHERE reservation_id=?",
-                Long::class.java,
                 id,
             )!! >= 8,
         )
@@ -172,7 +172,7 @@ class BookingContractIntegrationTest {
     @Test
     fun `simultaneous different employee requests cannot overlap the same customer`() {
         fixtures.shift(salon, start)
-        val other = jdbc.queryForObject("SELECT uuidv7()", UUID::class.java)!!
+        val other = jdbc.queryForObject<UUID>("SELECT uuidv7()")!!
         jdbc.update(
             "INSERT INTO company_employees(company_id,user_id,role,first_name,last_name) VALUES(?,?,'EMPLOYEE','Inny','Pracownik')",
             salon.company,
@@ -196,7 +196,7 @@ class BookingContractIntegrationTest {
                 }
             ready.countDown()
             assertEquals(listOf(201, 409), calls.map { it.get(15, TimeUnit.SECONDS) }.sorted())
-            assertEquals(1L, jdbc.queryForObject("SELECT count(*) FROM reservations", Long::class.java))
+            assertEquals(1L, jdbc.queryForObject<Long>("SELECT count(*) FROM reservations"))
         } finally {
             pool.shutdownNow()
         }

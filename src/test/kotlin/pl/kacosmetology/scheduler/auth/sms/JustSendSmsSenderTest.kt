@@ -22,6 +22,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.getBean
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.databind.json.JsonMapper
@@ -226,7 +227,7 @@ class JustSendSmsSenderTest {
                 .withPropertyValues("spring.profiles.active=prod", "justsend.app-key=key", "justsend.sender=JUSTSEND")
         runner.run { context ->
             assertFalse(context.startupFailure != null)
-            assertTrue(context.getBean(SmsSender::class.java) is JustSendSmsSender)
+            assertTrue(context.getBean<SmsSender>() is JustSendSmsSender)
         }
         runner.withPropertyValues("justsend.app-key= ").run { context ->
             assertTrue(context.startupFailure != null)
