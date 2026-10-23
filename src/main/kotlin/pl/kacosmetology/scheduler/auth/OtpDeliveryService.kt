@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.auth
 
 import java.time.Clock
 import java.time.Duration
-import java.util.UUID
+import java.util.*
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -38,13 +38,11 @@ class OtpDeliveryService(
             { excluded, limit ->
                 if (!recovered) emptyList()
                 else
-                    transactions
-                        .execute {
-                            val now = clock.instant()
-                            repository.recoverAndExpire(now, false, excluded)
-                            repository.due(now, excluded, limit)
-                        }
-                        .orEmpty()
+                    transactions.execute {
+                        val now = clock.instant()
+                        repository.recoverAndExpire(now, false, excluded)
+                        repository.due(now, excluded, limit)
+                    }
             },
             ::deliver,
             repository::pendingCount,

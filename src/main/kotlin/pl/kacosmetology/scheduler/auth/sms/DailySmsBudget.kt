@@ -16,7 +16,7 @@ class DailySmsBudget(
         /** OTP issuance reserves against this exact key within its issuance Lua script. */
         const val KEY = "otp:global-daily"
         private val reserveScript =
-            RedisScript.of<List<*>>(
+            RedisScript.of(
                 """
                 local t = redis.call('TIME')
                 local day = math.floor(tonumber(t[1]) / 86400)

@@ -3,6 +3,7 @@ package pl.kacosmetology.scheduler.reservation
 import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 
@@ -26,9 +27,8 @@ class BookingAbuseIntegrationTest : ReservationContractTestSupport() {
         assertEquals(429, request(cookie, key = key).response.status)
         assertEquals(
             1L,
-            jdbc.queryForObject(
+            jdbc.queryForObject<Long>(
                 "SELECT count(*) FROM booking_submissions WHERE submission_key=?",
-                Long::class.java,
                 key,
             ),
         )

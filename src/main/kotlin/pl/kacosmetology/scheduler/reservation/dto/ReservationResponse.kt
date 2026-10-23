@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.reservation.dto
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 

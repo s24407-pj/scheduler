@@ -5,13 +5,15 @@ import io.mockk.every
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDateTime
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForObject
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
@@ -48,7 +50,7 @@ class AutoCompleteIntegrationTest {
         assertEquals(1, result.version)
         assertEquals(
             2L,
-            jdbc.queryForObject("SELECT count(*) FROM reservation_audit WHERE reservation_id=?", Long::class.java, id),
+            jdbc.queryForObject<Long>("SELECT count(*) FROM reservation_audit WHERE reservation_id=?", id),
         )
         assertEquals(0, service.autoCompleteElapsed())
         assertThrows(Exception::class.java) { fixtures.reservation(salon, start.plusMinutes(15)) }

@@ -6,8 +6,7 @@ import jakarta.servlet.http.Cookie
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
-import java.util.Base64
-import java.util.UUID
+import java.util.*
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test

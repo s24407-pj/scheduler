@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.offering
 
 import com.ninjasquad.springmockk.MockkBean
-import java.util.UUID
+import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach

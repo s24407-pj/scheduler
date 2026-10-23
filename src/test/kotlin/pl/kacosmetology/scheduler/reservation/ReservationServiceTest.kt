@@ -4,25 +4,29 @@ import io.mockk.*
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDateTime
-import java.util.Optional
-import java.util.UUID
+import java.util.*
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForList
+import org.springframework.jdbc.core.queryForObject
 import org.springframework.security.core.context.SecurityContextHolder
 import pl.kacosmetology.scheduler.availability.BookableSlotPolicy
 import pl.kacosmetology.scheduler.availability.EmployeeAvailabilityPolicy
 import pl.kacosmetology.scheduler.company.*
-import pl.kacosmetology.scheduler.config.*
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
+import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.quote.CommercialAgreement
 import pl.kacosmetology.scheduler.quote.QuotePolicy
-import pl.kacosmetology.scheduler.reservation.dto.*
+import pl.kacosmetology.scheduler.reservation.dto.EditReservationRequest
+import pl.kacosmetology.scheduler.reservation.dto.ReservationActionRequest
 import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.*
 
@@ -89,10 +93,10 @@ class ReservationServiceTest {
             )
         every { clock.instant() } returns now
         every { clock.zone } returns BUSINESS_ZONE
-        every { jdbc.queryForList(any<String>(), UUID::class.java, any<UUID>()) } returns listOf(testId(1))
+        every { jdbc.queryForList<UUID>(any<String>(), any<UUID>()) } returns listOf(testId(1))
         every { jdbc.queryForList(any<String>(), any<UUID>(), any<String>(), any<String>()) } returns emptyList()
-        every { jdbc.queryForObject(any<String>(), Long::class.java, *anyVararg()) } returns 0L
-        every { jdbc.queryForObject(any<String>(), Int::class.java, *anyVararg()) } returns 0
+        every { jdbc.queryForObject<Long>(any<String>(), *anyVararg()) } returns 0L
+        every { jdbc.queryForObject<Int>(any<String>(), *anyVararg()) } returns 0
         every { jdbc.update(any<String>(), *anyVararg()) } returns 1
         every { companies.findByIdForUpdate(testId(1)) } returns company
         every { companies.findById(testId(1)) } returns Optional.of(company)
@@ -175,7 +179,7 @@ class ReservationServiceTest {
 
     @Test
     fun `missing catalog resource cannot reveal a foreign company`() {
-        every { jdbc.queryForList(any<String>(), UUID::class.java, testId(30)) } returns emptyList()
+        every { jdbc.queryForList<UUID>(any<String>(), testId(30)) } returns emptyList()
         fails(ErrorCode.RESERVATION_NOT_FOUND) { customer() }
     }
 
@@ -223,7 +227,7 @@ class ReservationServiceTest {
     @Test
     fun `employee overlap and block cannot pass a free customer calendar`() {
         every {
-            jdbc.queryForObject(match { it.contains("FROM reservations") }, Long::class.java, *anyVararg())
+            jdbc.queryForObject<Long>(match { it.contains("FROM reservations") }, *anyVararg())
         } returns 1L
         fails(ErrorCode.SLOT_UNAVAILABLE) { customer() }
     }
@@ -297,7 +301,7 @@ class ReservationServiceTest {
     fun `only owner can bypass block and physical booking conflict still rejects owner`() {
         fails(ErrorCode.ACCESS_DENIED) { manual(override = true) }
         every {
-            jdbc.queryForObject(match { it.contains("FROM reservations") }, Long::class.java, *anyVararg())
+            jdbc.queryForObject<Long>(match { it.contains("FROM reservations") }, *anyVararg())
         } returns 1L
         fails(ErrorCode.SLOT_UNAVAILABLE) { manual(owner = true, override = true) }
     }

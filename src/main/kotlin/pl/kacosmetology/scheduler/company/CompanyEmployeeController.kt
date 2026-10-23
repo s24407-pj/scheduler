@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.company
 
-import java.util.UUID
+import java.util.*
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal

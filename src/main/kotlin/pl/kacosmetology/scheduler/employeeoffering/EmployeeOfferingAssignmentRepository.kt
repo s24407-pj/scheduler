@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.employeeoffering
 
-import java.util.UUID
+import java.util.*
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Repository
 
@@ -27,7 +27,4 @@ interface EmployeeOfferingAssignmentRepository : JpaRepository<EmployeeOfferingA
 
     /** Returns whether the company owns this assignment. */
     fun existsByCompanyIdAndEmployeeIdAndOfferingId(companyId: UUID, employeeId: UUID, offeringId: UUID): Boolean
-
-    /** Removes all offering assignments for the given employee. */
-    fun deleteAllByEmployeeId(employeeId: UUID)
 }

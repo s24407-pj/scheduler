@@ -5,19 +5,8 @@ import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
-import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RestController
-import pl.kacosmetology.scheduler.auth.dto.AuthResponse
-import pl.kacosmetology.scheduler.auth.dto.AuthenticatedSessionResponse
-import pl.kacosmetology.scheduler.auth.dto.CompleteStaffLoginRequest
-import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
-import pl.kacosmetology.scheduler.auth.dto.StaffEmailLoginRequest
-import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
-import pl.kacosmetology.scheduler.auth.dto.StaffLoginResponse
-import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
+import org.springframework.web.bind.annotation.*
+import pl.kacosmetology.scheduler.auth.dto.*
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.SessionAuthenticationService
 

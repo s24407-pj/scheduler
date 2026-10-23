@@ -5,7 +5,7 @@ import jakarta.persistence.Entity
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 import org.springframework.data.jpa.repository.JpaRepository
 
 /** Hash-only one-use staff setup/recovery credential; replacement overwrites the account's single link. */

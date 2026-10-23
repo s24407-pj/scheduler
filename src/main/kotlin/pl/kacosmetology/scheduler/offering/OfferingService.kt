@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.offering
 
-import java.util.UUID
+import java.util.*
 import org.springframework.cache.annotation.CacheEvict
 import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service

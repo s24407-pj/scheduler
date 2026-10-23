@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.auth
 
 import java.security.SecureRandom
-import java.util.UUID
+import java.util.*
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.core.env.Environment
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -26,7 +26,7 @@ class OtpStore(
 
     companion object {
         private val issueScript =
-            RedisScript.of<List<*>>(
+            RedisScript.of(
                 """
                 local t = redis.call('TIME')
                 local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
@@ -62,7 +62,7 @@ class OtpStore(
             )
 
         private val firstDeliveryBudgetScript =
-            RedisScript.of<Long>(
+            RedisScript.of(
                 """
                 local reservedDay = tonumber(redis.call('GET', KEYS[1]))
                 local now = redis.call('TIME')
@@ -75,7 +75,7 @@ class OtpStore(
             )
 
         private val deliveryTtlScript =
-            RedisScript.of<Long>(
+            RedisScript.of(
                 """
                 local value = redis.call('GET', KEYS[1])
                 if not value then return -1 end
@@ -90,7 +90,7 @@ class OtpStore(
             )
 
         private val verifyScript =
-            RedisScript.of<Long>(
+            RedisScript.of(
                 """
                 local value = redis.call('GET', KEYS[1])
                 if not value then return 0 end

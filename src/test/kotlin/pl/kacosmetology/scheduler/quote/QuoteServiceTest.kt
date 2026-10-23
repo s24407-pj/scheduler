@@ -8,8 +8,8 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
-import java.util.Optional
-import org.junit.jupiter.api.Assertions.*
+import java.util.*
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import pl.kacosmetology.scheduler.config.ApiException

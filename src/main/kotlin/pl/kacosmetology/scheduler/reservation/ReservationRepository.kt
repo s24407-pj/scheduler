@@ -2,14 +2,11 @@ package pl.kacosmetology.scheduler.reservation
 
 import jakarta.persistence.LockModeType
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
-import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
-import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
-import org.springframework.transaction.annotation.Transactional
 
 @Repository
 interface ReservationRepository : JpaRepository<Reservation, UUID> {
@@ -68,19 +65,6 @@ interface ReservationRepository : JpaRepository<Reservation, UUID> {
     )
     fun findOverlapping(companyId: UUID, employeeId: UUID, start: LocalDateTime, end: LocalDateTime): List<Reservation>
 
-    /** Returns the active reservation exactly matching a booking request; used to make booking retries idempotent. */
-    @Query(
-        """
-        SELECT r FROM Reservation r
-        WHERE r.customerId = :customerId
-        AND r.employeeId = :employeeId
-        AND r.serviceId = :serviceId
-        AND r.startTime = :startTime
-        AND r.status NOT IN ('CANCELLED', 'NO_SHOW')
-    """,
-    )
-    fun findActiveBooking(customerId: UUID, employeeId: UUID, serviceId: UUID, startTime: LocalDateTime): Reservation?
-
     fun findAllByCustomerIdAndArchivedFalseOrderByStartTimeDesc(customerId: UUID): List<Reservation>
 
     /** Returns an employee's schedule at [companyId] overlapping a given time range (for the staff dashboard). */
@@ -100,35 +84,6 @@ interface ReservationRepository : JpaRepository<Reservation, UUID> {
         start: LocalDateTime,
         end: LocalDateTime,
     ): List<Reservation>
-
-    /**
-     * Returns reservations starting within [windowStart]..[windowEnd] that are active and have not had a reminder sent.
-     */
-    @Query(
-        """
-        SELECT r FROM Reservation r
-        WHERE r.startTime BETWEEN :windowStart AND :windowEnd
-        AND r.status IN ('BOOKED')
-        AND r.reminderSent = false
-    """,
-    )
-    fun findPendingReminders(
-        @Param("windowStart") windowStart: LocalDateTime,
-        @Param("windowEnd") windowEnd: LocalDateTime,
-    ): List<Reservation>
-
-    /** Bulk-marks the given reservations as having had a reminder sent. */
-    @Transactional
-    @Modifying
-    @Query("UPDATE Reservation r SET r.reminderSent = true WHERE r.id IN :ids")
-    fun markRemindersAsSent(@Param("ids") ids: List<UUID>)
-
-    /** Checks if a customer has any reservation in the given company. */
-    fun existsByCustomerIdAndCompanyId(customerId: UUID, companyId: UUID): Boolean
-
-    /** Returns distinct customer IDs that have at least one reservation in the given company. */
-    @Query("SELECT DISTINCT r.customerId FROM Reservation r WHERE r.companyId = :companyId")
-    fun findDistinctCustomerIdsByCompanyId(@Param("companyId") companyId: UUID): List<UUID>
 
     /**
      * Returns reservations for a specific employee within a company that overlap a date range. Used by the owner

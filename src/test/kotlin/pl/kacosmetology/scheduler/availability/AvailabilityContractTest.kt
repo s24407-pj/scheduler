@@ -15,10 +15,13 @@ import pl.kacosmetology.scheduler.company.*
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
-import pl.kacosmetology.scheduler.offering.*
+import pl.kacosmetology.scheduler.offering.Offering
+import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.testId
-import pl.kacosmetology.scheduler.workschedule.*
+import pl.kacosmetology.scheduler.workschedule.EmployeeScheduleOverrideRepository
+import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
+import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 
 @ResourceLock("JVM_TIMEZONE")
 class AvailabilityContractTest {

@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.auth
 
-import java.util.Locale
+import java.util.*
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.security.authentication.BadCredentialsException
@@ -8,14 +8,7 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
-import pl.kacosmetology.scheduler.auth.dto.CompleteStaffLoginRequest
-import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
-import pl.kacosmetology.scheduler.auth.dto.StaffEmailLoginRequest
-import pl.kacosmetology.scheduler.auth.dto.StaffLoginCompany
-import pl.kacosmetology.scheduler.auth.dto.StaffLoginRequest
-import pl.kacosmetology.scheduler.auth.dto.StaffLoginResponse
-import pl.kacosmetology.scheduler.auth.dto.StaffLoginStatus
-import pl.kacosmetology.scheduler.auth.dto.VerifyCodeRequest
+import pl.kacosmetology.scheduler.auth.dto.*
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository

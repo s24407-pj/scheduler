@@ -6,18 +6,18 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
-import java.util.UUID
-import org.junit.jupiter.api.Assertions.*
+import java.util.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.context.TestConfiguration
-import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
-import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForObject
+import org.springframework.test.context.bean.override.convention.TestBean
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
@@ -33,9 +33,11 @@ import software.amazon.awssdk.services.s3.S3Client
 
 /** Uses PostgreSQL quote storage and migrated phone accounts, independently of the legacy global-user mapping. */
 @SpringBootTest
-@Import(TestcontainersConfiguration::class, QuotePersistenceIntegrationTest.FixedClock::class)
+@Import(TestcontainersConfiguration::class)
 @Transactional
 class QuotePersistenceIntegrationTest {
+    @TestBean(name = "clock", methodName = "quoteClock", enforceOverride = true) private lateinit var clock: Clock
+
     @Autowired private lateinit var service: QuoteService
     @Autowired private lateinit var policy: QuotePolicy
     @Autowired private lateinit var repository: BookingQuoteRepository
@@ -55,9 +57,8 @@ class QuotePersistenceIntegrationTest {
     fun setup() {
         customerId =
             requireNotNull(
-                jdbc.queryForObject(
+                jdbc.queryForObject<UUID>(
                     "INSERT INTO customer_accounts(phone_number) VALUES ('+48880000001') RETURNING id",
-                    UUID::class.java,
                 ),
             )
         companyId = companies.save(Company(name = "Quote Salon", lastMinuteDiscountPercent = 50)).id!!
@@ -86,21 +87,19 @@ class QuotePersistenceIntegrationTest {
         assertEquals(Instant.parse("2026-06-01T12:00:00Z"), loaded.startTime)
         assertEquals(
             0L,
-            jdbc.queryForObject(
+            jdbc.queryForObject<Long>(
                 "SELECT count(*) FROM company_customers WHERE company_id=?",
-                Long::class.java,
                 companyId,
             ),
         )
         assertEquals(
             0L,
-            jdbc.queryForObject("SELECT count(*) FROM reservations WHERE company_id=?", Long::class.java, companyId),
+            jdbc.queryForObject<Long>("SELECT count(*) FROM reservations WHERE company_id=?", companyId),
         )
         assertEquals(
             0L,
-            jdbc.queryForObject(
+            jdbc.queryForObject<Long>(
                 "SELECT count(*) FROM company_employees WHERE contact_phone='+48880000001'",
-                Long::class.java,
             ),
         )
     }
@@ -164,8 +163,7 @@ class QuotePersistenceIntegrationTest {
         )
     }
 
-    @TestConfiguration
-    class FixedClock {
-        @Bean @Primary fun quoteClock(): Clock = Clock.fixed(Instant.parse("2026-06-01T08:00:00Z"), ZoneOffset.UTC)
+    companion object {
+        @JvmStatic fun quoteClock(): Clock = Clock.fixed(Instant.parse("2026-06-01T08:00:00Z"), ZoneOffset.UTC)
     }
 }

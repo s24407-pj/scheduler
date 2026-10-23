@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.offering.dto
 
-import java.util.UUID
+import java.util.*
 import pl.kacosmetology.scheduler.offering.OfferingCategory
 
 /** Response body for an offering category. */

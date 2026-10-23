@@ -6,12 +6,8 @@ import io.micrometer.core.instrument.Timer
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
-import java.util.UUID
-import java.util.concurrent.ArrayBlockingQueue
-import java.util.concurrent.Executors
-import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.ThreadPoolExecutor
-import java.util.concurrent.TimeUnit
+import java.util.*
+import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -120,22 +116,22 @@ class SmsWorker(
         // Also run maintenance when full (for example OTP expiry); source never admits more than capacity.
         val work = source(active.toSet(), capacity)
         observe()
-        for (item in work.take(capacity)) {
+        for ((id, lane, createdAt) in work.take(capacity)) {
             if (closing.get()) break
-            if (!active.add(item.lane)) continue
+            if (!active.add(lane)) continue
             slots.incrementAndGet()
             try {
                 executor.execute {
                     var success = false
                     try {
-                        waitTimer.record(Duration.between(item.createdAt, clock.instant()).coerceAtLeast(Duration.ZERO))
-                        MDC.putCloseable("smsDeliveryId", item.id.toString()).use { process(item.id) }
+                        waitTimer.record(Duration.between(createdAt, clock.instant()).coerceAtLeast(Duration.ZERO))
+                        MDC.putCloseable("smsDeliveryId", id.toString()).use { process(id) }
                         success = true
                     } catch (failure: Exception) {
-                        log.warn("SMS {} work {} deferred: type={}", kind, item.id, failure.javaClass.simpleName)
+                        log.warn("SMS {} work {} deferred: type={}", kind, id, failure.javaClass.simpleName)
                     } finally {
                         coordinate(allowClosing = true) {
-                            active.remove(item.lane)
+                            active.remove(lane)
                             slots.decrementAndGet()
                             // Failed preparations wait for another wakeup instead of spinning on the same row.
                             if (success) fill() else observe()
@@ -143,7 +139,7 @@ class SmsWorker(
                     }
                 }
             } catch (_: RejectedExecutionException) {
-                active.remove(item.lane)
+                active.remove(lane)
                 slots.decrementAndGet()
             }
         }

@@ -5,7 +5,7 @@ import io.mockk.every
 import io.mockk.verify
 import java.time.Instant
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.TestConfiguration

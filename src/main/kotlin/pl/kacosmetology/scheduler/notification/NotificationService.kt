@@ -4,7 +4,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.atomic.AtomicReference
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -46,7 +46,7 @@ class NotificationService(
                         beginReminderRun(requested)
                         reminderRequested.compareAndSet(requested, null)
                     }
-                    transactions.execute { repository.due(clock.instant(), excluded, limit) }.orEmpty()
+                    transactions.execute { repository.due(clock.instant(), excluded, limit) }
                 }
             },
             ::deliver,
@@ -240,7 +240,7 @@ class NotificationService(
         }
     }
 
-    private fun discard(delivery: Delivery, now: Instant): Attempt? {
+    private fun discard(delivery: Delivery, now: Instant): Nothing? {
         repository.state(delivery.id, DeliveryState.DISCARDED, now)
         return null
     }

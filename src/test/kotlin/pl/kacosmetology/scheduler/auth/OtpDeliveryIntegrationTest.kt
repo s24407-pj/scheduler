@@ -5,18 +5,15 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Timestamp
-import java.time.Clock
-import java.time.Duration
-import java.time.Instant
-import java.time.ZoneId
-import java.time.ZoneOffset
+import java.time.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import javax.sql.DataSource
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -28,6 +25,8 @@ import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.queryForObject
+import org.springframework.test.context.bean.override.convention.TestBean
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
@@ -55,7 +54,12 @@ class OtpDeliveryIntegrationTest {
     @Autowired private lateinit var source: DataSource
     @Autowired private lateinit var redis: StringRedisTemplate
     @Autowired private lateinit var manager: PlatformTransactionManager
-    @Autowired private lateinit var clock: OtpDeliveryClock
+    @TestBean(name = "clock", methodName = "otpDeliveryClock", enforceOverride = true)
+    private lateinit var applicationClock: Clock
+
+    private val clock: OtpDeliveryClock
+        get() = applicationClock as OtpDeliveryClock
+
     @Autowired private lateinit var provider: RecordingOtpProvider
     @MockkBean private lateinit var s3Client: S3Client
     private val now = Instant.parse("2027-06-01T07:00:00Z")
@@ -106,8 +110,7 @@ class OtpDeliveryIntegrationTest {
         assertEquals(1, provider.calls.get())
         assertScrubbed()
         assertNoIdentity()
-        val expiry =
-            jdbc.queryForObject("SELECT expires_at FROM otp_deliveries", java.sql.Timestamp::class.java)!!.toInstant()
+        val expiry = jdbc.queryForObject<Timestamp>("SELECT expires_at FROM otp_deliveries")!!.toInstant()
         assertTrue(Duration.between(now, expiry).toMillis() in 298_000..300_000)
         dispatchAndAwait()
         assertEquals(1, provider.calls.get())
@@ -173,8 +176,7 @@ class OtpDeliveryIntegrationTest {
         provider.outcome = SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
         auth.requestCode(RequestCodeRequest(phone), "ip")
         awaitWorkers()
-        val expiry =
-            jdbc.queryForObject("SELECT expires_at FROM otp_deliveries", java.sql.Timestamp::class.java)!!.toInstant()
+        val expiry = jdbc.queryForObject<Timestamp>("SELECT expires_at FROM otp_deliveries")!!.toInstant()
         clock.set(expiry)
         dispatchAndAwait()
         assertEquals("DISCARDED", state())
@@ -225,7 +227,7 @@ class OtpDeliveryIntegrationTest {
         assertEquals("AMBIGUOUS", state())
         assertScrubbed()
         assertEquals(0, provider.calls.get())
-        assertEquals(1, jdbc.queryForObject("SELECT attempts FROM otp_deliveries", Int::class.java))
+        assertEquals(1, jdbc.queryForObject<Int>("SELECT attempts FROM otp_deliveries"))
         dispatchAndAwait()
         assertEquals(0, provider.calls.get())
     }
@@ -334,8 +336,8 @@ class OtpDeliveryIntegrationTest {
     fun `operator resolution requires a stale unchanged OTP attempt and scrubs it without retry`() {
         queue(phone)
         jdbc.update("UPDATE otp_deliveries SET state='SENDING',attempts=1,updated_at=CURRENT_TIMESTAMP")
-        val id = jdbc.queryForObject("SELECT id FROM otp_deliveries", java.util.UUID::class.java)!!
-        val recent = jdbc.queryForObject("SELECT updated_at FROM otp_deliveries", Timestamp::class.java)!!.toInstant()
+        val id = jdbc.queryForObject<java.util.UUID>("SELECT id FROM otp_deliveries")!!
+        val recent = jdbc.queryForObject<Timestamp>("SELECT updated_at FROM otp_deliveries")!!.toInstant()
         fun resolve(expected: Instant) {
             val sql =
                 Files.readString(Path.of("scripts/ops/resolve-otp-sending.sql"))
@@ -351,7 +353,7 @@ class OtpDeliveryIntegrationTest {
         jdbc.update("UPDATE otp_deliveries SET updated_at=CURRENT_TIMESTAMP - INTERVAL '3 minutes'")
         resolve(recent)
         assertEquals("SENDING", state(), "A changed row must not be resolved using an outdated snapshot")
-        val stale = jdbc.queryForObject("SELECT updated_at FROM otp_deliveries", Timestamp::class.java)!!.toInstant()
+        val stale = jdbc.queryForObject<Timestamp>("SELECT updated_at FROM otp_deliveries")!!.toInstant()
         assertEquals(1L, repository.sendingStats().count)
         resolve(stale)
         assertEquals("AMBIGUOUS", state())
@@ -360,7 +362,7 @@ class OtpDeliveryIntegrationTest {
         resolve(stale)
         dispatchAndAwait()
         assertEquals(0, provider.calls.get())
-        assertEquals(1, jdbc.queryForObject("SELECT attempts FROM otp_deliveries", Int::class.java))
+        assertEquals(1, jdbc.queryForObject<Int>("SELECT attempts FROM otp_deliveries"))
     }
 
     @AfterEach
@@ -379,18 +381,18 @@ class OtpDeliveryIntegrationTest {
         return code
     }
 
-    private fun count(table: String): Int = jdbc.queryForObject("SELECT count(*) FROM $table", Int::class.java)!!
+    private fun count(table: String): Int = jdbc.queryForObject<Int>("SELECT count(*) FROM $table")!!
 
     private fun countState(state: String): Int =
-        jdbc.queryForObject("SELECT count(*) FROM otp_deliveries WHERE state=?", Int::class.java, state)!!
+        jdbc.queryForObject<Int>("SELECT count(*) FROM otp_deliveries WHERE state=?", state)!!
 
     private fun state(): String =
-        jdbc.queryForObject("SELECT state FROM otp_deliveries ORDER BY created_at DESC LIMIT 1", String::class.java)!!
+        jdbc.queryForObject<String>("SELECT state FROM otp_deliveries ORDER BY created_at DESC LIMIT 1")!!
 
     private fun assertScrubbed() {
         assertEquals(
             0,
-            jdbc.queryForObject("SELECT count(*) FROM otp_deliveries WHERE code IS NOT NULL", Int::class.java),
+            jdbc.queryForObject<Int>("SELECT count(*) FROM otp_deliveries WHERE code IS NOT NULL"),
         )
     }
 
@@ -399,10 +401,12 @@ class OtpDeliveryIntegrationTest {
         assertEquals(0, count("company_customers"))
     }
 
+    companion object {
+        @JvmStatic fun otpDeliveryClock(): OtpDeliveryClock = OtpDeliveryClock()
+    }
+
     @TestConfiguration
     class TestBeans {
-        @Bean @Primary fun otpDeliveryClock(): OtpDeliveryClock = OtpDeliveryClock()
-
         @Bean @Primary fun recordingOtpProvider(): RecordingOtpProvider = RecordingOtpProvider()
     }
 }
@@ -447,5 +451,5 @@ class OtpDeliveryClock : Clock() {
 
     override fun getZone(): ZoneId = ZoneOffset.UTC
 
-    override fun withZone(zone: ZoneId): Clock = Clock.fixed(instant(), zone)
+    override fun withZone(zone: ZoneId): Clock = fixed(instant(), zone)
 }

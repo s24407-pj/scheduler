@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.config
 
-import java.util.UUID
+import java.util.*
 import org.slf4j.LoggerFactory
 import org.springframework.boot.CommandLineRunner
 import org.springframework.context.annotation.Profile

@@ -1,7 +1,10 @@
 package pl.kacosmetology.scheduler.user
 
-import io.mockk.*
-import org.junit.jupiter.api.Assertions.*
+import io.mockk.Called
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import pl.kacosmetology.scheduler.reservation.ReservationRepository

@@ -6,9 +6,8 @@ import io.mockk.verify
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
-import java.util.Optional
-import java.util.UUID
-import org.junit.jupiter.api.Assertions.*
+import java.util.*
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
