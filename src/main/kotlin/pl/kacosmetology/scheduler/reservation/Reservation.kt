@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.reservation
 
 import jakarta.persistence.*
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.hibernate.annotations.UuidGenerator
 
 /** Lifecycle states supported by a reservation. */

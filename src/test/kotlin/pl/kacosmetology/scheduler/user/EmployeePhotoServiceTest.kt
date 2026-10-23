@@ -1,6 +1,8 @@
 package pl.kacosmetology.scheduler.user
 
-import io.mockk.*
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import javax.imageio.ImageIO
@@ -18,7 +20,10 @@ import pl.kacosmetology.scheduler.config.R2Properties
 import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.*
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
+import software.amazon.awssdk.services.s3.model.DeleteObjectResponse
+import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import software.amazon.awssdk.services.s3.model.PutObjectResponse
 
 class EmployeePhotoServiceTest {
     private val storage = mockk<S3Client>()

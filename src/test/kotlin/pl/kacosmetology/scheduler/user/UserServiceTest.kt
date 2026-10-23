@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.user
 
 import io.mockk.every
 import io.mockk.mockk
-import java.util.Optional
+import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import pl.kacosmetology.scheduler.testId

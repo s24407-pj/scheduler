@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.auth
 
 import java.sql.Timestamp
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
 import pl.kacosmetology.scheduler.auth.sms.SmsSendingStats

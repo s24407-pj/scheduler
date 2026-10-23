@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.user
 
 import com.ninjasquad.springmockk.MockkBean
 import jakarta.servlet.http.Cookie
-import java.util.UUID
+import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach

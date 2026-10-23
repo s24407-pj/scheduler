@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import java.time.Clock
 import java.time.Duration
-import java.util.UUID
+import java.util.*
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.SmartLifecycle

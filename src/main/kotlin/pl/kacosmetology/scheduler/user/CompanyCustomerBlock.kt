@@ -1,7 +1,10 @@
 package pl.kacosmetology.scheduler.user
 
-import jakarta.persistence.*
-import java.util.UUID
+import jakarta.persistence.Column
+import jakarta.persistence.Entity
+import jakarta.persistence.Id
+import jakarta.persistence.Table
+import java.util.*
 import org.hibernate.annotations.UuidGenerator
 
 /** Tracks per-company no-show count and block status for a customer. */

@@ -1,13 +1,12 @@
 package pl.kacosmetology.scheduler.reservation
 
 import io.mockk.verify
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 
 /** Customer submissions enforce current scheduling rules without approval, holds or confirmation SMS. */
 class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() {

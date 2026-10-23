@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.quote.dto
 
 import java.time.Instant
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 
 /** Customer-requested commercial preview; the company is determined from the public service identifier. */
 data class CreateQuoteRequest(

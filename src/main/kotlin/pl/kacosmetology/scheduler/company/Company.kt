@@ -1,12 +1,15 @@
 package pl.kacosmetology.scheduler.company
 
-import jakarta.persistence.*
+import jakarta.persistence.Column
+import jakarta.persistence.Entity
+import jakarta.persistence.Id
+import jakarta.persistence.Table
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.util.UUID
+import java.util.*
 import org.hibernate.annotations.UuidGenerator
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE

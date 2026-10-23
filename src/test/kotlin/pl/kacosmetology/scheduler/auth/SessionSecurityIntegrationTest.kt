@@ -13,8 +13,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
-import java.util.Base64
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -986,7 +985,7 @@ class SessionSecurityIntegrationTest {
 
     /** A formerly accepted signed credential and Redis entry; production no longer understands this protocol. */
     private fun legacyBearerFixture(): String {
-        val sessionId = java.util.UUID.randomUUID().toString()
+        val sessionId = UUID.randomUUID().toString()
         redis.opsForValue().set("session:$sessionId", staff.id.toString(), Duration.ofHours(1))
         val encoder = Base64.getUrlEncoder().withoutPadding()
         val header = encoder.encodeToString(mapper.writeValueAsBytes(mapOf("alg" to "HS256", "typ" to "JWT")))

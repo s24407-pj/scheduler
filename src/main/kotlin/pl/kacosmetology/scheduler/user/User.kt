@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.user
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import jakarta.persistence.*
-import java.util.UUID
+import java.util.*
 import org.hibernate.annotations.UuidGenerator
 
 /**

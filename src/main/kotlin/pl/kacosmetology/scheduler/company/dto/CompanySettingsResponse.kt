@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.company.dto
 
 import java.time.LocalTime
-import java.util.UUID
+import java.util.*
 import pl.kacosmetology.scheduler.company.Company
 
 /** Response body containing company business hour settings. */

@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.reservation
 
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf

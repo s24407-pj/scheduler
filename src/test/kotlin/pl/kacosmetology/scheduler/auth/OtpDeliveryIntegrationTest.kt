@@ -5,18 +5,15 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Timestamp
-import java.time.Clock
-import java.time.Duration
-import java.time.Instant
-import java.time.ZoneId
-import java.time.ZoneOffset
+import java.time.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import javax.sql.DataSource
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -106,8 +103,7 @@ class OtpDeliveryIntegrationTest {
         assertEquals(1, provider.calls.get())
         assertScrubbed()
         assertNoIdentity()
-        val expiry =
-            jdbc.queryForObject("SELECT expires_at FROM otp_deliveries", java.sql.Timestamp::class.java)!!.toInstant()
+        val expiry = jdbc.queryForObject("SELECT expires_at FROM otp_deliveries", Timestamp::class.java)!!.toInstant()
         assertTrue(Duration.between(now, expiry).toMillis() in 298_000..300_000)
         dispatchAndAwait()
         assertEquals(1, provider.calls.get())
@@ -173,8 +169,7 @@ class OtpDeliveryIntegrationTest {
         provider.outcome = SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
         auth.requestCode(RequestCodeRequest(phone), "ip")
         awaitWorkers()
-        val expiry =
-            jdbc.queryForObject("SELECT expires_at FROM otp_deliveries", java.sql.Timestamp::class.java)!!.toInstant()
+        val expiry = jdbc.queryForObject("SELECT expires_at FROM otp_deliveries", Timestamp::class.java)!!.toInstant()
         clock.set(expiry)
         dispatchAndAwait()
         assertEquals("DISCARDED", state())
@@ -447,5 +442,5 @@ class OtpDeliveryClock : Clock() {
 
     override fun getZone(): ZoneId = ZoneOffset.UTC
 
-    override fun withZone(zone: ZoneId): Clock = Clock.fixed(instant(), zone)
+    override fun withZone(zone: ZoneId): Clock = fixed(instant(), zone)
 }

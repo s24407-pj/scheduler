@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.security
 
-import java.util.UUID
+import java.util.*
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.userdetails.UserDetails

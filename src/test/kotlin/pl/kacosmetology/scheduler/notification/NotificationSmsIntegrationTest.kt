@@ -9,11 +9,7 @@ import java.time.Instant
 import java.util.concurrent.LinkedBlockingQueue
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
-import pl.kacosmetology.scheduler.auth.sms.JustSendSmsSender
-import pl.kacosmetology.scheduler.auth.sms.SmsDeliveryResult
-import pl.kacosmetology.scheduler.auth.sms.SmsEncoding
-import pl.kacosmetology.scheduler.auth.sms.SmsLength
-import pl.kacosmetology.scheduler.auth.sms.SmsSegmentCounter
+import pl.kacosmetology.scheduler.auth.sms.*
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.testId
 import tools.jackson.databind.json.JsonMapper

@@ -1,16 +1,9 @@
 package pl.kacosmetology.scheduler.company
 
-import java.util.UUID
+import java.util.*
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import pl.kacosmetology.scheduler.company.dto.CompanyEmployeeResponse
-import pl.kacosmetology.scheduler.company.dto.CompanyPublicProfileResponse
-import pl.kacosmetology.scheduler.company.dto.CompanySettingsResponse
-import pl.kacosmetology.scheduler.company.dto.PublicEmployeeResponse
-import pl.kacosmetology.scheduler.company.dto.UpdateCompanyProfileRequest
-import pl.kacosmetology.scheduler.company.dto.UpdateCompanySettingsRequest
-import pl.kacosmetology.scheduler.company.dto.toPublicProfileResponse
-import pl.kacosmetology.scheduler.company.dto.toSettingsResponse
+import pl.kacosmetology.scheduler.company.dto.*
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 

@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
-import java.util.UUID
+import java.util.*
 
 private const val PHONE_REGEXP = "^\\s*\\+?[0-9]{9,15}\\s*$"
 

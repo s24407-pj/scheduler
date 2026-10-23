@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.auth
 
-import java.util.UUID
+import java.util.*
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.event.TransactionPhase

@@ -1,9 +1,12 @@
 package pl.kacosmetology.scheduler.workschedule
 
-import jakarta.persistence.*
+import jakarta.persistence.Column
+import jakarta.persistence.Entity
+import jakarta.persistence.Id
+import jakarta.persistence.Table
 import java.time.LocalDate
 import java.time.LocalTime
-import java.util.UUID
+import java.util.*
 import org.hibernate.annotations.UuidGenerator
 
 /** A company employee's date-specific replacement shift or explicit day off. */

@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.reservation
 
-import java.util.UUID
+import java.util.*
 
 /** Published after a new reservation is successfully committed to the database. */
 data class ReservationCreatedEvent(val reservation: Reservation)

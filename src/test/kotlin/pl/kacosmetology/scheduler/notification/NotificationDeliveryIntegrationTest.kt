@@ -9,13 +9,8 @@ import io.mockk.verify
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Timestamp
-import java.time.Clock
-import java.time.Duration
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
-import java.time.ZoneOffset
-import java.util.UUID
+import java.time.*
+import java.util.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -426,7 +421,7 @@ class NotificationDeliveryIntegrationTest {
                 details.reservation(id)!!,
                 clock.instant(),
                 nine.plusSeconds(3600),
-                java.util.UUID.randomUUID(),
+                UUID.randomUUID(),
             )
         }
         jdbc.update("UPDATE notification_deliveries SET state='SENDING',attempts=1 WHERE kind='REMINDER'")
@@ -791,5 +786,5 @@ class NotificationClock : Clock() {
 
     override fun getZone(): ZoneId = ZoneOffset.UTC
 
-    override fun withZone(zone: ZoneId): Clock = Clock.fixed(instant(), zone)
+    override fun withZone(zone: ZoneId): Clock = fixed(instant(), zone)
 }

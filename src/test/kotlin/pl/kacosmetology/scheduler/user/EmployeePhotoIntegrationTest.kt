@@ -3,7 +3,7 @@ package pl.kacosmetology.scheduler.user
 import com.ninjasquad.springmockk.MockkBean
 import io.mockk.every
 import io.mockk.verify
-import java.util.UUID
+import java.util.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired

@@ -3,7 +3,7 @@ package pl.kacosmetology.scheduler.user
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Component

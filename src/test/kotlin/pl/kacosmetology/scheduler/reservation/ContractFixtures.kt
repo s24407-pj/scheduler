@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.reservation
 
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Component
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE

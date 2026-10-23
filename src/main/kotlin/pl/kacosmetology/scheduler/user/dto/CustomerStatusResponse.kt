@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.user.dto
 
-import java.util.UUID
+import java.util.*
 
 /** Response DTO with block/no-show status and company-scoped notes for a customer — visible to OWNER/EMPLOYEE. */
 data class CustomerStatusResponse(

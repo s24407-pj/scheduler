@@ -1,15 +1,11 @@
 package pl.kacosmetology.scheduler.company
 
 import jakarta.validation.Valid
-import java.util.UUID
+import java.util.*
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
-import pl.kacosmetology.scheduler.company.dto.CompanyEmployeeResponse
-import pl.kacosmetology.scheduler.company.dto.CompanyPublicProfileResponse
-import pl.kacosmetology.scheduler.company.dto.CompanySettingsResponse
-import pl.kacosmetology.scheduler.company.dto.UpdateCompanyProfileRequest
-import pl.kacosmetology.scheduler.company.dto.UpdateCompanySettingsRequest
+import pl.kacosmetology.scheduler.company.dto.*
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
 /**

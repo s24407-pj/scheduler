@@ -1,16 +1,12 @@
 package pl.kacosmetology.scheduler.workschedule
 
 import java.time.LocalDate
-import java.util.UUID
+import java.util.*
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.workschedule.dto.ScheduleOverrideRequest
-import pl.kacosmetology.scheduler.workschedule.dto.ScheduleOverrideResponse
-import pl.kacosmetology.scheduler.workschedule.dto.SetWeeklyScheduleRequest
-import pl.kacosmetology.scheduler.workschedule.dto.WorkScheduleEntryResponse
-import pl.kacosmetology.scheduler.workschedule.dto.toResponse
+import pl.kacosmetology.scheduler.workschedule.dto.*
 
 /** Business logic for managing employee weekly work schedules. */
 @Service

@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.reservation.dto
 
 import jakarta.validation.constraints.*
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 
 /** Manual booking uses regular catalog terms unless staff explicitly override price or duration. */
 data class StaffCreateReservationRequest(

@@ -1,10 +1,8 @@
 package pl.kacosmetology.scheduler.config
 
 import jakarta.servlet.FilterChain
-import java.util.UUID
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotEquals
-import org.junit.jupiter.api.Assertions.assertNull
+import java.util.*
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.slf4j.MDC
 import org.springframework.mock.web.MockHttpServletRequest

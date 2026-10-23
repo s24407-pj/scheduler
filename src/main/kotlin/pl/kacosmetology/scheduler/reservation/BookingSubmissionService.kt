@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.reservation
 
 import java.security.MessageDigest
 import java.sql.SQLException
-import java.util.UUID
+import java.util.*
 import org.springframework.dao.CannotAcquireLockException
 import org.springframework.dao.DataAccessException
 import org.springframework.jdbc.core.JdbcTemplate

@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.user.dto
 
-import java.util.UUID
+import java.util.*
 
 /** DTO returned by the user profile endpoints. */
 data class UserProfileResponse(

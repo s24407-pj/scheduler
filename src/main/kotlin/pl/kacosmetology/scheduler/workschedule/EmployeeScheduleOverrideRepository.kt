@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.workschedule
 
 import java.time.LocalDate
-import java.util.UUID
+import java.util.*
 import org.springframework.data.jpa.repository.JpaRepository
 
 /** Tenant-scoped date-specific schedule storage. */

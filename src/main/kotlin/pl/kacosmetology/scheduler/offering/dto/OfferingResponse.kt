@@ -1,7 +1,7 @@
 package pl.kacosmetology.scheduler.offering.dto
 
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingImage
 

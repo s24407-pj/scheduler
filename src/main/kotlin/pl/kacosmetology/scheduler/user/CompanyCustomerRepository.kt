@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.user
 
-import java.util.UUID
+import java.util.*
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import pl.kacosmetology.scheduler.reservation.Reservation

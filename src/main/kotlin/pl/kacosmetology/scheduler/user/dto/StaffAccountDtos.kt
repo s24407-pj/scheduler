@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 import java.time.Instant
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 
 /** Owner-created staff identity; role is always EMPLOYEE. */

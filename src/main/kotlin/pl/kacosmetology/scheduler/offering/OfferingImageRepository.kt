@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.offering
 
-import java.util.UUID
+import java.util.*
 import org.springframework.data.jpa.repository.JpaRepository
 
 /** Repository for [OfferingImage] entities. */

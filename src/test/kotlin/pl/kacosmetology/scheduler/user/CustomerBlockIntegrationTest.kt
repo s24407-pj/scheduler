@@ -4,7 +4,7 @@ import com.ninjasquad.springmockk.MockkBean
 import jakarta.servlet.http.Cookie
 import java.time.Clock
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -150,7 +150,7 @@ class CustomerBlockIntegrationTest {
 
     @Test
     fun `owner unblock preserves durable no-show penalties and clears both block sources`() {
-        penalties(3)
+        createNoShowPenalties(3)
         companyCustomerBlockRepository.save(
             CompanyCustomerBlock(
                 companyId = companyId,
@@ -318,7 +318,7 @@ class CustomerBlockIntegrationTest {
         mockMvc.get("/api/users/me") { cookie(customerSession) }.andExpect { status { isOk() } }
     }
 
-    private fun penalties(count: Int) {
+    private fun createNoShowPenalties(count: Int) {
         val now = LocalDateTime.ofInstant(clock.instant(), BUSINESS_ZONE)
         repeat(count) { index ->
             val start = now.minusDays(index.toLong() + 2)

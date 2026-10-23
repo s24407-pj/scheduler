@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler
 
-import java.util.TimeZone
+import java.util.*
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE

@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.security
 
-import java.util.UUID
+import java.util.*
 import org.springframework.security.core.userdetails.UserDetails
 import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.security.core.userdetails.UsernameNotFoundException

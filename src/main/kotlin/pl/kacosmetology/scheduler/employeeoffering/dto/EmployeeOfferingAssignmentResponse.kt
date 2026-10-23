@@ -1,6 +1,6 @@
 package pl.kacosmetology.scheduler.employeeoffering.dto
 
-import java.util.UUID
+import java.util.*
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignment
 
 /** Response body for an employee–offering assignment. */

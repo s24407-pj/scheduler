@@ -3,7 +3,7 @@ package pl.kacosmetology.scheduler.availability
 import com.ninjasquad.springmockk.MockkBean
 import java.time.LocalDate
 import java.time.LocalTime
-import java.util.UUID
+import java.util.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -13,11 +13,7 @@ import org.springframework.context.annotation.Import
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
-import pl.kacosmetology.scheduler.company.Company
-import pl.kacosmetology.scheduler.company.CompanyEmployee
-import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
-import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.company.EmployeeEligibilityMode
+import pl.kacosmetology.scheduler.company.*
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignment
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering

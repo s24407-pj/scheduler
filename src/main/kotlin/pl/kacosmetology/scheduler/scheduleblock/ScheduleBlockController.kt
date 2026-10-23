@@ -2,7 +2,7 @@ package pl.kacosmetology.scheduler.scheduleblock
 
 import jakarta.validation.Valid
 import java.time.LocalDateTime
-import java.util.UUID
+import java.util.*
 import org.springframework.http.HttpStatus
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
