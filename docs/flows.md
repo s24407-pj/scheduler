@@ -15,4 +15,4 @@ Both staff roles read company-local customers/notes/history and manage company b
 
 Owner blocking cancels future visits and creates one filtered summary delivery without affecting authentication or other salons. No-show correction removes the mistaken penalty; owner unblock preserves history.
 
-Automatic completion runs each minute and catches up after restart. Reminders run at 09:00 Warsaw on the previous calendar day, with a 09:05 deadline and no missed-run recovery. Durable delivery state distinguishes accepted, definite temporary failure and ambiguous provider results; see [notifications](./notifications.md).
+Automatic completion runs each minute and catches up after restart. Reminders run at 09:00 Warsaw on the previous calendar day, with a 10:00 deadline and no missed-run recovery. Durable delivery state distinguishes accepted, definite temporary failure and ambiguous provider results; see [notifications](./notifications.md).

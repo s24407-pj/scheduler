@@ -14,7 +14,7 @@ class NotificationScheduler(private val notificationService: NotificationService
     /** Marks unknown provider outcomes conservatively at startup without recovering a missed reminder run. */
     @EventListener(ApplicationReadyEvent::class) fun recoverDeliveryState() = notificationService.recoverAfterRestart()
 
-    /** Begins the previous-calendar-day reminder run exactly at 09:00 Warsaw, with a fixed 09:05 deadline. */
+    /** Begins the previous-calendar-day reminder run exactly at 09:00 Warsaw, with a fixed 10:00 deadline. */
     @Scheduled(cron = "0 0 9 * * *", zone = BUSINESS_ZONE_ID)
     fun sendReminders() = notificationService.startReminderRun()
 

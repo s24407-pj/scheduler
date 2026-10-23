@@ -104,7 +104,7 @@ class NotificationService(
         val local = now.atZone(BUSINESS_ZONE)
         val date = local.toLocalDate()
         val cutoff = date.atTime(9, 0).atZone(BUSINESS_ZONE).toInstant()
-        val deadline = date.atTime(9, 5).atZone(BUSINESS_ZONE).toInstant()
+        val deadline = date.atTime(10, 0).atZone(BUSINESS_ZONE).toInstant()
         if (now.isBefore(cutoff) || !now.isBefore(deadline) || activeRun?.date == date) return
         val run = ReminderRun(UUID.randomUUID(), date, cutoff, deadline)
         activeRun = run

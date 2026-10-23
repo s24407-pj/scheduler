@@ -339,17 +339,36 @@ class NotificationDeliveryIntegrationTest {
     }
 
     @Test
-    fun `temporary reminder retry uses active run only until nine oh five`() {
+    fun `temporary reminder retry remains eligible after 0905 and 0930 but stops exactly at 1000`() {
         booking(nine.plusSeconds(86400 + 3600))
         every { sender.deliverMessage(any(), any()) } returns SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
         startAndAwait()
         assertEquals("TEMPORARY_FAILURE", state())
-        clock.set(nine.plusSeconds(31))
-        dispatchAndAwait()
-        verify(exactly = 2) { sender.deliverMessage(any(), any()) }
-        clock.set(nine.plusSeconds(300))
+        for (elapsed in listOf(301L, 1800L)) {
+            clock.set(nine.plusSeconds(elapsed))
+            dispatchAndAwait()
+            assertEquals("TEMPORARY_FAILURE", state())
+        }
+        verify(exactly = 3) { sender.deliverMessage(any(), any()) }
+        clock.set(nine.plusSeconds(3600))
         dispatchAndAwait()
         assertEquals("DISCARDED", state())
+        verify(exactly = 3) { sender.deliverMessage(any(), any()) }
+    }
+
+    @Test
+    fun `pending reminder may succeed at 095959 with deadline persisted as 1000`() {
+        booking(nine.plusSeconds(86400 + 3600))
+        every { sender.deliverMessage(any(), any()) } returns SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
+        startAndAwait()
+        assertEquals(
+            nine.plusSeconds(3600),
+            jdbc.queryForObject("SELECT deadline FROM notification_deliveries", Timestamp::class.java)!!.toInstant(),
+        )
+        clock.set(nine.plusSeconds(3599))
+        every { sender.deliverMessage(any(), any()) } returns SmsDeliveryResult.ACCEPTED
+        dispatchAndAwait()
+        assertEquals("ACCEPTED", state())
         verify(exactly = 2) { sender.deliverMessage(any(), any()) }
     }
 
@@ -367,7 +386,7 @@ class NotificationDeliveryIntegrationTest {
         service.recoverAfterRestart()
         dispatchAndAwait()
         assertEquals(0L, count())
-        clock.set(nine.plusSeconds(301))
+        clock.set(nine.plusSeconds(3601))
         startAndAwait()
         assertEquals(0L, count())
     }
@@ -402,7 +421,7 @@ class NotificationDeliveryIntegrationTest {
                 "REMINDER",
                 details.reservation(id)!!,
                 clock.instant(),
-                nine.plusSeconds(300),
+                nine.plusSeconds(3600),
                 java.util.UUID.randomUUID(),
             )
         }
@@ -489,7 +508,7 @@ class NotificationDeliveryIntegrationTest {
     }
 
     @Test
-    fun `queued reminder is discarded at 0905 while earlier provider attempts retain their real outcome`() {
+    fun `queued reminder is discarded at 1000 while earlier provider attempts retain their real outcome`() {
         val entered = CountDownLatch(4)
         val release = CountDownLatch(1)
         every { sender.deliverMessage(any(), any()) } answers
@@ -510,7 +529,7 @@ class NotificationDeliveryIntegrationTest {
         try {
             service.startReminderRun()
             assertTrue(entered.await(5, TimeUnit.SECONDS))
-            clock.set(nine.plusSeconds(300))
+            clock.set(nine.plusSeconds(3600))
         } finally {
             release.countDown()
             awaitWorkers()
