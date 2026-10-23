@@ -2,6 +2,9 @@ package pl.kacosmetology.scheduler.auth
 
 import com.ninjasquad.springmockk.MockkBean
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import java.nio.file.Files
+import java.nio.file.Path
+import java.sql.Timestamp
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -325,6 +328,39 @@ class OtpDeliveryIntegrationTest {
         assertEquals(1, countState("DISCARDED"))
         assertEquals(2, provider.calls.get())
         assertScrubbed()
+    }
+
+    @Test
+    fun `operator resolution requires a stale unchanged OTP attempt and scrubs it without retry`() {
+        queue(phone)
+        jdbc.update("UPDATE otp_deliveries SET state='SENDING',attempts=1,updated_at=CURRENT_TIMESTAMP")
+        val id = jdbc.queryForObject("SELECT id FROM otp_deliveries", java.util.UUID::class.java)!!
+        val recent = jdbc.queryForObject("SELECT updated_at FROM otp_deliveries", Timestamp::class.java)!!.toInstant()
+        fun resolve(expected: Instant) {
+            val sql =
+                Files.readString(Path.of("scripts/ops/resolve-otp-sending.sql"))
+                    .lineSequence()
+                    .filterNot { it.startsWith("\\") }
+                    .joinToString("\n")
+                    .replace(":'delivery_id'", "'$id'")
+                    .replace(":'expected_updated_at'", "'$expected'")
+            jdbc.execute(sql)
+        }
+        resolve(recent)
+        assertEquals("SENDING", state(), "An active-looking attempt must not be resolved")
+        jdbc.update("UPDATE otp_deliveries SET updated_at=CURRENT_TIMESTAMP - INTERVAL '3 minutes'")
+        resolve(recent)
+        assertEquals("SENDING", state(), "A changed row must not be resolved using an outdated snapshot")
+        val stale = jdbc.queryForObject("SELECT updated_at FROM otp_deliveries", Timestamp::class.java)!!.toInstant()
+        assertEquals(1L, repository.sendingStats().count)
+        resolve(stale)
+        assertEquals("AMBIGUOUS", state())
+        assertScrubbed()
+        assertEquals(0L, repository.sendingStats().count)
+        resolve(stale)
+        dispatchAndAwait()
+        assertEquals(0, provider.calls.get())
+        assertEquals(1, jdbc.queryForObject("SELECT attempts FROM otp_deliveries", Int::class.java))
     }
 
     @AfterEach

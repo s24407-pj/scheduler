@@ -1,10 +1,13 @@
 package pl.kacosmetology.scheduler.notification
 
 import com.ninjasquad.springmockk.MockkBean
+import com.ninjasquad.springmockk.MockkSpyBean
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.slot
 import io.mockk.verify
+import java.nio.file.Files
+import java.nio.file.Path
 import java.sql.Timestamp
 import java.time.Clock
 import java.time.Duration
@@ -29,6 +32,7 @@ import org.springframework.context.ApplicationEventPublisher
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
+import org.springframework.dao.DataAccessResourceFailureException
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.transaction.PlatformTransactionManager
@@ -59,7 +63,7 @@ class NotificationDeliveryIntegrationTest {
     @Autowired private lateinit var auth: AuthService
     @Autowired private lateinit var otpDeliveries: OtpDeliveryService
     @Autowired private lateinit var service: NotificationService
-    @Autowired private lateinit var repository: NotificationDeliveryRepository
+    @MockkSpyBean private lateinit var repository: NotificationDeliveryRepository
     @Autowired private lateinit var details: NotificationDetails
     @Autowired private lateinit var jdbc: JdbcTemplate
     @Autowired private lateinit var source: DataSource
@@ -585,6 +589,100 @@ class NotificationDeliveryIntegrationTest {
         verify(exactly = 1) { sender.deliverMessage(any(), any()) }
         assertEquals("DISCARDED", state("CREATE"))
         assertEquals("ACCEPTED", state("REMINDER"))
+    }
+
+    @Test
+    fun `temporary database failure retains requested run and its token until initialization commits`() {
+        booking(nine.plusSeconds(86400))
+        val tokens = mutableListOf<UUID>()
+        every { repository.insert("REMINDER", any(), any(), any(), any()) } answers
+            {
+                tokens.add(arg(4))
+                callOriginal().also {
+                    if (tokens.size == 1) throw DataAccessResourceFailureException("temporary failure")
+                }
+            }
+        startAndAwait()
+        assertEquals(0L, count(), "Partial initialization must roll back")
+        clock.set(nine.plusSeconds(31))
+        dispatchAndAwait()
+        assertEquals("ACCEPTED", state("REMINDER"))
+        assertEquals(2, tokens.size)
+        assertEquals(tokens[0], tokens[1], "A retry must retain the same run identity")
+        dispatchAndAwait()
+        verify(exactly = 1) { sender.deliverMessage(any(), any()) }
+        verify(exactly = 2) { repository.insert("REMINDER", any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `failed reminder initialization expires at ten and cannot leak into the next day`() {
+        booking(nine.plusSeconds(86400))
+        every { repository.insert("REMINDER", any(), any(), any(), any()) } throws
+            DataAccessResourceFailureException("temporary failure")
+        startAndAwait()
+        clock.set(nine.plusSeconds(3600))
+        dispatchAndAwait()
+        clock.set(nine.plusSeconds(86400))
+        dispatchAndAwait()
+        assertEquals(0L, count())
+        verify(exactly = 1) { repository.insert("REMINDER", any(), any(), any(), any()) }
+        verify(exactly = 0) { sender.deliverMessage(any(), any()) }
+    }
+
+    @Test
+    fun `restart forgets failed initialization even within the original delivery window`() {
+        booking(nine.plusSeconds(86400))
+        every { repository.insert("REMINDER", any(), any(), any(), any()) } throws
+            DataAccessResourceFailureException("temporary failure")
+        startAndAwait()
+        service.recoverAfterRestart()
+        clock.set(nine.plusSeconds(31))
+        dispatchAndAwait()
+        assertEquals(0L, count())
+        verify(exactly = 1) { repository.insert("REMINDER", any(), any(), any(), any()) }
+        verify(exactly = 0) { sender.deliverMessage(any(), any()) }
+    }
+
+    @Test
+    fun `operator resolution of a failed reminder result pauses confirmations without resending`() {
+        val id = booking(nine.plusSeconds(86400))
+        queue(id)
+        every { repository.state(any(), DeliveryState.ACCEPTED, any(), any(), any()) } throws
+            DataAccessResourceFailureException("result commit failed")
+        startAndAwait()
+        assertEquals("SENDING", state("REMINDER"))
+        assertEquals("PENDING", state("CREATE"))
+        val deliveryId =
+            jdbc.queryForObject("SELECT id FROM notification_deliveries WHERE kind='REMINDER'", UUID::class.java)!!
+        jdbc.update(
+            "UPDATE notification_deliveries SET updated_at=CURRENT_TIMESTAMP - INTERVAL '3 minutes' WHERE id=?",
+            deliveryId,
+        )
+        val updated =
+            jdbc
+                .queryForObject(
+                    "SELECT updated_at FROM notification_deliveries WHERE id=?",
+                    Timestamp::class.java,
+                    deliveryId,
+                )!!
+                .toInstant()
+        val sql =
+            Files.readString(Path.of("scripts/ops/resolve-notification-sending.sql"))
+                .lineSequence()
+                .filterNot { it.startsWith("\\") }
+                .joinToString("\n")
+                .replace(":'delivery_id'", "'$deliveryId'")
+                .replace(":'expected_updated_at'", "'$updated'")
+        jdbc.execute(sql)
+        assertEquals("AMBIGUOUS", state("REMINDER"))
+        assertEquals("PAUSED", state("CREATE"))
+        dispatchAndAwait()
+        jdbc.execute(sql) // A repeated command is a no-op, including the confirmation side effect.
+        verify(exactly = 1) { sender.deliverMessage(any(), any()) }
+        assertEquals(
+            1,
+            jdbc.queryForObject("SELECT attempts FROM notification_deliveries WHERE id=?", Int::class.java, deliveryId),
+        )
     }
 
     @AfterEach

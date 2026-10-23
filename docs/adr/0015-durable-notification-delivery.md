@@ -24,6 +24,12 @@ Serialize OTP by phone and notifications by company/customer, with reminder prio
 
 Extend the delivery deadline from 09:05 to 10:00 Warsaw to give the bounded notification pool more time to drain and recover from definite temporary provider failures. Keep the trigger and eligibility cutoff at 09:00, the same uninterrupted run token, 30-second retries and shared daily attempt budget. Do not start any provider request at or after 10:00; an already-started attempt records its actual outcome. The longer window can consume more budget on temporary failures, but never authorizes retrying accepted or ambiguous sends or recovering a missed run after restart.
 
+## Initialization and operational recovery (2026-10-23)
+
+Retain a live reminder initialization request, including its date and stable run token, until initialization commits or its original 10:00 deadline expires. Later coordinator wakes may retry an initialization transaction that failed; neither a restart nor an expired request reconstructs a missed run. Keep the same token when a commit acknowledgement is uncertain.
+
+Partial `SENDING` lane indexes support anti-joins independently of terminal history. Aggregate count/age metrics and warnings flag unresolved attempts. An operator may resolve a confirmed inactive, stale, unchanged `SENDING` row to `AMBIGUOUS` using guarded transactional scripts, without restarting the application or resending it. Ambiguous reminder resolution pauses related commercial confirmations; OTP resolution scrubs the code. Never automatically resolve a possibly live provider call based on age alone. See [SMS operations](../sms-operations.md) and [synthetic query plans](../verification/sms-queue-query-plans.md).
+
 ## Consequences
 
 Delivery intent and its state survive process failure. Provider failure never rolls back an appointment. Database state supports operator investigation without exposing OTP codes or internal cancellation reasons. A real provider must classify definite temporary rejection explicitly; timeouts and unknown failures are ambiguous. See [notification rules](../notifications.md).

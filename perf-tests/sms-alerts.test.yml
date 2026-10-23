@@ -1,0 +1,30 @@
+rule_files:
+  - sms-alerts.yml
+evaluation_interval: 30s
+tests:
+  - interval: 30s
+    input_series:
+      - series: 'scheduler_sms_worker_sending_oldest_age_seconds{kind="notification"}'
+        values: '0 60 120 150 180 210 0'
+      - series: 'scheduler_sms_worker_sending_oldest_age_seconds{kind="otp"}'
+        values: '0x6'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: SmsSendingStuck
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: SmsSendingStuck
+        exp_alerts: []
+      - eval_time: 2m30s
+        alertname: SmsSendingStuck
+        exp_alerts:
+          - exp_labels:
+              kind: notification
+              severity: warning
+            exp_annotations:
+              summary: 'Unresolved SMS attempt in notification worker'
+              description: 'A SENDING attempt is older than two minutes. Investigate its provider and worker logs; never blindly resend.'
+              runbook_url: 'https://github.com/s24407-pj/scheduler/blob/main/docs/sms-operations.md'
+      - eval_time: 3m
+        alertname: SmsSendingStuck
+        exp_alerts: []

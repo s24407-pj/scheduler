@@ -15,11 +15,15 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import org.slf4j.LoggerFactory
 import org.slf4j.MDC
 
 /** Secret-free reference to durable work; lane is an internal serialization key, never a metric label or log field. */
 data class SmsWork(val id: UUID, val lane: String, val createdAt: Instant)
+
+/** Snapshot of unresolved provider attempts, retaining no recipient or secret data. */
+data class SmsSendingStats(val count: Long, val oldest: Instant?)
 
 /**
  * Bounded execution over a durable database queue. Only the coordinator selects work; at most [concurrency] references
@@ -33,6 +37,7 @@ class SmsWorker(
     private val source: (Set<String>, Int) -> List<SmsWork>,
     private val process: (UUID) -> Unit,
     private val pending: () -> Long,
+    private val sending: () -> SmsSendingStats = { SmsSendingStats(0, null) },
 ) {
     private val log = LoggerFactory.getLogger(SmsWorker::class.java)
     private val closing = AtomicBoolean()
@@ -40,6 +45,8 @@ class SmsWorker(
     private val coordinating = AtomicInteger()
     private val slots = AtomicInteger()
     private val backlog = AtomicLong()
+    private val sendingCount = AtomicLong()
+    private val oldestSending = AtomicReference<Instant?>()
     private val active = mutableSetOf<String>()
     private val coordinator =
         Executors.newSingleThreadExecutor(Thread.ofPlatform().name("sms-$kind-coordinator").factory())
@@ -61,6 +68,16 @@ class SmsWorker(
             .tag("kind", kind)
             .register(registry)
         Gauge.builder("scheduler.sms.worker.pending", backlog) { it.get().toDouble() }
+            .tag("kind", kind)
+            .register(registry)
+        Gauge.builder("scheduler.sms.worker.sending", sendingCount) { it.get().toDouble() }
+            .tag("kind", kind)
+            .register(registry)
+        Gauge.builder("scheduler.sms.worker.sending.oldest.age", oldestSending) {
+                it.get()?.let { start -> Duration.between(start, clock.instant()).seconds.coerceAtLeast(0).toDouble() }
+                    ?: 0.0
+            }
+            .baseUnit("seconds")
             .tag("kind", kind)
             .register(registry)
     }
@@ -102,7 +119,7 @@ class SmsWorker(
         val capacity = concurrency - active.size
         // Also run maintenance when full (for example OTP expiry); source never admits more than capacity.
         val work = source(active.toSet(), capacity)
-        backlog.set(pending())
+        observe()
         for (item in work.take(capacity)) {
             if (closing.get()) break
             if (!active.add(item.lane)) continue
@@ -121,7 +138,7 @@ class SmsWorker(
                             active.remove(item.lane)
                             slots.decrementAndGet()
                             // Failed preparations wait for another wakeup instead of spinning on the same row.
-                            if (success) fill()
+                            if (success) fill() else observe()
                         }
                     }
                 }
@@ -130,6 +147,15 @@ class SmsWorker(
                 slots.decrementAndGet()
             }
         }
+    }
+
+    private fun observe() {
+        backlog.set(pending())
+        val stats = sending()
+        sendingCount.set(stats.count)
+        oldestSending.set(stats.oldest)
+        val age = stats.oldest?.let { Duration.between(it, clock.instant()).seconds } ?: 0
+        if (age >= 120) log.warn("SMS {} unresolved SENDING work: count={} oldestAgeSeconds={}", kind, stats.count, age)
     }
 
     /**

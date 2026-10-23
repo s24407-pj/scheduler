@@ -6,6 +6,7 @@ services:
       - "9090:9090"
     volumes:
       - ./perf-tests/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./perf-tests/sms-alerts.yml:/etc/prometheus/sms-alerts.yml:ro
     depends_on:
       app:
         condition: service_started

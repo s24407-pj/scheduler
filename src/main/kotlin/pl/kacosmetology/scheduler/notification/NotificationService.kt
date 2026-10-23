@@ -5,7 +5,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -35,19 +35,23 @@ class NotificationService(
         }
     @Volatile private var activeRun: ReminderRun? = null
     @Volatile private var recovered = false
-    private val reminderRequested = AtomicBoolean()
+    private val reminderRequested = AtomicReference<ReminderRun?>()
     private val worker =
         workers.create(
             "notification",
             { excluded, limit ->
                 if (!recovered) emptyList()
                 else {
-                    if (reminderRequested.getAndSet(false)) beginReminderRun()
+                    reminderRequested.get()?.let { requested ->
+                        beginReminderRun(requested)
+                        reminderRequested.compareAndSet(requested, null)
+                    }
                     transactions.execute { repository.due(clock.instant(), excluded, limit) }.orEmpty()
                 }
             },
             ::deliver,
             repository::pendingCount,
+            repository::sendingStats,
         )
 
     /**
@@ -56,7 +60,7 @@ class NotificationService(
     fun recoverAfterRestart() {
         recovered = false
         check(worker.awaitIdle(Duration.ofSeconds(15))) { "Cannot recover an active notification worker" }
-        reminderRequested.set(false)
+        reminderRequested.set(null)
         activeRun = null
         transactions.executeWithoutResult { repository.recover(clock.instant()) }
         recovered = true
@@ -91,35 +95,32 @@ class NotificationService(
         transactions.executeWithoutResult { finish(attempt, result) }
     }
 
-    /** Schedules initialization of today's run on the notification coordinator, never on the cron thread. */
+    /** Retains today's requested run until initialization commits or the window closes; startup never restores it. */
     fun startReminderRun() {
         if (!recovered) return
-        reminderRequested.set(true)
+        val now = clock.instant()
+        val date = now.atZone(BUSINESS_ZONE).toLocalDate()
+        val cutoff = date.atTime(9, 0).atZone(BUSINESS_ZONE).toInstant()
+        val deadline = date.atTime(10, 0).atZone(BUSINESS_ZONE).toInstant()
+        if (now.isBefore(cutoff) || !now.isBefore(deadline)) return
+        reminderRequested.updateAndGet { previous ->
+            if (previous?.date == date) previous else ReminderRun(UUID.randomUUID(), date, cutoff, deadline)
+        }
         worker.wake()
     }
 
-    private fun beginReminderRun() {
-        if (!recovered) return
+    private fun beginReminderRun(run: ReminderRun) {
         val now = clock.instant()
-        val local = now.atZone(BUSINESS_ZONE)
-        val date = local.toLocalDate()
-        val cutoff = date.atTime(9, 0).atZone(BUSINESS_ZONE).toInstant()
-        val deadline = date.atTime(10, 0).atZone(BUSINESS_ZONE).toInstant()
-        if (now.isBefore(cutoff) || !now.isBefore(deadline) || activeRun?.date == date) return
-        val run = ReminderRun(UUID.randomUUID(), date, cutoff, deadline)
-        activeRun = run
-        try {
-            transactions.executeWithoutResult {
-                details.reminderCandidates(date.plusDays(1)).forEach { id ->
-                    val reservation = details.reservation(id) ?: return@forEach
-                    if (details.eligibleAtCutoff(id, cutoff))
-                        repository.insert("REMINDER", reservation, now, deadline, run.token)
-                }
+        if (!recovered || now.isBefore(run.cutoff) || !now.isBefore(run.deadline) || activeRun?.date == run.date) return
+        transactions.executeWithoutResult {
+            details.reminderCandidates(run.date.plusDays(1)).forEach { id ->
+                val reservation = details.reservation(id) ?: return@forEach
+                if (details.eligibleAtCutoff(id, run.cutoff))
+                    repository.insert("REMINDER", reservation, now, run.deadline, run.token)
             }
-        } catch (failure: Exception) {
-            activeRun = null
-            throw failure
         }
+        // Publish ownership only after commit. Retain the requested token if a commit acknowledgement was lost.
+        activeRun = run
     }
 
     private fun prepare(id: UUID): Attempt? {

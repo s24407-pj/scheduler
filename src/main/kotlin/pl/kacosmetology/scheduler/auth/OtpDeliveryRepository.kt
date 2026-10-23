@@ -5,6 +5,7 @@ import java.time.Instant
 import java.util.UUID
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
+import pl.kacosmetology.scheduler.auth.sms.SmsSendingStats
 import pl.kacosmetology.scheduler.auth.sms.SmsWork
 
 /** Durable phone-only OTP delivery metadata. Plaintext exists only while a still-live code needs delivery. */
@@ -89,6 +90,13 @@ class OtpDeliveryRepository(private val jdbc: JdbcTemplate) {
             "SELECT count(*) FROM otp_deliveries WHERE state IN ('PENDING','TEMPORARY_FAILURE')",
             Long::class.java,
         )!!
+
+    /** Aggregate active-send diagnostics, with no recipient or payload data leaving the repository. */
+    fun sendingStats(): SmsSendingStats =
+        jdbc.queryForObject(
+            "SELECT count(*) AS count,min(updated_at) AS oldest FROM otp_deliveries WHERE state='SENDING'",
+            { rs, _ -> SmsSendingStats(rs.getLong("count"), rs.getTimestamp("oldest")?.toInstant()) },
+        )
 
     /** Locks and reads one work item without generating secret-bearing data-class diagnostics. */
     fun lock(id: UUID): OtpDelivery? =

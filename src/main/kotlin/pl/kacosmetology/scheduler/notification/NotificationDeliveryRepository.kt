@@ -7,6 +7,7 @@ import java.time.LocalDate
 import java.util.UUID
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
+import pl.kacosmetology.scheduler.auth.sms.SmsSendingStats
 import pl.kacosmetology.scheduler.auth.sms.SmsWork
 
 /** JDBC outbox persistence; callers establish transaction boundaries before claiming or finishing a delivery. */
@@ -50,6 +51,13 @@ class NotificationDeliveryRepository(private val jdbc: JdbcTemplate) {
             "SELECT count(*) FROM notification_deliveries WHERE state IN ('PENDING','TEMPORARY_FAILURE')",
             Long::class.java,
         )!!
+
+    /** Aggregate active-send diagnostics, with no recipient or payload data leaving the repository. */
+    fun sendingStats(): SmsSendingStats =
+        jdbc.queryForObject(
+            "SELECT count(*) AS count,min(updated_at) AS oldest FROM notification_deliveries WHERE state='SENDING'",
+            { rs, _ -> SmsSendingStats(rs.getLong("count"), rs.getTimestamp("oldest")?.toInstant()) },
+        )
 
     /** Locks one delivery so a provider attempt can be durably claimed once. */
     fun lock(id: UUID): Delivery? =

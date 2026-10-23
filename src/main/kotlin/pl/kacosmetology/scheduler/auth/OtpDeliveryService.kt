@@ -48,6 +48,7 @@ class OtpDeliveryService(
             },
             ::deliver,
             repository::pendingCount,
+            repository::sendingStats,
         )
 
     /** Persists the remaining original Redis lifetime; neither database intent nor a retry extends code validity. */

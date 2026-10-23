@@ -12,6 +12,7 @@ import org.springframework.context.SmartLifecycle
 import org.springframework.context.annotation.Configuration
 import org.springframework.stereotype.Component
 import org.springframework.validation.annotation.Validated
+import pl.kacosmetology.scheduler.auth.sms.SmsSendingStats
 import pl.kacosmetology.scheduler.auth.sms.SmsWork
 import pl.kacosmetology.scheduler.auth.sms.SmsWorker
 
@@ -46,11 +47,12 @@ class SmsWorkers(
         source: (Set<String>, Int) -> List<SmsWork>,
         process: (UUID) -> Unit,
         pending: () -> Long,
+        sending: () -> SmsSendingStats = { SmsSendingStats(0, null) },
     ): SmsWorker {
         require(kind in setOf("otp", "notification"))
         check(kinds.add(kind)) { "Each SMS kind must have exactly one worker pool" }
         val concurrency = if (kind == "otp") properties.otpConcurrency else properties.notificationConcurrency
-        return SmsWorker(kind, concurrency, registry, clock, source, process, pending).also(workers::add)
+        return SmsWorker(kind, concurrency, registry, clock, source, process, pending, sending).also(workers::add)
     }
 
     /** Allows explicit waits in maintenance and integration tests without synchronous production dispatch. */

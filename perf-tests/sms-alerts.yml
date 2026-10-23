@@ -1,0 +1,12 @@
+groups:
+  - name: sms-delivery
+    rules:
+      - alert: SmsSendingStuck
+        expr: scheduler_sms_worker_sending_oldest_age_seconds > 120
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Unresolved SMS attempt in {{ $labels.kind }} worker"
+          description: "A SENDING attempt is older than two minutes. Investigate its provider and worker logs; never blindly resend."
+          runbook_url: "https://github.com/s24407-pj/scheduler/blob/main/docs/sms-operations.md"

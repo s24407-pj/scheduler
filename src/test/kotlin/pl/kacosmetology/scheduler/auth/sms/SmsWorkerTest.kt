@@ -1,6 +1,10 @@
 package pl.kacosmetology.scheduler.auth.sms
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import io.micrometer.prometheusmetrics.PrometheusConfig
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
+import io.mockk.every
+import io.mockk.mockk
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -11,6 +15,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import pl.kacosmetology.scheduler.config.SmsWorkerProperties
@@ -122,6 +127,53 @@ class SmsWorkerTest {
         } finally {
             release.countDown()
             workers.stop()
+            registry.close()
+        }
+    }
+
+    @Test
+    fun `sending metrics age during a database outage and reset only after an observed resolution`() {
+        val registry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
+        val time = AtomicReference(now)
+        val mutableClock = mockk<Clock>()
+        every { mutableClock.instant() } answers { time.get() }
+        var unavailable = false
+        var stats = SmsSendingStats(1, now.minusSeconds(180))
+        val worker =
+            SmsWorker(
+                "notification",
+                4,
+                registry,
+                mutableClock,
+                { _, _ -> if (unavailable) error("database unavailable") else emptyList() },
+                { error("Monitoring must not dispatch unknown sends") },
+                { 0 },
+                { stats },
+            )
+        try {
+            worker.wake()
+            assertTrue(worker.awaitIdle(Duration.ofSeconds(5)))
+            assertEquals(1.0, registry.get("scheduler.sms.worker.sending").gauge().value())
+            assertEquals(180.0, registry.get("scheduler.sms.worker.sending.oldest.age").gauge().value())
+            assertTrue(
+                registry
+                    .scrape()
+                    .contains("scheduler_sms_worker_sending_oldest_age_seconds{kind=\"notification\"} 180.0"),
+            )
+            time.set(now.plusSeconds(31))
+            unavailable = true
+            worker.wake()
+            assertTrue(worker.awaitIdle(Duration.ofSeconds(5)))
+            assertEquals(211.0, registry.get("scheduler.sms.worker.sending.oldest.age").gauge().value())
+            unavailable = false
+            stats = SmsSendingStats(0, null)
+            worker.wake()
+            assertTrue(worker.awaitIdle(Duration.ofSeconds(5)))
+            assertEquals(0.0, registry.get("scheduler.sms.worker.sending").gauge().value())
+            assertEquals(0.0, registry.get("scheduler.sms.worker.sending.oldest.age").gauge().value())
+        } finally {
+            worker.stopAdmission()
+            worker.awaitTermination(System.nanoTime() + Duration.ofSeconds(5).toNanos())
             registry.close()
         }
     }
