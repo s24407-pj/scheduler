@@ -13,13 +13,13 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.testId
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomer
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 
 @ExtendWith(MockKExtension::class)
 class CustomUserDetailsServiceTest {
 
-    @MockK private lateinit var userRepository: UserRepository
+    @MockK private lateinit var userRepository: CompanyCustomerRepository
 
     @MockK private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
@@ -29,20 +29,27 @@ class CustomUserDetailsServiceTest {
 
     @Test
     fun `should throw exception when user not found`() {
-        every { userRepository.findByPhoneNumber(testPhone) } returns null
+        every { userRepository.findByCompanyIdAndId(testId(9), testId(1)) } returns null
 
         val exception =
             assertThrows<UsernameNotFoundException> {
-                customUserDetailsService.loadUserByUsername(testPhone)
+                customUserDetailsService.loadCustomer(testPhone, testId(9), testId(1))
             }
-        Assertions.assertEquals("User not found with phone number: $testPhone", exception.message)
+        Assertions.assertEquals("Customer account unavailable", exception.message)
     }
 
     @Test
     fun `should assign only ROLE_CUSTOMER for regular customer`() {
-        val user = User(id = testId(1), phoneNumber = testPhone, firstName = "Jan", lastName = "Kowalski")
-        every { userRepository.findByPhoneNumber(testPhone) } returns user
-        val userDetails = customUserDetailsService.loadUserByUsername(testPhone)
+        val user =
+            CompanyCustomer(
+                companyId = testId(9),
+                id = testId(1),
+                phoneNumber = testPhone,
+                firstName = "Jan",
+                lastName = "Kowalski",
+            )
+        every { userRepository.findByCompanyIdAndId(testId(9), testId(1)) } returns user
+        val userDetails = customUserDetailsService.loadCustomer(testPhone, testId(9), testId(1))
 
         Assertions.assertEquals(1, userDetails.authorities.size)
         Assertions.assertTrue(userDetails.authorities.any { it.authority == "ROLE_CUSTOMER" })
@@ -50,17 +57,31 @@ class CustomUserDetailsServiceTest {
 
     @Test
     fun `customer loading should not aggregate employment roles`() {
-        val user = User(id = testId(1), phoneNumber = testPhone, firstName = "Anna", lastName = "Nowak")
-        every { userRepository.findByPhoneNumber(testPhone) } returns user
+        val user =
+            CompanyCustomer(
+                companyId = testId(9),
+                id = testId(1),
+                phoneNumber = testPhone,
+                firstName = "Anna",
+                lastName = "Nowak",
+            )
+        every { userRepository.findByCompanyIdAndId(testId(9), testId(1)) } returns user
 
-        val userDetails = customUserDetailsService.loadUserByUsername(testPhone)
+        val userDetails = customUserDetailsService.loadCustomer(testPhone, testId(9), testId(1))
 
         Assertions.assertEquals(listOf("ROLE_CUSTOMER"), userDetails.authorities.map { it.authority })
     }
 
     @Test
     fun `staff loading should use only the exact employment role and scope`() {
-        val user = User(id = testId(1), phoneNumber = testPhone, firstName = "Anna", lastName = "Nowak")
+        val user =
+            CompanyCustomer(
+                companyId = testId(9),
+                id = testId(1),
+                phoneNumber = testPhone,
+                firstName = "Anna",
+                lastName = "Nowak",
+            )
         val employment =
             CompanyEmployee(
                 id = testId(8),
@@ -69,7 +90,7 @@ class CustomUserDetailsServiceTest {
                 role = "OWNER",
                 loginEmail = "staff@example.test",
             )
-        every { userRepository.findByPhoneNumber(testPhone) } returns user
+        every { userRepository.findByCompanyIdAndId(testId(9), testId(1)) } returns user
         every { companyEmployeeRepository.findById(testId(8)) } returns Optional.of(employment)
 
         val details = customUserDetailsService.loadStaffByEmployment("staff@example.test", testId(8))
@@ -81,8 +102,15 @@ class CustomUserDetailsServiceTest {
 
     @Test
     fun `staff loading should reject employment owned by another user`() {
-        val user = User(id = testId(1), phoneNumber = testPhone, firstName = "Anna", lastName = "Nowak")
-        every { userRepository.findByPhoneNumber(testPhone) } returns user
+        val user =
+            CompanyCustomer(
+                companyId = testId(9),
+                id = testId(1),
+                phoneNumber = testPhone,
+                firstName = "Anna",
+                lastName = "Nowak",
+            )
+        every { userRepository.findByCompanyIdAndId(testId(9), testId(1)) } returns user
         every { companyEmployeeRepository.findById(testId(8)) } returns
             Optional.of(
                 CompanyEmployee(id = testId(8), companyId = testId(99), userId = testId(2), role = "OWNER"),

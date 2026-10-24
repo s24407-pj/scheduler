@@ -20,7 +20,7 @@ class ReservationAuditContext(private val jdbc: JdbcTemplate, private val clock:
                 "ROLE_EMPLOYEE" -> "STAFF"
                 else -> "SYSTEM"
             }
-        val account = actor?.let { if (type == "STAFF") "staff:${it.employmentId}" else "customer:${it.id}" } ?: ""
+        val account = actor?.accountKey() ?: ""
         jdbc.queryForObject<String>("SELECT set_config('scheduler.actor_type', ?, true)", type)
         jdbc.queryForObject<String>("SELECT set_config('scheduler.actor_account', ?, true)", account)
         jdbc.queryForObject<String>(

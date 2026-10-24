@@ -1,4 +1,5 @@
--- Consolidated pre-production schema, authorized 2026-10-15.
+-- Consolidated pre-production schema, authorized 2026-10-24.
+-- Company-local customers and all former V2-V4 changes are included.
 -- Fresh databases only: existing developer databases must be recreated before applying this new Flyway baseline.
 -- Customer and staff accounts are independent realms; appointment history is never deleted by the API.
 SET search_path TO public;
@@ -86,12 +87,14 @@ CREATE TABLE public.company_customer_blocks (
 CREATE TABLE public.company_customers (
     id uuid DEFAULT uuidv7() NOT NULL,
     company_id uuid NOT NULL,
-    user_id uuid NOT NULL,
+    phone_number character varying(20) NOT NULL,
+    first_booking_at timestamp with time zone,
     notes text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
-    first_name character varying(100) NOT NULL,
-    last_name character varying(100) NOT NULL,
-    contact_email character varying(255)
+    first_name character varying(100),
+    last_name character varying(100),
+    contact_email character varying(255),
+    CONSTRAINT company_customer_visible_names CHECK (first_booking_at IS NULL OR (first_name IS NOT NULL AND btrim(first_name) <> '' AND last_name IS NOT NULL AND btrim(last_name) <> ''))
 );
 
 
@@ -115,13 +118,6 @@ CREATE TABLE public.company_employees (
     CONSTRAINT staff_normalized_login CHECK (((login_email IS NULL) OR ((login_email)::text = lower(TRIM(BOTH FROM login_email)))))
 );
 
-
-
-CREATE TABLE public.customer_accounts (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    phone_number character varying(20) NOT NULL,
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
-);
 
 
 CREATE TABLE public.employee_offerings (
@@ -264,6 +260,7 @@ CREATE TABLE public.reservations (
     agreed_duration_minutes integer NOT NULL,
     creation_source character varying(20) DEFAULT 'LEGACY'::character varying NOT NULL,
     archived boolean DEFAULT false NOT NULL,
+    internal_notes text,
     internal_cancellation_reason text,
     outcome_explanation text,
     customer_explanation text,
@@ -277,6 +274,7 @@ CREATE TABLE public.reservations (
 
 CREATE TABLE public.schedule_blocks (
     id uuid DEFAULT uuidv7() NOT NULL,
+    version bigint DEFAULT 0 NOT NULL,
     company_id uuid NOT NULL,
     employee_id uuid NOT NULL,
     start_time timestamp with time zone NOT NULL,
@@ -321,7 +319,10 @@ ALTER TABLE ONLY public.company_customer_blocks
     ADD CONSTRAINT company_customer_blocks_pkey PRIMARY KEY (id);
 
 ALTER TABLE ONLY public.company_customers
-    ADD CONSTRAINT company_customers_company_id_user_id_key UNIQUE (company_id, user_id);
+    ADD CONSTRAINT company_customers_company_phone_key UNIQUE (company_id, phone_number);
+
+ALTER TABLE ONLY public.company_customers
+    ADD CONSTRAINT company_customers_company_id_id_key UNIQUE (company_id, id);
 
 ALTER TABLE ONLY public.company_customers
     ADD CONSTRAINT company_customers_pkey PRIMARY KEY (id);
@@ -332,11 +333,7 @@ ALTER TABLE ONLY public.company_employees
 ALTER TABLE ONLY public.company_employees
     ADD CONSTRAINT company_employees_pkey PRIMARY KEY (id);
 
-ALTER TABLE ONLY public.customer_accounts
-    ADD CONSTRAINT customer_accounts_phone_number_key UNIQUE (phone_number);
 
-ALTER TABLE ONLY public.customer_accounts
-    ADD CONSTRAINT customer_accounts_pkey PRIMARY KEY (id);
 
 ALTER TABLE ONLY public.employee_offerings
     ADD CONSTRAINT employee_offerings_employee_id_offering_id_key UNIQUE (employee_id, offering_id);
@@ -442,13 +439,13 @@ ALTER TABLE ONLY public.employee_offerings
     ADD CONSTRAINT assignment_staff_membership FOREIGN KEY (company_id, employee_id) REFERENCES public.company_employees(company_id, user_id);
 
 ALTER TABLE ONLY public.company_customer_blocks
-    ADD CONSTRAINT blocks_local_profile FOREIGN KEY (company_id, customer_id) REFERENCES public.company_customers(company_id, user_id);
+    ADD CONSTRAINT blocks_local_profile FOREIGN KEY (company_id, customer_id) REFERENCES public.company_customers(company_id, id);
 
 ALTER TABLE ONLY public.booking_quotes
     ADD CONSTRAINT booking_quotes_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
 
 ALTER TABLE ONLY public.booking_quotes
-    ADD CONSTRAINT booking_quotes_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customer_accounts(id);
+    ADD CONSTRAINT booking_quotes_customer_id_fkey FOREIGN KEY (company_id, customer_id) REFERENCES public.company_customers(company_id, id);
 
 ALTER TABLE ONLY public.booking_quotes
     ADD CONSTRAINT booking_quotes_service_id_fkey FOREIGN KEY (service_id) REFERENCES public.offerings(id);
@@ -459,8 +456,7 @@ ALTER TABLE ONLY public.booking_submissions
 ALTER TABLE ONLY public.company_customer_blocks
     ADD CONSTRAINT company_customer_blocks_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
 
-ALTER TABLE ONLY public.company_customers
-    ADD CONSTRAINT company_customers_account_fkey FOREIGN KEY (user_id) REFERENCES public.customer_accounts(id);
+
 
 ALTER TABLE ONLY public.company_customers
     ADD CONSTRAINT company_customers_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
@@ -468,8 +464,7 @@ ALTER TABLE ONLY public.company_customers
 ALTER TABLE ONLY public.company_employees
     ADD CONSTRAINT company_employees_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
 
-ALTER TABLE ONLY public.company_customer_blocks
-    ADD CONSTRAINT customer_blocks_account_fkey FOREIGN KEY (customer_id) REFERENCES public.customer_accounts(id);
+
 
 ALTER TABLE ONLY public.employee_offerings
     ADD CONSTRAINT employee_offerings_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
@@ -484,7 +479,7 @@ ALTER TABLE ONLY public.employee_work_schedules
     ADD CONSTRAINT employee_work_schedules_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
 
 ALTER TABLE ONLY public.no_show_penalties
-    ADD CONSTRAINT no_show_penalties_company_id_customer_id_fkey FOREIGN KEY (company_id, customer_id) REFERENCES public.company_customers(company_id, user_id);
+    ADD CONSTRAINT no_show_penalties_company_id_customer_id_fkey FOREIGN KEY (company_id, customer_id) REFERENCES public.company_customers(company_id, id);
 
 ALTER TABLE ONLY public.no_show_penalties
     ADD CONSTRAINT no_show_penalties_reservation_id_fkey FOREIGN KEY (reservation_id) REFERENCES public.reservations(id);
@@ -493,7 +488,7 @@ ALTER TABLE ONLY public.notification_deliveries
     ADD CONSTRAINT notification_deliveries_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id);
 
 ALTER TABLE ONLY public.notification_deliveries
-    ADD CONSTRAINT notification_deliveries_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customer_accounts(id);
+    ADD CONSTRAINT notification_deliveries_customer_id_fkey FOREIGN KEY (company_id, customer_id) REFERENCES public.company_customers(company_id, id);
 
 ALTER TABLE ONLY public.notification_deliveries
     ADD CONSTRAINT notification_deliveries_reservation_id_fkey FOREIGN KEY (reservation_id) REFERENCES public.reservations(id);
@@ -529,7 +524,7 @@ ALTER TABLE ONLY public.reservations
     ADD CONSTRAINT reservations_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
 
 ALTER TABLE ONLY public.reservations
-    ADD CONSTRAINT reservations_customer_account_fkey FOREIGN KEY (customer_id) REFERENCES public.customer_accounts(id);
+    ADD CONSTRAINT reservations_customer_account_fkey FOREIGN KEY (company_id, customer_id) REFERENCES public.company_customers(company_id, id);
 
 ALTER TABLE ONLY public.reservations
     ADD CONSTRAINT reservations_service_id_fkey FOREIGN KEY (service_id) REFERENCES public.offerings(id);
@@ -546,6 +541,7 @@ ALTER TABLE ONLY public.employee_work_schedules
 -- OTP delivery is durable without creating an unverified customer identity or salon profile.
 CREATE TABLE public.otp_deliveries (
     id uuid PRIMARY KEY DEFAULT uuidv7(),
+    company_id uuid NOT NULL REFERENCES public.companies(id),
     phone_number varchar(20) NOT NULL,
     code varchar(6),
     state varchar(30) NOT NULL DEFAULT 'PENDING'
@@ -561,3 +557,9 @@ CREATE INDEX otp_deliveries_due ON public.otp_deliveries(next_attempt_at)
 
 -- Bounded email-first staff discovery; company-local uniqueness remains unchanged.
 CREATE INDEX staff_login_email_lookup ON public.company_employees (login_email, id);
+
+-- Bound active-lane lookups independently of the growing terminal delivery history.
+CREATE INDEX notification_sending_lane ON notification_deliveries (company_id, customer_id)
+    WHERE state = 'SENDING';
+CREATE INDEX otp_sending_phone ON otp_deliveries (phone_number)
+    WHERE state = 'SENDING';

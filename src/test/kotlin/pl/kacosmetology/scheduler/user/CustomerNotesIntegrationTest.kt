@@ -22,6 +22,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.services.s3.S3Client
@@ -38,7 +39,7 @@ class CustomerNotesIntegrationTest {
 
     @Autowired private lateinit var testSessions: TestSessions
 
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
 
     @Autowired private lateinit var companyRepository: CompanyRepository
 
@@ -52,9 +53,9 @@ class CustomerNotesIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private lateinit var owner: User
-    private lateinit var employee: User
-    private lateinit var customer: User
+    private lateinit var owner: StaffFixture
+    private lateinit var employee: StaffFixture
+    private lateinit var customer: CompanyCustomer
     private var companyId: UUID = testId(0)
     private lateinit var ownerSession: Cookie
     private lateinit var employeeSession: Cookie
@@ -72,26 +73,36 @@ class CustomerNotesIntegrationTest {
         val company = companyRepository.save(Company(name = "Notes Test Salon"))
         companyId = company.id!!
 
-        owner = userRepository.save(User(phoneNumber = "+48801111001", firstName = "Owner", lastName = "Notes"))
+        owner = StaffFixture(phoneNumber = "+48801111001", firstName = "Owner", lastName = "Notes")
         val ownerEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
             )
         ownerSession = testSessions.staff(owner, ownerEmployment)
 
-        employee = userRepository.save(User(phoneNumber = "+48801222001", firstName = "Employee", lastName = "Notes"))
+        employee = StaffFixture(phoneNumber = "+48801222001", firstName = "Employee", lastName = "Notes")
         val employeeEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
             )
         employeeSession = testSessions.staff(employee, employeeEmployment)
 
-        customer = userRepository.save(User(phoneNumber = "+48801333001", firstName = "Klient", lastName = "Notes"))
+        customer =
+            userRepository.save(
+                CompanyCustomer(
+                    companyId = companyId,
+                    phoneNumber = "+48801333001",
+                    firstName = "Klient",
+                    lastName = "Notes",
+                ),
+            )
         customerSession = testSessions.customer(customer)
         companyCustomerRepository.save(
             CompanyCustomer(
+                id = customer.id,
                 companyId = companyId,
-                userId = customer.id!!,
+                phoneNumber = customer.phoneNumber,
+                firstBookingAt = java.time.Instant.now(),
                 firstName = customer.firstName,
                 lastName = customer.lastName,
             ),
@@ -111,7 +122,7 @@ class CustomerNotesIntegrationTest {
                 status { isNoContent() }
             }
 
-        val record = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!
+        val record = companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!
         assertEquals("VIP klient", record.notes)
     }
 
@@ -128,7 +139,7 @@ class CustomerNotesIntegrationTest {
                 status { isNoContent() }
             }
 
-        val record = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!
+        val record = companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!
         assertEquals("Regularny klient", record.notes)
     }
 
@@ -136,11 +147,12 @@ class CustomerNotesIntegrationTest {
     fun `GET customer status includes notes`() {
         companyCustomerRepository.save(
             CompanyCustomer(
-                id = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!.id,
+                id = companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!.id,
                 firstName = customer.firstName,
                 lastName = customer.lastName,
                 companyId = companyId,
-                userId = customer.id!!,
+                phoneNumber = customer.phoneNumber,
+                firstBookingAt = java.time.Instant.now(),
                 notes = "Notatka testowa",
             ),
         )
@@ -171,11 +183,12 @@ class CustomerNotesIntegrationTest {
     fun `PUT null notes clears existing note`() {
         companyCustomerRepository.save(
             CompanyCustomer(
-                id = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!.id,
+                id = companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!.id,
                 firstName = customer.firstName,
                 lastName = customer.lastName,
                 companyId = companyId,
-                userId = customer.id!!,
+                phoneNumber = customer.phoneNumber,
+                firstBookingAt = java.time.Instant.now(),
                 notes = "Stara notatka",
             ),
         )
@@ -191,7 +204,7 @@ class CustomerNotesIntegrationTest {
                 status { isNoContent() }
             }
 
-        val record = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!
+        val record = companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!
         assertNull(record.notes)
     }
 
@@ -208,7 +221,7 @@ class CustomerNotesIntegrationTest {
                 status { isNoContent() }
             }
 
-        val record = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!
+        val record = companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!
         assertNull(record.notes)
     }
 

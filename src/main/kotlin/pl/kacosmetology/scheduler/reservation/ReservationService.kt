@@ -24,10 +24,8 @@ import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.quote.QuotePolicy
 import pl.kacosmetology.scheduler.reservation.dto.*
 import pl.kacosmetology.scheduler.security.CustomUserDetails
-import pl.kacosmetology.scheduler.user.CompanyCustomer
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
-import pl.kacosmetology.scheduler.user.UserRepository
 
 /** Employee outcome corrections use a 24 elapsed-hour deadline; owners have no late deadline. */
 const val NO_SHOW_CORRECTION_HOURS = 24L
@@ -37,7 +35,6 @@ const val NO_SHOW_CORRECTION_HOURS = 24L
 class ReservationService(
     private val reservationRepository: ReservationRepository,
     private val offeringRepository: OfferingRepository,
-    private val userRepository: UserRepository,
     private val assignmentRepository: EmployeeOfferingAssignmentRepository,
     private val companyEmployeeRepository: CompanyEmployeeRepository,
     private val companyRepository: CompanyRepository,
@@ -66,10 +63,12 @@ class ReservationService(
         lastName: String? = null,
         contactEmail: String? = null,
         quoteId: UUID? = null,
+        requesterCompanyId: UUID,
     ): BookingResult {
-        val companyId = offeringCompany(offeringId)
+        val companyId = requesterCompanyId
+        if (offeringRepository.findByIdAndCompanyId(offeringId, companyId) == null) missingReservation()
         val company = lockCompany(companyId)
-        if (!userRepository.existsById(customerId)) missingCustomer()
+        if (companyCustomers.findByCompanyIdAndId(companyId, customerId) == null) missingCustomer()
         if (employeeId != null) checkEmployee(companyId, employeeId, offeringId)
         else
             companyEmployeeRepository
@@ -168,10 +167,10 @@ class ReservationService(
         )
         val phone = canonicalPhone(customerPhone)
         val customer =
-            userRepository.findByPhoneNumber(phone)
+            companyCustomers.findByCompanyIdAndPhoneNumber(requesterCompanyId, phone)
                 ?: run {
-                    userRepository.insertIfPhoneAbsent(phone, "", "")
-                    checkNotNull(userRepository.findByPhoneNumber(phone))
+                    companyCustomers.insertIfPhoneAbsent(requesterCompanyId, phone)
+                    checkNotNull(companyCustomers.findByCompanyIdAndPhoneNumber(requesterCompanyId, phone))
                 }
         val customerId = requireNotNull(customer.id)
         checkBlocked(requesterCompanyId, customerId, startTime, now)
@@ -301,13 +300,20 @@ class ReservationService(
 
     /** Customer cancellation is allowed strictly before start and never exposes a private staff reason. */
     @Transactional
-    fun cancelReservation(reservationId: UUID, customerId: UUID, revision: Long? = null, reason: String? = null) {
+    fun cancelReservation(
+        reservationId: UUID,
+        customerId: UUID,
+        revision: Long? = null,
+        reason: String? = null,
+        requesterCompanyId: UUID,
+    ) {
         val companyId =
             jdbc
                 .queryForList<UUID>(
-                    "SELECT company_id FROM reservations WHERE id=? AND customer_id=?",
+                    "SELECT company_id FROM reservations WHERE id=? AND customer_id=? AND company_id=?",
                     reservationId,
                     customerId,
+                    requesterCompanyId,
                 )
                 .firstOrNull() ?: missingReservation()
         transition(
@@ -389,8 +395,8 @@ class ReservationService(
 
     /** Returns normal customer history, excluding archived appointments. */
     @Transactional(readOnly = true)
-    fun getCustomerReservations(customerId: UUID): List<Reservation> =
-        reservationRepository.findAllByCustomerIdAndArchivedFalseOrderByStartTimeDesc(customerId)
+    fun getCustomerReservations(customerId: UUID, companyId: UUID): List<Reservation> =
+        reservationRepository.findAllByCompanyIdAndCustomerIdAndArchivedFalseOrderByStartTimeDesc(companyId, customerId)
 
     /** Both staff roles can read company visit history with local customer names. */
     @Transactional(readOnly = true)
@@ -403,7 +409,7 @@ class ReservationService(
         if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) missingReservation()
         return reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end).map {
             reservation ->
-            val profile = companyCustomers.findByCompanyIdAndUserId(companyId, reservation.customerId)
+            val profile = companyCustomers.findByCompanyIdAndId(companyId, reservation.customerId)
             reservation.toDashboardResponse(profile?.firstName ?: "", profile?.lastName ?: "")
         }
     }
@@ -473,7 +479,7 @@ class ReservationService(
         val expected = revision ?: reservation.version
         val account =
             (SecurityContextHolder.getContext().authentication?.principal as? CustomUserDetails)?.accountKey()
-                ?: if (customerId != null) "customer:$customerId" else "system"
+                ?: if (customerId != null) "customer:$companyId:$customerId" else "system"
         val command = "$target:$expected"
         val fingerprint =
             java.security.MessageDigest.getInstance("SHA-256")
@@ -622,9 +628,6 @@ class ReservationService(
             invalidTransition("Minął termin korekty wyniku wizyty")
     }
 
-    private fun offeringCompany(id: UUID): UUID =
-        jdbc.queryForList<UUID>("SELECT company_id FROM offerings WHERE id=?", id).firstOrNull() ?: missingReservation()
-
     private fun lockCompany(id: UUID): Company = companyRepository.findByIdForUpdate(id) ?: missingReservation()
 
     private fun locked(id: UUID, company: UUID): Reservation =
@@ -665,21 +668,18 @@ class ReservationService(
     }
 
     private fun ensureProfile(companyId: UUID, customerId: UUID, first: String?, last: String?, email: String?) {
-        if (companyCustomers.findByCompanyIdAndUserId(companyId, customerId) != null) return
+        val profile = companyCustomers.findByCompanyIdAndId(companyId, customerId) ?: missingCustomer()
+        if (profile.firstBookingAt != null) return
         if (first.isNullOrBlank() || last.isNullOrBlank())
             throw ApiException(
                 ErrorCode.CUSTOMER_NAME_REQUIRED,
                 "Pierwsza rezerwacja wymaga imienia i nazwiska klienta",
             )
-        companyCustomers.save(
-            CompanyCustomer(
-                companyId = companyId,
-                userId = customerId,
-                firstName = first.trim(),
-                lastName = last.trim(),
-                contactEmail = email,
-            ),
-        )
+        profile.firstName = first.trim()
+        profile.lastName = last.trim()
+        profile.contactEmail = email?.trim()?.takeIf { it.isNotEmpty() }
+        profile.firstBookingAt = clock.instant()
+        companyCustomers.save(profile)
     }
 
     private fun checkCustomerConflict(
@@ -830,11 +830,13 @@ class ReservationService(
     /** Cancels only future booked visits; callers hold the company lock and preserve ongoing appointments. */
     fun cancelFutureForBlock(companyId: UUID, customerId: UUID) {
         val future =
-            reservationRepository.findAllByCustomerIdAndArchivedFalseOrderByStartTimeDesc(customerId).filter {
-                it.companyId == companyId &&
-                    it.status == ReservationStatus.BOOKED &&
-                    it.startTime.isAfter(LocalDateTime.ofInstant(clock.instant(), BUSINESS_ZONE))
-            }
+            reservationRepository
+                .findAllByCompanyIdAndCustomerIdAndArchivedFalseOrderByStartTimeDesc(companyId, customerId)
+                .filter {
+                    it.companyId == companyId &&
+                        it.status == ReservationStatus.BOOKED &&
+                        it.startTime.isAfter(LocalDateTime.ofInstant(clock.instant(), BUSINESS_ZONE))
+                }
         for (reservation in future) {
             audit.capture()
             reservation.status = ReservationStatus.CANCELLED

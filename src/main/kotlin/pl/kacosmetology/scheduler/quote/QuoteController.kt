@@ -20,5 +20,5 @@ class QuoteController(private val service: QuoteService) {
     fun create(
         @AuthenticationPrincipal customer: CustomUserDetails,
         @Valid @RequestBody request: CreateQuoteRequest,
-    ): QuoteResponse = service.create(customer.id, request)
+    ): QuoteResponse = service.create(customer.id, request, customer.requireCompanyId())
 }

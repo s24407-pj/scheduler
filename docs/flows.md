@@ -2,12 +2,12 @@
 
 Public booking pages know their company ID and read its public profile, categories, active services, eligible staff and availability without signing in. Customer authentication is needed only when submitting a booking.
 
-1. Fetch `/api/auth/csrf`; request and verify the six-digit phone OTP with cookies and CSRF. Verification needs no names and creates only the global phone account.
+1. Fetch `/api/auth/csrf`; request and verify the six-digit phone OTP with cookies and CSRF. Include the public page’s `companyId` in both OTP requests. Verification needs no names and creates a pending customer local to that salon.
 2. Select a service, time and employee (or any employee); optionally acquire a ten-minute commercial quote.
-3. Submit with a stable `Idempotency-Key`. Supply first/last name for the first successful visit relationship at that salon. Success creates BOOKED immediately; no confirmation SMS/email is sent.
+3. Submit with a stable `Idempotency-Key`. Supply first/last name for the first successful visit relationship at that salon. Protected customer writes also require the captured session-context header described in [architecture](./architecture.md#csrf-cookies-and-frontend-contract). Success completes the local profile and establishes staff visibility atomically, then creates BOOKED immediately; no confirmation SMS/email is sent.
 4. Read current details/history or cancel strictly before start using the returned revision. Customers cannot reschedule themselves.
 
-Staff sign in with normalized email and password; independent company accounts are verified before offering a company choice when needed. The company-scoped endpoint remains a compatibility and high-membership fallback. Cookie sessions have a 24-hour inactivity timeout; customer sessions have an absolute 24-hour lifetime. Switching identity requires logout. Logout-all and password changes affect only that realm/account.
+Staff sign in with normalized email and password; independent company accounts are verified before offering a company choice when needed. The company-scoped endpoint remains a compatibility and high-membership fallback. Staff cookie sessions have a 24-hour inactivity timeout; customer sessions are bound to one salon and have an absolute 24-hour lifetime. Switching identity requires logout. Logout-all and password changes affect only that realm/account.
 
 Owners create employee accounts and hand off one-use setup/recovery credentials, manage local staff presentation, enable/disable employees, catalog, schedules and company settings. Ownership changes remain operator-controlled. Disabling staff preserves appointments and reports affected future visits.
 

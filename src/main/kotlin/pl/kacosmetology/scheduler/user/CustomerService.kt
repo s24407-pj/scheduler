@@ -3,14 +3,11 @@ package pl.kacosmetology.scheduler.user
 import java.util.*
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.user.dto.CustomerStatusResponse
 
 /** Business logic for owner-scoped manual customer block/unblock operations and customer notes. */
 @Service
 class CustomerService(
-    private val userRepository: UserRepository,
-    private val reservationRepository: ReservationRepository,
     private val companyCustomerBlockRepository: CompanyCustomerBlockRepository,
     private val companyCustomerRepository: CompanyCustomerRepository,
     private val blocking: CustomerBlockingPolicy,
@@ -22,19 +19,17 @@ class CustomerService(
      */
     @Transactional(readOnly = true)
     fun listCustomers(companyId: UUID): List<CustomerStatusResponse> {
-        val profiles = companyCustomerRepository.findByCompanyId(companyId)
-        val accounts = userRepository.findAllById(profiles.map { it.userId }).associateBy { it.id }
+        val profiles = companyCustomerRepository.findByCompanyIdAndFirstBookingAtIsNotNull(companyId)
         val blocks = companyCustomerBlockRepository.findByCompanyId(companyId).associateBy { it.customerId }
         return profiles
-            .mapNotNull { profile ->
-                val account = accounts[profile.userId] ?: return@mapNotNull null
-                val block = blocks[profile.userId]
+            .map { profile ->
+                val block = blocks[requireNotNull(profile.id)]
                 CustomerStatusResponse(
-                    profile.userId,
-                    profile.firstName,
-                    profile.lastName,
-                    account.phoneNumber,
-                    blocking.currentCount(companyId, profile.userId),
+                    requireNotNull(profile.id),
+                    requireNotNull(profile.firstName),
+                    requireNotNull(profile.lastName),
+                    profile.phoneNumber,
+                    blocking.currentCount(companyId, requireNotNull(profile.id)),
                     block?.blocked ?: false,
                     profile.notes,
                     profile.contactEmail,
@@ -50,15 +45,14 @@ class CustomerService(
     @Transactional(readOnly = true)
     fun getCustomerStatus(customerId: UUID, companyId: UUID): CustomerStatusResponse {
         val companyCustomer =
-            companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
+            companyCustomerRepository.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(companyId, customerId)
                 ?: throw NoSuchElementException("Klient nie istnieje")
-        val customer = userRepository.findById(customerId).orElseThrow { NoSuchElementException("Klient nie istnieje") }
         val block = companyCustomerBlockRepository.findByCompanyIdAndCustomerId(companyId, customerId)
         return CustomerStatusResponse(
-            id = requireNotNull(customer.id) { "Persisted customer must have an ID" },
-            firstName = companyCustomer.firstName,
-            lastName = companyCustomer.lastName,
-            phoneNumber = customer.phoneNumber,
+            id = requireNotNull(companyCustomer.id) { "Persisted customer must have an ID" },
+            firstName = requireNotNull(companyCustomer.firstName),
+            lastName = requireNotNull(companyCustomer.lastName),
+            phoneNumber = companyCustomer.phoneNumber,
             noShowCount = blocking.currentCount(companyId, customerId),
             blocked = block?.blocked ?: false,
             notes = companyCustomer.notes,
@@ -73,7 +67,7 @@ class CustomerService(
     @Transactional
     fun setCustomerNotes(customerId: UUID, companyId: UUID, notes: String?) {
         val record =
-            companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
+            companyCustomerRepository.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(companyId, customerId)
                 ?: throw NoSuchElementException("Klient nie istnieje")
         record.notes = notes?.ifBlank { null }
         companyCustomerRepository.save(record)
@@ -85,7 +79,7 @@ class CustomerService(
         customerId: UUID,
         companyId: UUID,
     ): List<pl.kacosmetology.scheduler.user.dto.CustomerVisitResponse> {
-        companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
+        companyCustomerRepository.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(companyId, customerId)
             ?: throw NoSuchElementException("Klient nie istnieje")
         return companyCustomerRepository.findVisitHistory(companyId, customerId).map {
             pl.kacosmetology.scheduler.user.dto.CustomerVisitResponse(
@@ -103,7 +97,7 @@ class CustomerService(
         }
     }
 
-    /** Updates only an existing company profile; global phone identities remain unchanged. */
+    /** Updates only an existing company profile; the local phone authentication identity remains unchanged. */
     @Transactional
     fun updateProfile(
         customerId: UUID,
@@ -111,7 +105,7 @@ class CustomerService(
         request: pl.kacosmetology.scheduler.user.dto.UpdateCustomerProfileRequest,
     ) {
         val profile =
-            companyCustomerRepository.findByCompanyIdAndUserId(companyId, customerId)
+            companyCustomerRepository.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(companyId, customerId)
                 ?: throw NoSuchElementException("Klient nie istnieje")
         profile.firstName = request.firstName.trim()
         profile.lastName = request.lastName.trim()

@@ -39,14 +39,14 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
     fun `manual first visit creates only phone account and company profile atomically`() {
         val created = manual(manualBody(phone = "+48500100200"))
         assertEquals(201, created.response.status, created.response.contentAsString)
-        assertEquals(2L, count("customer_accounts"))
-        assertEquals(1L, count("company_customers"))
+        assertEquals(2L, count("company_customers"))
+        assertEquals(1L, visibleCustomers())
         assertEquals(
             400,
             manual(manualBody(future.plusHours(1), phone = "+48500100201") - "customerFirstName").response.status,
         )
-        assertEquals(2L, count("customer_accounts"))
-        assertEquals(1L, count("company_customers"))
+        assertEquals(2L, count("company_customers"))
+        assertEquals(1L, visibleCustomers())
     }
 
     @Test

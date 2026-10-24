@@ -20,8 +20,8 @@ import pl.kacosmetology.scheduler.company.Company
 import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
@@ -34,7 +34,7 @@ class ProductionSessionCookieIntegrationTest {
     @Autowired private lateinit var mvc: MockMvc
     @Autowired private lateinit var sessions: RedisIndexedSessionRepository
     @Autowired private lateinit var environment: Environment
-    @Autowired private lateinit var users: UserRepository
+    @Autowired private lateinit var users: CompanyCustomerRepository
     @Autowired private lateinit var companies: CompanyRepository
     @Autowired private lateinit var employments: CompanyEmployeeRepository
     @Autowired private lateinit var passwords: PasswordEncoder
@@ -47,14 +47,12 @@ class ProductionSessionCookieIntegrationTest {
         assertTrue(environment.activeProfiles.contains("prod"))
         val company = companies.save(Company(name = "Prod cookie"))
         val staff =
-            users.save(
-                User(
-                    phoneNumber = "+48500119988",
-                    firstName = "Prod",
-                    lastName = "Cookie",
-                    email = "cookie@salon.pl",
-                    passwordHash = passwords.encode("password123"),
-                ),
+            StaffFixture(
+                phoneNumber = "+48500119988",
+                firstName = "Prod",
+                lastName = "Cookie",
+                email = "cookie@salon.pl",
+                passwordHash = passwords.encode("password123"),
             )
         employments.save(
             CompanyEmployee(

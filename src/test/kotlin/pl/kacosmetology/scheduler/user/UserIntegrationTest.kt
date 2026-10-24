@@ -27,7 +27,7 @@ class UserIntegrationTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
 
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
 
     @Autowired private lateinit var testSessions: TestSessions
 
@@ -39,8 +39,11 @@ class UserIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private lateinit var testUser: User
+    private lateinit var testUser: CompanyCustomer
     private lateinit var sessionCookie: Cookie
+
+    @Autowired private lateinit var companies: pl.kacosmetology.scheduler.company.CompanyRepository
+    private lateinit var companyId: java.util.UUID
 
     @BeforeEach
     fun setup() {
@@ -50,10 +53,16 @@ class UserIntegrationTest {
         companyEmployeeRepository.deleteAll()
         userRepository.deleteAll()
 
+        companyId = companies.save(pl.kacosmetology.scheduler.company.Company(name = "Profile")).id!!
         // Tworzymy użytkownika w bazie
         testUser =
             userRepository.save(
-                User(phoneNumber = "+48111222333", firstName = "Jan", lastName = "Kowalski"),
+                CompanyCustomer(
+                    companyId = companyId,
+                    phoneNumber = "+48111222333",
+                    firstName = "Jan",
+                    lastName = "Kowalski",
+                ),
             )
 
         sessionCookie = testSessions.customer(testUser)
@@ -98,12 +107,11 @@ class UserIntegrationTest {
         userRepository.deleteAll()
         val userWithPassword =
             userRepository.save(
-                User(
+                CompanyCustomer(
+                    companyId = companyId,
                     phoneNumber = "+48999111222",
                     firstName = "Anna",
                     lastName = "Hasłowa",
-                    email = "anna@test.pl",
-                    passwordHash = "super_secret_hash",
                 ),
             )
         val session = testSessions.customer(userWithPassword)

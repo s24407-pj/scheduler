@@ -20,10 +20,10 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
@@ -38,7 +38,7 @@ class OfferingCategoryIntegrationTest {
 
     @Autowired private lateinit var testSessions: TestSessions
 
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
 
     @Autowired private lateinit var companyRepository: CompanyRepository
 
@@ -69,14 +69,14 @@ class OfferingCategoryIntegrationTest {
         val company = companyRepository.save(Company(name = "Salon Kategorii"))
         companyId = company.id!!
 
-        val owner = userRepository.save(User(phoneNumber = "+48500500500", firstName = "Owner", lastName = "Cat"))
+        val owner = StaffFixture(phoneNumber = "+48500500500", firstName = "Owner", lastName = "Cat")
         val ownerEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
             )
         ownerSession = testSessions.staff(owner, ownerEmployment)
 
-        val employee = userRepository.save(User(phoneNumber = "+48600600600", firstName = "Emp", lastName = "Cat"))
+        val employee = StaffFixture(phoneNumber = "+48600600600", firstName = "Emp", lastName = "Cat")
         val employeeEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),

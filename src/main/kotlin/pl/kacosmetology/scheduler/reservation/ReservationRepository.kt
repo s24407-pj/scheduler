@@ -65,7 +65,10 @@ interface ReservationRepository : JpaRepository<Reservation, UUID> {
     )
     fun findOverlapping(companyId: UUID, employeeId: UUID, start: LocalDateTime, end: LocalDateTime): List<Reservation>
 
-    fun findAllByCustomerIdAndArchivedFalseOrderByStartTimeDesc(customerId: UUID): List<Reservation>
+    fun findAllByCompanyIdAndCustomerIdAndArchivedFalseOrderByStartTimeDesc(
+        companyId: UUID,
+        customerId: UUID,
+    ): List<Reservation>
 
     /** Returns an employee's schedule at [companyId] overlapping a given time range (for the staff dashboard). */
     @Query(

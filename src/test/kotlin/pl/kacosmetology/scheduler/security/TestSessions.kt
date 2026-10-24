@@ -8,7 +8,7 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.session.data.redis.RedisIndexedSessionRepository
 import org.springframework.stereotype.Component
 import pl.kacosmetology.scheduler.company.CompanyEmployee
-import pl.kacosmetology.scheduler.user.User
+import pl.kacosmetology.scheduler.user.CompanyCustomer
 
 /** Real Redis-session fixtures for feature tests; login/session boundary tests exercise the REST endpoints. */
 @Component
@@ -17,10 +17,10 @@ class TestSessions(
     private val accountSessions: AccountSessionRegistry,
     private val staffAccounts: pl.kacosmetology.scheduler.company.CompanyEmployeeRepository,
 ) {
-    fun customer(user: User): Cookie =
-        create(CustomUserDetails(requireNotNull(user.id), user.phoneNumber, "ROLE_CUSTOMER"))
+    fun customer(user: CompanyCustomer): Cookie =
+        create(CustomUserDetails(requireNotNull(user.id), user.phoneNumber, "ROLE_CUSTOMER", user.companyId))
 
-    fun staff(user: User, employment: CompanyEmployee): Cookie {
+    fun staff(user: StaffFixture, employment: CompanyEmployee): Cookie {
         require(employment.userId == user.id)
         // Test-only adapter for legacy feature fixtures. Runtime never obtains staff data from customer accounts.
         val local = staffAccounts.findById(requireNotNull(employment.id)).orElseThrow()

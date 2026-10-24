@@ -10,12 +10,14 @@ import java.util.*
 private const val PHONE_REGEXP = "^\\s*\\+?[0-9]{9,15}\\s*$"
 
 data class RequestCodeRequest(
+    @field:NotNull(message = "Firma jest wymagana") val companyId: UUID,
     @field:NotBlank(message = "Numer telefonu jest wymagany")
     @field:Pattern(regexp = PHONE_REGEXP, message = "Nieprawidłowy format numeru telefonu")
     val phoneNumber: String,
 )
 
 data class VerifyCodeRequest(
+    @field:NotNull(message = "Firma jest wymagana") val companyId: UUID,
     @field:NotBlank(message = "Numer telefonu jest wymagany")
     @field:Pattern(regexp = PHONE_REGEXP, message = "Nieprawidłowy format numeru telefonu")
     val phoneNumber: String,

@@ -20,3 +20,5 @@ Docs describe the code as it is. Where an accepted decision is not implemented y
 - [Identity and staff administration](./identity.md) — separate realms, salon profiles and password lifecycle.
 
 Final implementation and evidence: [revised scheduler contract](./implementation-report.md).
+
+Current customer identity and fresh-baseline contract: [ADR-0017](./adr/0017-company-local-customers.md).

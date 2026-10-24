@@ -8,12 +8,13 @@ import org.junit.jupiter.api.Test
 import pl.kacosmetology.scheduler.testId
 
 class UserServiceTest {
-    private val accounts = mockk<UserRepository>()
+    private val accounts = mockk<CompanyCustomerRepository>()
     private val service = UserService(accounts)
 
     @Test
     fun `customer account read exposes canonical identity`() {
-        every { accounts.findById(testId(1)) } returns Optional.of(User(id = testId(1), phoneNumber = "+48500100200"))
-        assertEquals("+48500100200", service.getProfile(testId(1)).phoneNumber)
+        every { accounts.findByCompanyIdAndId(testId(9), testId(1)) } returns
+            CompanyCustomer(companyId = testId(9), id = testId(1), phoneNumber = "+48500100200")
+        assertEquals("+48500100200", service.getProfile(testId(1), testId(9)).phoneNumber)
     }
 }

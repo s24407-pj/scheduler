@@ -34,10 +34,11 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomer
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import pl.kacosmetology.scheduler.workschedule.dto.SetWeeklyScheduleRequest
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
@@ -50,7 +51,7 @@ class WorkScheduleIntegrationTest {
     @Autowired private lateinit var mockMvc: MockMvc
     @Autowired private lateinit var objectMapper: ObjectMapper
     @Autowired private lateinit var testSessions: TestSessions
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
     @Autowired private lateinit var companyRepository: CompanyRepository
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
     @Autowired private lateinit var workScheduleRepository: EmployeeWorkScheduleRepository
@@ -85,14 +86,14 @@ class WorkScheduleIntegrationTest {
         val company = companyRepository.save(Company(name = "Salon Grafik"))
         companyId = company.id!!
 
-        val owner = userRepository.save(User(phoneNumber = "+48111222333", firstName = "Owner", lastName = "Test"))
+        val owner = StaffFixture(phoneNumber = "+48111222333", firstName = "Owner", lastName = "Test")
         val ownerEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
             )
         ownerSession = testSessions.staff(owner, ownerEmployment)
 
-        val employee = userRepository.save(User(phoneNumber = "+48333222111", firstName = "Emp", lastName = "Test"))
+        val employee = StaffFixture(phoneNumber = "+48333222111", firstName = "Emp", lastName = "Test")
         val employeeEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
@@ -358,7 +359,14 @@ class WorkScheduleIntegrationTest {
     @Test
     fun `GET work-schedule should return 403 for customer`() {
         val customer =
-            userRepository.save(User(phoneNumber = "+48300300300", firstName = "Customer", lastName = "Test"))
+            userRepository.save(
+                CompanyCustomer(
+                    companyId = companyId,
+                    phoneNumber = "+48300300300",
+                    firstName = "Customer",
+                    lastName = "Test",
+                ),
+            )
         val customerSession = testSessions.customer(customer)
 
         mockMvc
@@ -373,8 +381,7 @@ class WorkScheduleIntegrationTest {
     @Test
     fun `GET work-schedule should return 404 for employee outside owner company`() {
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
-        val otherEmployee =
-            userRepository.save(User(phoneNumber = "+48400400400", firstName = "Other", lastName = "Employee"))
+        val otherEmployee = StaffFixture(phoneNumber = "+48400400400", firstName = "Other", lastName = "Employee")
         companyEmployeeRepository.save(
             CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE"),
         )

@@ -27,9 +27,9 @@ import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
@@ -43,7 +43,7 @@ class BookingContractIntegrationTest {
     @Autowired private lateinit var json: ObjectMapper
     @Autowired private lateinit var fixtures: ContractFixtures
     @Autowired private lateinit var sessions: TestSessions
-    @Autowired private lateinit var customers: UserRepository
+    @Autowired private lateinit var customers: CompanyCustomerRepository
     @Autowired private lateinit var employees: CompanyEmployeeRepository
     @MockkBean private lateinit var clock: Clock
     @MockkBean private lateinit var sms: SmsSender
@@ -63,7 +63,7 @@ class BookingContractIntegrationTest {
 
     private fun staff() =
         employees.findById(salon.staff).orElseThrow().let {
-            sessions.staff(User(id = it.userId, phoneNumber = "+48999000111"), it)
+            sessions.staff(StaffFixture(id = it.userId, phoneNumber = "+48999000111"), it)
         }
 
     private fun payload(employee: UUID? = salon.employee) =
@@ -103,7 +103,10 @@ class BookingContractIntegrationTest {
     fun `failed submission binds payload and creates profile only when later same request succeeds`() {
         val key = UUID.randomUUID().toString()
         assertEquals(409, book(key).response.status)
-        assertEquals(0L, jdbc.queryForObject<Long>("SELECT count(*) FROM company_customers"))
+        assertEquals(
+            0L,
+            jdbc.queryForObject<Long>("SELECT count(*) FROM company_customers WHERE first_booking_at IS NOT NULL"),
+        )
         assertEquals(409, book(key, payload() + mapOf("firstName" to "Zmienione")).response.status)
         fixtures.shift(salon, start)
         val created = book(key)
@@ -116,7 +119,10 @@ class BookingContractIntegrationTest {
         assertEquals("Strzyżenie", body["serviceName"].stringValue())
         assertFalse(body["createdAt"].isNull)
         assertEquals(salon.company, UUID.fromString(body["companyId"].asString()))
-        assertEquals(1L, jdbc.queryForObject<Long>("SELECT count(*) FROM company_customers"))
+        assertEquals(
+            1L,
+            jdbc.queryForObject<Long>("SELECT count(*) FROM company_customers WHERE first_booking_at IS NOT NULL"),
+        )
     }
 
     @Test

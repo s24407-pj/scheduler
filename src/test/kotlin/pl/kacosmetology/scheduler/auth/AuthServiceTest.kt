@@ -20,15 +20,15 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.testId
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomer
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 
 private const val DUMMY_HASH = "dummy-hash"
 
 @ExtendWith(MockKExtension::class)
 class AuthServiceTest {
 
-    @MockK private lateinit var userRepository: UserRepository
+    @MockK private lateinit var userRepository: CompanyCustomerRepository
 
     @MockK private lateinit var otpStore: OtpStore
 
@@ -54,6 +54,11 @@ class AuthServiceTest {
 
     @InjectMockKs private lateinit var authService: AuthService
 
+    @org.junit.jupiter.api.BeforeEach
+    fun companyExists() {
+        every { companyRepository.existsById(testId(9)) } returns true
+    }
+
     private val testIp = "127.0.0.1"
 
     private val testPhone = "+48111222333"
@@ -61,12 +66,12 @@ class AuthServiceTest {
     @Test
     fun `requestCode normalizes phone and publishes durable issuance intent`() {
         every { otpRequestRateLimiter.check(testIp) } returns RateLimitDecision(true, 0)
-        every { otpStore.issueCode(testPhone) } returns "123456"
+        every { otpStore.issueCode(testId(9), testPhone) } returns "123456"
         every { eventPublisher.publishEvent(any<OtpIssuedEvent>()) } just Runs
 
-        authService.requestCode(RequestCodeRequest(" 48111222333 "), testIp)
+        authService.requestCode(RequestCodeRequest(testId(9), " 48111222333 "), testIp)
 
-        verify(exactly = 1) { otpStore.issueCode(testPhone) }
+        verify(exactly = 1) { otpStore.issueCode(testId(9), testPhone) }
         verify {
             eventPublisher.publishEvent(match<OtpIssuedEvent> { it.phoneNumber == testPhone && it.code == "123456" })
         }
@@ -76,16 +81,20 @@ class AuthServiceTest {
     fun `requestCode does not issue when IP limit exceeded`() {
         every { otpRequestRateLimiter.check(testIp) } returns RateLimitDecision(false, 900)
         val failure =
-            assertThrows<RateLimitExceededException> { authService.requestCode(RequestCodeRequest(testPhone), testIp) }
+            assertThrows<RateLimitExceededException> {
+                authService.requestCode(RequestCodeRequest(testId(9), testPhone), testIp)
+            }
         assertEquals(900L, failure.retryAfterSeconds)
-        verify(exactly = 0) { otpStore.issueCode(any()) }
+        verify(exactly = 0) { otpStore.issueCode(testId(9), any()) }
     }
 
     @Test
     fun `requestCode does not dispatch when phone cooldown exceeded`() {
         every { otpRequestRateLimiter.check(testIp) } returns RateLimitDecision(true, 0)
-        every { otpStore.issueCode(testPhone) } throws RateLimitExceededException(retryAfterSeconds = 60)
-        assertThrows<RateLimitExceededException> { authService.requestCode(RequestCodeRequest(testPhone), testIp) }
+        every { otpStore.issueCode(testId(9), testPhone) } throws RateLimitExceededException(retryAfterSeconds = 60)
+        assertThrows<RateLimitExceededException> {
+            authService.requestCode(RequestCodeRequest(testId(9), testPhone), testIp)
+        }
         verify(exactly = 0) { eventPublisher.publishEvent(any<OtpIssuedEvent>()) }
     }
 
@@ -93,41 +102,50 @@ class AuthServiceTest {
     fun `verifyCode does not lookup identity when OTP is invalid missing or exhausted`() {
         every { otpVerificationRateLimiter.check(testIp) } returns RateLimitDecision(true, 0)
         listOf(OtpVerificationResult.INVALID, OtpVerificationResult.EXPIRED_OR_MISSING).forEach { result ->
-            every { otpStore.verifyAndConsumeCode(testPhone, "123456") } returns result
-            assertThrows<ApiException> { authService.verifyCode(VerifyCodeRequest(testPhone, "123456"), testIp) }
+            every { otpStore.verifyAndConsumeCode(testId(9), testPhone, "123456") } returns result
+            assertThrows<ApiException> {
+                authService.verifyCode(VerifyCodeRequest(testId(9), testPhone, "123456"), testIp)
+            }
         }
-        every { otpStore.verifyAndConsumeCode(testPhone, "123456") } returns OtpVerificationResult.ATTEMPTS_EXCEEDED
+        every { otpStore.verifyAndConsumeCode(testId(9), testPhone, "123456") } returns
+            OtpVerificationResult.ATTEMPTS_EXCEEDED
         assertThrows<RateLimitExceededException> {
-            authService.verifyCode(VerifyCodeRequest(testPhone, "123456"), testIp)
+            authService.verifyCode(VerifyCodeRequest(testId(9), testPhone, "123456"), testIp)
         }
-        verify(exactly = 0) { userRepository.findByPhoneNumber(any()) }
+        verify(exactly = 0) { userRepository.findByCompanyIdAndPhoneNumber(testId(9), any()) }
     }
 
     @Test
     fun `verifyCode rejects IP limit before consuming code`() {
         every { otpVerificationRateLimiter.check(testIp) } returns RateLimitDecision(false, 300)
         assertThrows<RateLimitExceededException> {
-            authService.verifyCode(VerifyCodeRequest(testPhone, "123456"), testIp)
+            authService.verifyCode(VerifyCodeRequest(testId(9), testPhone, "123456"), testIp)
         }
-        verify(exactly = 0) { otpStore.verifyAndConsumeCode(any(), any()) }
+        verify(exactly = 0) { otpStore.verifyAndConsumeCode(testId(9), any(), any()) }
     }
 
     @Test
     fun `verifyCode creates name-free account using canonical phone`() {
         every { otpVerificationRateLimiter.check(testIp) } returns RateLimitDecision(true, 0)
-        every { otpStore.verifyAndConsumeCode(testPhone, "123456") } returns OtpVerificationResult.VERIFIED
-        every { userRepository.findByPhoneNumber(testPhone) } returns null
-        every { userRepository.save(any()) } returns
-            User(id = testId(1), phoneNumber = testPhone, firstName = "", lastName = "")
+        every { otpStore.verifyAndConsumeCode(testId(9), testPhone, "123456") } returns OtpVerificationResult.VERIFIED
+        every { userRepository.insertIfPhoneAbsent(testId(9), testPhone) } returns 1
+        every { userRepository.findByCompanyIdAndPhoneNumber(testId(9), testPhone) } returns
+            CompanyCustomer(
+                companyId = testId(9),
+                id = testId(1),
+                phoneNumber = testPhone,
+                firstName = "",
+                lastName = "",
+            )
 
-        val response = authService.verifyCode(VerifyCodeRequest(" 48111222333 ", "123456"), testIp)
+        val response = authService.verifyCode(VerifyCodeRequest(testId(9), " 48111222333 ", "123456"), testIp)
 
         assertEquals(testId(1), response.id)
         assertEquals("ROLE_CUSTOMER", response.role)
         verify(exactly = 1) {
-            userRepository.save(match { it.phoneNumber == testPhone && it.firstName == "" && it.lastName == "" })
+            userRepository.insertIfPhoneAbsent(testId(9), testPhone)
         }
-        verify(exactly = 1) { otpStore.verifyAndConsumeCode(testPhone, "123456") }
+        verify(exactly = 1) { otpStore.verifyAndConsumeCode(testId(9), testPhone, "123456") }
         verify(exactly = 1) { eventPublisher.publishEvent(match<OtpConsumedEvent> { it.phoneNumber == testPhone }) }
     }
 
@@ -162,7 +180,7 @@ class AuthServiceTest {
         val result = authService.loginStaff(request, testIp)
         assertEquals(testId(31), result.principal.employmentId)
         assertEquals("staff@salon.pl", result.principal.username)
-        verify(exactly = 0) { userRepository.findByPhoneNumber(any()) }
+        verify(exactly = 0) { userRepository.findByCompanyIdAndPhoneNumber(testId(9), any()) }
         io.mockk.verifyOrder {
             accountSessions.sessionAttributes(any())
             passwordEncoder.matches("password123", "hash")

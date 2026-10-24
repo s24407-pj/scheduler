@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicReference
 import javax.sql.DataSource
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -66,8 +67,12 @@ class OtpDeliveryIntegrationTest {
     private val phone = "+48880000001"
     private lateinit var transactions: TransactionTemplate
 
+    private lateinit var companyId: java.util.UUID
+    @Autowired private lateinit var companyRepository: pl.kacosmetology.scheduler.company.CompanyRepository
+
     @BeforeEach
     fun reset() {
+        companyId = companyRepository.save(pl.kacosmetology.scheduler.company.Company(name = "OTP Salon")).id!!
         awaitWorkers()
         transactions = TransactionTemplate(manager)
         redis.connectionFactory!!.connection.use { it.serverCommands().flushAll() }
@@ -80,7 +85,7 @@ class OtpDeliveryIntegrationTest {
     fun `rolled back OTP request persists no intent sends no SMS and creates no account or profile`() {
         assertThrows<IllegalStateException> {
             transactions.executeWithoutResult {
-                auth.requestCode(RequestCodeRequest(phone), "ip")
+                auth.requestCode(RequestCodeRequest(companyId, phone), "ip")
                 awaitWorkers()
                 error("rollback")
             }
@@ -104,7 +109,7 @@ class OtpDeliveryIntegrationTest {
                 }
             }
         }
-        auth.requestCode(RequestCodeRequest(phone), "ip")
+        auth.requestCode(RequestCodeRequest(companyId, phone), "ip")
         awaitWorkers()
         assertEquals("ACCEPTED", state())
         assertEquals(1, provider.calls.get())
@@ -119,7 +124,7 @@ class OtpDeliveryIntegrationTest {
     @Test
     fun `definite temporary retry reserves an extra global allowance without another phone issuance`() {
         provider.outcome = SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
-        auth.requestCode(RequestCodeRequest(phone), "ip")
+        auth.requestCode(RequestCodeRequest(companyId, phone), "ip")
         awaitWorkers()
         assertEquals("TEMPORARY_FAILURE", state())
         assertEquals(1, provider.calls.get())
@@ -136,7 +141,7 @@ class OtpDeliveryIntegrationTest {
     @Test
     fun `one send daily budget permits pre reserved first attempt but rejects a temporary retry`() {
         provider.outcome = SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
-        auth.requestCode(RequestCodeRequest(phone), "ip")
+        auth.requestCode(RequestCodeRequest(companyId, phone), "ip")
         awaitWorkers()
         assertEquals(1, provider.calls.get())
         val cappedRegistry = SimpleMeterRegistry()
@@ -162,7 +167,7 @@ class OtpDeliveryIntegrationTest {
     @Test
     fun `first delivery on a new Redis UTC day renews allowance even if intent was staged later`() {
         queue(phone)
-        redis.opsForValue().set("otp:delivery-day:$phone", "0", Duration.ofMinutes(5))
+        redis.opsForValue().set("otp:delivery-day:$companyId:$phone", "0", Duration.ofMinutes(5))
         dispatchAndAwait()
         assertEquals("ACCEPTED", state())
         assertEquals(1, provider.calls.get())
@@ -174,7 +179,7 @@ class OtpDeliveryIntegrationTest {
     @Test
     fun `temporary retry is discarded at exact original expiry and plaintext is removed`() {
         provider.outcome = SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
-        auth.requestCode(RequestCodeRequest(phone), "ip")
+        auth.requestCode(RequestCodeRequest(companyId, phone), "ip")
         awaitWorkers()
         val expiry = jdbc.queryForObject<Timestamp>("SELECT expires_at FROM otp_deliveries")!!.toInstant()
         clock.set(expiry)
@@ -188,7 +193,7 @@ class OtpDeliveryIntegrationTest {
     @Test
     fun `ambiguous provider response and unclassified exception are terminal and never blindly retried`() {
         provider.outcome = SmsDeliveryResult.AMBIGUOUS
-        auth.requestCode(RequestCodeRequest(phone), "ip")
+        auth.requestCode(RequestCodeRequest(companyId, phone), "ip")
         awaitWorkers()
         assertEquals("AMBIGUOUS", state())
         assertScrubbed()
@@ -196,7 +201,7 @@ class OtpDeliveryIntegrationTest {
         dispatchAndAwait()
         assertEquals(1, provider.calls.get())
         provider.throwUnknown = true
-        auth.requestCode(RequestCodeRequest("+48880000002"), "other")
+        auth.requestCode(RequestCodeRequest(companyId, "+48880000002"), "other")
         awaitWorkers()
         assertEquals(2, countState("AMBIGUOUS"))
         clock.set(now.plusSeconds(62))
@@ -234,8 +239,8 @@ class OtpDeliveryIntegrationTest {
 
     @Test
     fun `duplicate issuance callback keeps one durable delivery identity and one provider attempt`() {
-        val code = store.issueCode(phone)
-        val event = OtpIssuedEvent(phone, code)
+        val code = store.issueCode(companyId, phone)
+        val event = OtpIssuedEvent(companyId, phone, code)
         transactions.executeWithoutResult {
             deliveries.stage(event)
             deliveries.stage(event)
@@ -252,7 +257,7 @@ class OtpDeliveryIntegrationTest {
         val old = queue(phone)
         redis.delete("otp:cooldown:$phone")
         queue(phone)
-        transactions.executeWithoutResult { deliveries.stage(OtpIssuedEvent(phone, old)) }
+        transactions.executeWithoutResult { deliveries.stage(OtpIssuedEvent(companyId, phone, old)) }
         assertEquals(2, countState("DISCARDED"))
         assertEquals(1, countState("PENDING"))
         dispatchAndAwait()
@@ -265,7 +270,7 @@ class OtpDeliveryIntegrationTest {
     @Test
     fun `consumed Redis code invalidates unsent intent even without a consumption event`() {
         val code = queue(phone)
-        assertEquals(OtpVerificationResult.VERIFIED, store.verifyAndConsumeCode(phone, code))
+        assertEquals(OtpVerificationResult.VERIFIED, store.verifyAndConsumeCode(companyId, phone, code))
         dispatchAndAwait()
         assertEquals("DISCARDED", state())
         assertEquals(0, provider.calls.get())
@@ -276,29 +281,32 @@ class OtpDeliveryIntegrationTest {
     @Test
     fun `successful verification atomically scrubs pending delivery through a consumed event`() {
         provider.outcome = SmsDeliveryResult.DEFINITE_TEMPORARY_FAILURE
-        auth.requestCode(RequestCodeRequest(phone), "ip")
+        auth.requestCode(RequestCodeRequest(companyId, phone), "ip")
         awaitWorkers()
-        val code = requireNotNull(redis.opsForValue().get("otp:$phone"))
-        auth.verifyCode(VerifyCodeRequest(phone, code), "ip")
+        val code = requireNotNull(redis.opsForValue().get("otp:$companyId:$phone"))
+        auth.verifyCode(VerifyCodeRequest(companyId, phone, code), "ip")
         assertEquals("DISCARDED", state())
         assertScrubbed()
         clock.set(now.plusSeconds(31))
         dispatchAndAwait()
         assertEquals(1, provider.calls.get())
-        assertEquals(1, count("customer_accounts"))
-        assertEquals(0, count("company_customers"))
+        assertEquals(1, count("company_customers"))
+        assertEquals(
+            0,
+            jdbc.queryForObject<Int>("SELECT count(*) FROM company_customers WHERE first_booking_at IS NOT NULL"),
+        )
     }
 
     @Test
     fun `expired Redis state or exhausted verification allowance makes pending code undeliverable`() {
         queue(phone)
-        redis.delete("otp:$phone")
+        redis.delete("otp:$companyId:$phone")
         dispatchAndAwait()
         assertEquals("DISCARDED", state())
         val other = "+48880000002"
         val code = queue(other)
         val wrong = if (code == "000000") "000001" else "000000"
-        repeat(3) { store.verifyAndConsumeCode(other, wrong) }
+        repeat(3) { store.verifyAndConsumeCode(companyId, other, wrong) }
         dispatchAndAwait()
         assertEquals(2, countState("DISCARDED"))
         assertEquals(0, provider.calls.get())
@@ -365,6 +373,35 @@ class OtpDeliveryIntegrationTest {
         assertEquals(1, jdbc.queryForObject<Int>("SELECT attempts FROM otp_deliveries"))
     }
 
+    @Test
+    fun `replacement and consumption scrub only the exact salon challenge in the durable outbox`() {
+        val other = companyRepository.save(pl.kacosmetology.scheduler.company.Company(name = "Other OTP Salon")).id!!
+        val first = queue(phone)
+        redis.delete("otp:cooldown:$phone")
+        val second = store.issueCode(other, phone)
+        transactions.executeWithoutResult { deliveries.stage(OtpIssuedEvent(other, phone, second)) }
+        assertEquals(2, countState("PENDING"))
+        redis.delete("otp:cooldown:$phone")
+        val replacement = queue(phone)
+        assertNotEquals(first, replacement)
+        assertEquals(2, countState("PENDING"))
+        assertEquals(1, countState("DISCARDED"))
+        auth.verifyCode(VerifyCodeRequest(companyId, phone, replacement), "consume-first")
+        assertEquals(1, countState("PENDING"))
+        assertEquals(second, redis.opsForValue().get("otp:$other:$phone"))
+        assertEquals(
+            1,
+            jdbc.queryForObject<Int>(
+                "SELECT count(*) FROM otp_deliveries WHERE company_id=? AND state='PENDING' AND code IS NOT NULL",
+                other,
+            ),
+        )
+        auth.verifyCode(VerifyCodeRequest(other, phone, second), "consume-second")
+        assertEquals(0, countState("PENDING"))
+        assertScrubbed()
+        assertEquals(0, provider.calls.get())
+    }
+
     @AfterEach
     fun awaitWorkers() {
         assertTrue(workers.awaitIdle(), "SMS workers did not settle")
@@ -376,8 +413,8 @@ class OtpDeliveryIntegrationTest {
     }
 
     private fun queue(phone: String): String {
-        val code = store.issueCode(phone)
-        transactions.executeWithoutResult { deliveries.stage(OtpIssuedEvent(phone, code)) }
+        val code = store.issueCode(companyId, phone)
+        transactions.executeWithoutResult { deliveries.stage(OtpIssuedEvent(companyId, phone, code)) }
         return code
     }
 
@@ -397,7 +434,6 @@ class OtpDeliveryIntegrationTest {
     }
 
     private fun assertNoIdentity() {
-        assertEquals(0, count("customer_accounts"))
         assertEquals(0, count("company_customers"))
     }
 

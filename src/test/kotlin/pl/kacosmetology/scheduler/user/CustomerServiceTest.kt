@@ -1,38 +1,34 @@
 package pl.kacosmetology.scheduler.user
 
-import io.mockk.Called
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.dto.UpdateCustomerProfileRequest
 
 class CustomerServiceTest {
-    private val users = mockk<UserRepository>()
-    private val reservations = mockk<ReservationRepository>()
     private val blocks = mockk<CompanyCustomerBlockRepository>()
     private val profiles = mockk<CompanyCustomerRepository>()
     private val blocking = mockk<CustomerBlockingPolicy>()
-    private val service = CustomerService(users, reservations, blocks, profiles, blocking)
+    private val service = CustomerService(blocks, profiles, blocking)
 
     @Test
     fun `list uses company owned names and contact rather than global account presentation`() {
         val profile =
             CompanyCustomer(
                 companyId = testId(1),
-                userId = testId(2),
+                id = testId(2),
+                phoneNumber = "+48500100200",
+                firstBookingAt = java.time.Instant.EPOCH,
                 firstName = "Local",
                 lastName = "Name",
                 contactEmail = "local@example.test",
                 notes = "private",
             )
-        every { profiles.findByCompanyId(testId(1)) } returns listOf(profile)
-        every { users.findAllById(listOf(testId(2))) } returns
-            listOf(User(id = testId(2), phoneNumber = "+48500100200", firstName = "Global", lastName = "Wrong"))
+        every { profiles.findByCompanyIdAndFirstBookingAtIsNotNull(testId(1)) } returns listOf(profile)
         every { blocks.findByCompanyId(testId(1)) } returns emptyList()
         every { blocking.currentCount(testId(1), testId(2)) } returns 2
         val result = service.listCustomers(testId(1)).single()
@@ -44,24 +40,31 @@ class CustomerServiceTest {
 
     @Test
     fun `foreign customer lookup cannot retrieve global identity`() {
-        every { profiles.findByCompanyIdAndUserId(testId(1), testId(2)) } returns null
+        every { profiles.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(testId(1), testId(2)) } returns null
         assertThrows<NoSuchElementException> { service.getCustomerStatus(testId(2), testId(1)) }
-        verify(exactly = 0) { users.findById(any()) }
     }
 
     @Test
     fun `notes cannot establish company relationship`() {
-        every { profiles.findByCompanyIdAndUserId(testId(1), testId(2)) } returns null
+        every { profiles.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(testId(1), testId(2)) } returns null
         assertThrows<NoSuchElementException> { service.setCustomerNotes(testId(2), testId(1), "intrusion") }
         verify(exactly = 0) { profiles.save(any()) }
     }
 
     @Test
     fun `editing local profile leaves global authentication unchanged`() {
-        val local = CompanyCustomer(companyId = testId(1), userId = testId(2), firstName = "Before", lastName = "Name")
-        every { profiles.findByCompanyIdAndUserId(testId(1), testId(2)) } returns local
+        val local =
+            CompanyCustomer(
+                companyId = testId(1),
+                id = testId(2),
+                phoneNumber = "+48500100200",
+                firstBookingAt = java.time.Instant.EPOCH,
+                firstName = "Before",
+                lastName = "Name",
+            )
+        every { profiles.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(testId(1), testId(2)) } returns local
         service.updateProfile(testId(2), testId(1), UpdateCustomerProfileRequest("After", "Name", "local@example.test"))
         assertEquals("After", local.firstName)
-        verify { users wasNot Called }
+        assertEquals("+48500100200", local.phoneNumber)
     }
 }

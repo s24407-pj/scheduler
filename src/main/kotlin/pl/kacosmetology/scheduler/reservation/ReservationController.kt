@@ -44,6 +44,7 @@ class ReservationController(
                     lastName = request.lastName,
                     contactEmail = request.contactEmail,
                     quoteId = request.quoteId,
+                    requesterCompanyId = userDetails.requireCompanyId(),
                 )
             }
             .toResponseEntity()
@@ -112,7 +113,13 @@ class ReservationController(
         @Valid @RequestBody(required = false) request: ReservationActionRequest?,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
-        reservationService.cancelReservation(id, userDetails.id, revision(revision), request?.reason)
+        reservationService.cancelReservation(
+            id,
+            userDetails.id,
+            revision(revision),
+            request?.reason,
+            userDetails.requireCompanyId(),
+        )
     }
 
     /** Staff cancellation reason is required and remains private. */
@@ -219,7 +226,9 @@ class ReservationController(
     @GetMapping("/me")
     @PreAuthorize("hasRole('CUSTOMER')")
     fun getMyReservations(@AuthenticationPrincipal userDetails: CustomUserDetails): List<ReservationResponse> =
-        reservationService.getCustomerReservations(userDetails.id).map(reservationService::response)
+        reservationService
+            .getCustomerReservations(userDetails.id, userDetails.requireCompanyId())
+            .map(reservationService::response)
 
     /** Reads the caller's calendar in the authenticated company. */
     @GetMapping("/employee")

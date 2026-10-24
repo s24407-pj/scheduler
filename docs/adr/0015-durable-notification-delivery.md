@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 
+Customer identity/scope and OTP/profile establishment rules are superseded where applicable by [ADR-0017](./0017-company-local-customers.md). Other decisions remain in force.
+
 ## Decision
 
 Store SMS intent before commit in its originating transaction, then deliver after commit. OTP intent uses a separate phone-only outbox without creating an unverified account/profile; it retries only a still-current Redis code within its original lifetime and scrubs plaintext on terminal/expired state. Customer booking sends no confirmation SMS/email. Actual staff changes opt in explicitly, default off; actual edits opting out invalidate obsolete pending messages. Blocking sends one mandatory dynamically filtered cancellation summary.

@@ -25,6 +25,7 @@ import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.services.s3.S3Client
@@ -38,7 +39,7 @@ class CustomerListIntegrationTest {
     @Autowired private lateinit var clock: Clock
     @Autowired private lateinit var mockMvc: MockMvc
     @Autowired private lateinit var testSessions: TestSessions
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
     @Autowired private lateinit var companyRepository: CompanyRepository
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
     @Autowired private lateinit var offeringRepository: OfferingRepository
@@ -48,9 +49,9 @@ class CustomerListIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private lateinit var owner: User
-    private lateinit var employee: User
-    private lateinit var customer: User
+    private lateinit var owner: StaffFixture
+    private lateinit var employee: StaffFixture
+    private lateinit var customer: CompanyCustomer
     private var companyId: UUID = testId(0)
     private var offeringId: UUID = testId(0)
     private lateinit var ownerSession: Cookie
@@ -70,26 +71,36 @@ class CustomerListIntegrationTest {
         val company = companyRepository.save(Company(name = "List Test Salon"))
         companyId = company.id!!
 
-        owner = userRepository.save(User(phoneNumber = "+48811111001", firstName = "Owner", lastName = "List"))
+        owner = StaffFixture(phoneNumber = "+48811111001", firstName = "Owner", lastName = "List")
         val ownerEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
             )
         ownerSession = testSessions.staff(owner, ownerEmployment)
 
-        employee = userRepository.save(User(phoneNumber = "+48811222001", firstName = "Employee", lastName = "List"))
+        employee = StaffFixture(phoneNumber = "+48811222001", firstName = "Employee", lastName = "List")
         val employeeEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
             )
         employeeSession = testSessions.staff(employee, employeeEmployment)
 
-        customer = userRepository.save(User(phoneNumber = "+48811333001", firstName = "Anna", lastName = "Kowalska"))
+        customer =
+            userRepository.save(
+                CompanyCustomer(
+                    companyId = companyId,
+                    phoneNumber = "+48811333001",
+                    firstName = "Anna",
+                    lastName = "Kowalska",
+                ),
+            )
         customerSession = testSessions.customer(customer)
         companyCustomerRepository.save(
             CompanyCustomer(
+                id = customer.id,
                 companyId = companyId,
-                userId = customer.id!!,
+                phoneNumber = customer.phoneNumber,
+                firstBookingAt = java.time.Instant.now(),
                 firstName = customer.firstName,
                 lastName = customer.lastName,
             ),
@@ -189,9 +200,10 @@ class CustomerListIntegrationTest {
     fun `GET customers includes notes when set`() {
         companyCustomerRepository.save(
             CompanyCustomer(
-                id = companyCustomerRepository.findByCompanyIdAndUserId(companyId, customer.id!!)!!.id,
+                id = companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!.id,
                 companyId = companyId,
-                userId = customer.id!!,
+                phoneNumber = customer.phoneNumber,
+                firstBookingAt = java.time.Instant.now(),
                 firstName = customer.firstName,
                 lastName = customer.lastName,
                 notes = "VIP klientka",
@@ -249,7 +261,13 @@ class CustomerListIntegrationTest {
         val otherCompany = companyRepository.save(Company(name = "Other Salon"))
         val otherCustomer =
             userRepository.save(
-                User(phoneNumber = "+48811444001", firstName = "Obcy", lastName = "Klient"),
+                CompanyCustomer(
+                    companyId = otherCompany.id!!,
+                    firstBookingAt = clock.instant(),
+                    phoneNumber = "+48811444001",
+                    firstName = "Obcy",
+                    lastName = "Klient",
+                ),
             )
         companyEmployeeRepository.save(
             CompanyEmployee(companyId = otherCompany.id!!, userId = employee.id!!, role = "EMPLOYEE"),

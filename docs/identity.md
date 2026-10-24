@@ -1,8 +1,12 @@
 # Identity and staff administration
 
-Customer authentication accounts are global and contain only the canonical phone (`+digits`). OTP verification needs no name and creates no salon profile. The first successful booking creates `company_customers` atomically with the booking; that salon's first and last names are mandatory. Contact email and private notes belong to this local profile. Names and contact email are staff-editable only. Staff cannot read a global customer's information or create a relationship by setting notes.
+Customers are independent company-owned identities in `company_customers`, uniquely identified by `(company_id, canonical phone)` with a UUID primary key. The same phone in different salons never joins identities, profiles, history, blocks or sessions. There is no `customer_accounts` table or global customer lookup. Staff credentials remain independent from customers even when contact phones match. See [ADR-0017](./adr/0017-company-local-customers.md).
 
-Both staff roles can list/read their company's customer profiles, notes, contact data, and visit history. `GET /api/customers/{id}/visits` scopes its database query to the company/customer relationship. Other-company and absent relationships return the same 404. Customer account reads return only ID and canonical phone. There is no customer self-edit endpoint for names or contact email.
+Both OTP endpoints require `companyId`. Requesting a code creates only a company-scoped delivery intent; successful verification atomically upserts a local customer with phone and no names. Codes belong to `(companyId, phone)` and cannot authenticate another salon. An absent company returns 404 before issuing/consuming a code. Phone cooldown/issuance limits and the daily SMS budget remain shared across salons.
+
+The first successful customer or staff booking requires first/last name and sets `first_booking_at` atomically with the booking. Failed bookings leave the identity pending. Before this marker, the identity is invisible to staff customer lists, details, visits, notes, profile changes and block operations (opaque 404). Cancelling or archiving every visit never removes established visibility. Names, optional contact email and private notes are company-owned; only staff may edit established profiles. Phone is immutable through profile APIs.
+
+Both staff roles can list/read their company's established customers, notes, contact data and visit history. `/api/customers/{id}` and reservation `customerId` identify `company_customers.id`. Other-company and absent/invisible resources return the same 404. `/api/users/me` remains `{id,phoneNumber}` for the current local customer; `/api/auth/me` also returns that customer's `companyId`, with `employmentId:null`.
 
 Staff accounts belong to one company. The compatibility endpoint `POST /api/auth/login-staff` requires `companyId`, `email`, and `password`; email is trimmed and lowercased inside that company's namespace. Phone is optional contact information and never participates in authentication. The same email or contact phone in another salon, or in the customer realm, grants no shared identity or access. Profiles, photos, role, enabled state, credentials, and qualification mode belong to `company_employees`. Public employee IDs are allocated independently from customer accounts.
 
@@ -17,7 +21,7 @@ Authenticated staff use `POST /api/staff/password` with `currentPassword` and `n
 Employee photo bytes are decoded and validated before upload. Each company writes its own photo reference. Existing objects are deleted only after commit and only when no other staff profile still references them, including legacy shared photos. Rollback compensates a newly uploaded object. Cleanup failures may leave an unreferenced object for operator cleanup; they cannot leave a committed database reference pointing to a deliberately deleted object.
 
 
-The consolidated pre-production V1 baseline creates only the independent current realms. It does not retain a legacy users table or infer staff/customer identity relationships from matching phone/email.
+The consolidated pre-production V1 baseline creates only the independent current realms. It does not retain global customer or legacy users tables, or infer staff/customer identity relationships from matching phone/email.
 
 ## Email-first staff sign-in
 

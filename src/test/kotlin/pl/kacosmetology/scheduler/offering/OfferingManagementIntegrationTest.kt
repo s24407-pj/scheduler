@@ -20,10 +20,10 @@ import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingRequest
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
@@ -38,7 +38,7 @@ class OfferingManagementIntegrationTest {
 
     @Autowired private lateinit var offeringRepository: OfferingRepository
 
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
 
     @Autowired private lateinit var companyRepository: CompanyRepository
 
@@ -50,8 +50,8 @@ class OfferingManagementIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private lateinit var userA: User
-    private lateinit var userB: User
+    private lateinit var userA: StaffFixture
+    private lateinit var userB: StaffFixture
     private lateinit var employmentA: CompanyEmployee
     private lateinit var employmentB: CompanyEmployee
 
@@ -72,8 +72,8 @@ class OfferingManagementIntegrationTest {
         companyA_Id = companyA.id!!
         companyB_Id = companyB.id!!
 
-        userA = userRepository.save(User(phoneNumber = "+48111222333", firstName = "Admin", lastName = "FirmaA"))
-        userB = userRepository.save(User(phoneNumber = "+48999888777", firstName = "Admin", lastName = "FirmaB"))
+        userA = StaffFixture(phoneNumber = "+48111222333", firstName = "Admin", lastName = "FirmaA")
+        userB = StaffFixture(phoneNumber = "+48999888777", firstName = "Admin", lastName = "FirmaB")
 
         employmentA =
             companyEmployeeRepository.save(

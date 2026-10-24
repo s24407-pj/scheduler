@@ -55,20 +55,21 @@ class QuotePersistenceIntegrationTest {
 
     @BeforeEach
     fun setup() {
+        companyId = companies.saveAndFlush(Company(name = "Quote Salon", lastMinuteDiscountPercent = 50)).id!!
         customerId =
             requireNotNull(
                 jdbc.queryForObject<UUID>(
-                    "INSERT INTO customer_accounts(phone_number) VALUES ('+48880000001') RETURNING id",
+                    "INSERT INTO company_customers(company_id,phone_number) VALUES (?,'+48880000001') RETURNING id",
+                    companyId,
                 ),
             )
-        companyId = companies.save(Company(name = "Quote Salon", lastMinuteDiscountPercent = 50)).id!!
         offeringId =
             offerings.save(Offering(companyId = companyId, name = "Original", durationMinutes = 30, price = 101)).id!!
     }
 
     @Test
     fun `quote persists exact commercial snapshot without booking capacity or company profile`() {
-        val created = service.create(customerId, CreateQuoteRequest(offeringId, start))
+        val created = service.create(customerId, CreateQuoteRequest(offeringId, start), companyId)
         entityManager.flush()
         entityManager.clear()
         val loaded = requireNotNull(repository.findByIdAndCustomerId(created.quoteId, customerId))
@@ -88,7 +89,7 @@ class QuotePersistenceIntegrationTest {
         assertEquals(
             0L,
             jdbc.queryForObject<Long>(
-                "SELECT count(*) FROM company_customers WHERE company_id=?",
+                "SELECT count(*) FROM company_customers WHERE company_id=? AND first_booking_at IS NOT NULL",
                 companyId,
             ),
         )
@@ -106,7 +107,7 @@ class QuotePersistenceIntegrationTest {
 
     @Test
     fun `durable valid quote survives actual catalog deactivation and all commercial changes`() {
-        val created = service.create(customerId, CreateQuoteRequest(offeringId, start))
+        val created = service.create(customerId, CreateQuoteRequest(offeringId, start), companyId)
         entityManager.flush()
         jdbc.update(
             "UPDATE offerings SET active=false, name='Changed', duration_minutes=90, price=1 WHERE id=?",
@@ -126,7 +127,7 @@ class QuotePersistenceIntegrationTest {
 
     @Test
     fun `expired persisted quote accepts unchanged effective agreement and rejects new price`() {
-        val created = service.create(customerId, CreateQuoteRequest(offeringId, start))
+        val created = service.create(customerId, CreateQuoteRequest(offeringId, start), companyId)
         entityManager.flush()
         entityManager.clear()
         assertEquals(
@@ -146,7 +147,7 @@ class QuotePersistenceIntegrationTest {
 
     @Test
     fun `repository and policy never disclose another customer quote`() {
-        val created = service.create(customerId, CreateQuoteRequest(offeringId, start))
+        val created = service.create(customerId, CreateQuoteRequest(offeringId, start), companyId)
         entityManager.flush()
         entityManager.clear()
         assertNull(repository.findByIdAndCustomerId(created.quoteId, testId(999999)))

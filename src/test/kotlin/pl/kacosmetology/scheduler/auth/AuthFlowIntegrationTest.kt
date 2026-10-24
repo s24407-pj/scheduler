@@ -33,10 +33,11 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomer
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
@@ -51,7 +52,7 @@ class AuthFlowIntegrationTest {
 
     @Autowired private lateinit var redisTemplate: StringRedisTemplate
 
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
 
     @Autowired private lateinit var companyRepository: CompanyRepository
 
@@ -68,6 +69,8 @@ class AuthFlowIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
+    private lateinit var companyId: java.util.UUID
+
     @BeforeEach
     fun setup() {
         // Czyścimy Redis i bazę przed każdym testem
@@ -77,6 +80,7 @@ class AuthFlowIntegrationTest {
         userRepository.deleteAll()
         companyRepository.deleteAll()
 
+        companyId = companyRepository.save(Company(name = "OTP Salon")).id!!
         every { smsSender.sendOtp(any(), any()) } just Runs
     }
 
@@ -85,7 +89,7 @@ class AuthFlowIntegrationTest {
         val phoneNumber = "+48111222333"
 
         // 1. KROK 1: Klient prosi o kod SMS
-        val requestDto = RequestCodeRequest(phoneNumber = phoneNumber)
+        val requestDto = RequestCodeRequest(companyId, phoneNumber = phoneNumber)
 
         mockMvc
             .post("/api/auth/request-code") {
@@ -99,12 +103,13 @@ class AuthFlowIntegrationTest {
             }
 
         // 2. Odczytujemy kod z Redis (symulacja odczytania SMS)
-        val otpCode = redisTemplate.opsForValue().get("otp:$phoneNumber")
+        val otpCode = redisTemplate.opsForValue().get("otp:$companyId:$phoneNumber")
         Assertions.assertNotNull(otpCode, "Kod OTP powinien zostac zapisany w Redis")
 
         // 3. KROK 2: Klient wysyła kod do weryfikacji wraz z danymi (bo to jego pierwszy raz)
         val verifyDto =
             VerifyCodeRequest(
+                companyId,
                 phoneNumber = phoneNumber,
                 code = otpCode!!,
                 firstName = "Jan",
@@ -124,11 +129,11 @@ class AuthFlowIntegrationTest {
             }
 
         // 4. Upewniamy się, że użytkownik został stworzony w bazie i zużyty kod zniknął
-        val createdUser = userRepository.findByPhoneNumber(phoneNumber)
+        val createdUser = userRepository.findByCompanyIdAndPhoneNumber(companyId, phoneNumber)
         Assertions.assertNotNull(createdUser, "Uzytkownik powinien zostac utworzony")
         assertEquals(phoneNumber, createdUser?.phoneNumber)
 
-        val codeAfterVerification = redisTemplate.opsForValue().get("otp:$phoneNumber")
+        val codeAfterVerification = redisTemplate.opsForValue().get("otp:$companyId:$phoneNumber")
         Assertions.assertNull(codeAfterVerification, "Zużyty kod powinien zostac usuniety z Redis")
     }
 
@@ -138,24 +143,24 @@ class AuthFlowIntegrationTest {
             .post("/api/auth/request-code") {
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content = """{"phoneNumber":" 48111222444 "}"""
+                content = """{"companyId":"$companyId","phoneNumber":" 48111222444 "}"""
             }
             .andExpect { status { isOk() } }
         val phone = "+48111222444"
-        val code = requireNotNull(redisTemplate.opsForValue().get("otp:$phone"))
+        val code = requireNotNull(redisTemplate.opsForValue().get("otp:$companyId:$phone"))
         mockMvc
             .post("/api/auth/verify-code") {
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content = """{"phoneNumber":"48111222444","code":"$code"}"""
+                content = """{"companyId":"$companyId","phoneNumber":"48111222444","code":"$code"}"""
             }
             .andExpect {
                 status { isOk() }
                 cookie { exists("SESSION") }
             }
-        val account = requireNotNull(userRepository.findByPhoneNumber(phone))
+        val account = requireNotNull(userRepository.findByCompanyIdAndPhoneNumber(companyId, phone))
         assertEquals(phone, account.phoneNumber)
-        Assertions.assertNull(redisTemplate.opsForValue().get("otp:$phone"))
+        Assertions.assertNull(redisTemplate.opsForValue().get("otp:$companyId:$phone"))
     }
 
     @Test
@@ -165,7 +170,7 @@ class AuthFlowIntegrationTest {
                 .post("/api/auth/verify-code") {
                     with(csrf())
                     contentType = MediaType.APPLICATION_JSON
-                    content = """{"phoneNumber":"+48111222444","code":"$code"}"""
+                    content = """{"companyId":"$companyId","phoneNumber":"+48111222444","code":"$code"}"""
                 }
                 .andExpect { status { isBadRequest() } }
         }
@@ -173,7 +178,7 @@ class AuthFlowIntegrationTest {
 
     @Test
     fun `request-code with empty phone number should return 400 validation`() {
-        val badRequest = """{"phoneNumber": ""}"""
+        val badRequest = """{"companyId":"$companyId","phoneNumber": ""}"""
 
         mockMvc
             .post("/api/auth/request-code") {
@@ -188,7 +193,7 @@ class AuthFlowIntegrationTest {
 
     @Test
     fun `request-code with invalid phone format should return 400`() {
-        val badRequest = """{"phoneNumber": "abc-not-a-phone"}"""
+        val badRequest = """{"companyId":"$companyId","phoneNumber": "abc-not-a-phone"}"""
 
         mockMvc
             .post("/api/auth/request-code") {
@@ -258,7 +263,7 @@ class AuthFlowIntegrationTest {
 
     @Test
     fun `request-code returns 429 during sixty second resend cooldown`() {
-        val body = objectMapper.writeValueAsString(RequestCodeRequest("+48555666777"))
+        val body = objectMapper.writeValueAsString(RequestCodeRequest(companyId, "+48555666777"))
         mockMvc
             .post("/api/auth/request-code") {
                 with(csrf())
@@ -278,7 +283,7 @@ class AuthFlowIntegrationTest {
     @Test
     fun `verify-code should retain TTL lock after three failures and reset on replacement code`() {
         val phoneNumber = "+48555111222"
-        val requestCode = RequestCodeRequest(phoneNumber)
+        val requestCode = RequestCodeRequest(companyId, phoneNumber)
         mockMvc
             .post("/api/auth/request-code") {
                 with(csrf())
@@ -287,7 +292,7 @@ class AuthFlowIntegrationTest {
             }
             .andExpect { status { isOk() } }
 
-        val otpKey = "otp:$phoneNumber"
+        val otpKey = "otp:$companyId:$phoneNumber"
         val firstCode = requireNotNull(redisTemplate.opsForValue().get(otpKey))
         val initialTtl = requireNotNull(redisTemplate.getExpire(otpKey, TimeUnit.SECONDS))
         val wrongCode = if (firstCode == "000000") "000001" else "000000"
@@ -297,7 +302,7 @@ class AuthFlowIntegrationTest {
                 .post("/api/auth/verify-code") {
                     with(csrf())
                     contentType = MediaType.APPLICATION_JSON
-                    content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, wrongCode))
+                    content = objectMapper.writeValueAsString(VerifyCodeRequest(companyId, phoneNumber, wrongCode))
                 }
                 .andExpect { status { isUnauthorized() } }
         }
@@ -311,7 +316,7 @@ class AuthFlowIntegrationTest {
             .post("/api/auth/verify-code") {
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, wrongCode))
+                content = objectMapper.writeValueAsString(VerifyCodeRequest(companyId, phoneNumber, wrongCode))
             }
             .andExpect { status { isTooManyRequests() } }
 
@@ -319,7 +324,10 @@ class AuthFlowIntegrationTest {
             .post("/api/auth/verify-code") {
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, firstCode, "Jan", "Nowak"))
+                content =
+                    objectMapper.writeValueAsString(
+                        VerifyCodeRequest(companyId, phoneNumber, firstCode, "Jan", "Nowak"),
+                    )
             }
             .andExpect { status { isTooManyRequests() } }
 
@@ -340,7 +348,7 @@ class AuthFlowIntegrationTest {
                 contentType = MediaType.APPLICATION_JSON
                 content =
                     objectMapper.writeValueAsString(
-                        VerifyCodeRequest(phoneNumber, replacementCode, "Jan", "Nowak"),
+                        VerifyCodeRequest(companyId, phoneNumber, replacementCode, "Jan", "Nowak"),
                     )
             }
             .andExpect {
@@ -357,11 +365,12 @@ class AuthFlowIntegrationTest {
             .post("/api/auth/request-code") {
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(RequestCodeRequest(phoneNumber))
+                content = objectMapper.writeValueAsString(RequestCodeRequest(companyId, phoneNumber))
             }
             .andExpect { status { isOk() } }
-        val code = requireNotNull(redisTemplate.opsForValue().get("otp:$phoneNumber"))
-        val requestBody = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, code, "Jan", "Nowak"))
+        val code = requireNotNull(redisTemplate.opsForValue().get("otp:$companyId:$phoneNumber"))
+        val requestBody =
+            objectMapper.writeValueAsString(VerifyCodeRequest(companyId, phoneNumber, code, "Jan", "Nowak"))
 
         val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)
@@ -385,7 +394,7 @@ class AuthFlowIntegrationTest {
             val statuses = requests.map { it.get(10, TimeUnit.SECONDS) }.sorted()
 
             assertEquals(listOf(200, 401), statuses)
-            Assertions.assertNotNull(userRepository.findByPhoneNumber(phoneNumber))
+            Assertions.assertNotNull(userRepository.findByCompanyIdAndPhoneNumber(companyId, phoneNumber))
         } finally {
             executor.shutdownNow()
         }
@@ -400,7 +409,7 @@ class AuthFlowIntegrationTest {
                     with(csrf())
                     header("X-Forwarded-For", "203.0.113.$attempt")
                     contentType = MediaType.APPLICATION_JSON
-                    content = objectMapper.writeValueAsString(VerifyCodeRequest(phoneNumber, "123456"))
+                    content = objectMapper.writeValueAsString(VerifyCodeRequest(companyId, phoneNumber, "123456"))
                 }
                 .andExpect { status { isUnauthorized() } }
         }
@@ -410,7 +419,7 @@ class AuthFlowIntegrationTest {
                 with(csrf())
                 header("X-Forwarded-For", "203.0.113.99")
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(VerifyCodeRequest("+48699999999", "123456"))
+                content = objectMapper.writeValueAsString(VerifyCodeRequest(companyId, "+48699999999", "123456"))
             }
             .andExpect { status { isTooManyRequests() } }
 
@@ -426,7 +435,7 @@ class AuthFlowIntegrationTest {
                     contentType = MediaType.APPLICATION_JSON
                     content =
                         objectMapper.writeValueAsString(
-                            RequestCodeRequest("+4861000${attempt.toString().padStart(4, '0')}"),
+                            RequestCodeRequest(companyId, "+4861000${attempt.toString().padStart(4, '0')}"),
                         )
                 }
                 .andExpect { status { isOk() } }
@@ -436,16 +445,24 @@ class AuthFlowIntegrationTest {
             .post("/api/auth/request-code") {
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content = objectMapper.writeValueAsString(RequestCodeRequest("+48619999999"))
+                content = objectMapper.writeValueAsString(RequestCodeRequest(companyId, "+48619999999"))
             }
             .andExpect { status { isTooManyRequests() } }
 
-        Assertions.assertNull(redisTemplate.opsForValue().get("otp:+48619999999"))
+        Assertions.assertNull(redisTemplate.opsForValue().get("otp:$companyId:+48619999999"))
     }
 
     @Test
     fun `logout should revoke only the session used for the request`() {
-        val customer = userRepository.save(User(phoneNumber = "+48500100200", firstName = "Jan", lastName = "Nowak"))
+        val customer =
+            userRepository.save(
+                CompanyCustomer(
+                    companyId = companyId,
+                    phoneNumber = "+48500100200",
+                    firstName = "Jan",
+                    lastName = "Nowak",
+                ),
+            )
         val session = testSessions.customer(customer)
         val otherDeviceSession = testSessions.customer(customer)
 
@@ -473,14 +490,12 @@ class AuthFlowIntegrationTest {
         val rawPassword = "securePassword1"
         val company = companyRepository.save(Company(name = "Logout Salon"))
         val owner =
-            userRepository.save(
-                User(
-                    phoneNumber = "+48500300400",
-                    firstName = "Ola",
-                    lastName = "Owner",
-                    email = "logout@salon.pl",
-                    passwordHash = passwordEncoder.encode(rawPassword),
-                ),
+            StaffFixture(
+                phoneNumber = "+48500300400",
+                firstName = "Ola",
+                lastName = "Owner",
+                email = "logout@salon.pl",
+                passwordHash = passwordEncoder.encode(rawPassword),
             )
         companyEmployeeRepository.save(
             CompanyEmployee(

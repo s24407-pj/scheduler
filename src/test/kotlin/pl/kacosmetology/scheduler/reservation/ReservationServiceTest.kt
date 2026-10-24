@@ -34,7 +34,6 @@ import pl.kacosmetology.scheduler.user.*
 class ReservationServiceTest {
     private val reservations = mockk<ReservationRepository>()
     private val offerings = mockk<OfferingRepository>()
-    private val users = mockk<UserRepository>()
     private val assignments = mockk<EmployeeOfferingAssignmentRepository>()
     private val employees = mockk<CompanyEmployeeRepository>()
     private val companies = mockk<CompanyRepository>()
@@ -51,7 +50,6 @@ class ReservationServiceTest {
         ReservationService(
             reservations,
             offerings,
-            users,
             assignments,
             employees,
             companies,
@@ -100,7 +98,6 @@ class ReservationServiceTest {
         every { jdbc.update(any<String>(), *anyVararg()) } returns 1
         every { companies.findByIdForUpdate(testId(1)) } returns company
         every { companies.findById(testId(1)) } returns Optional.of(company)
-        every { users.existsById(testId(10)) } returns true
         every { employees.findByCompanyIdAndUserIdForUpdate(testId(1), testId(20)) } returns employee
         every { quotes.resolve(any(), any(), any(), any(), any()) } returns CommercialAgreement("Accepted", 77, 30)
         every { grid.isOnGrid(any(), any(), any(), any(), any()) } returns true
@@ -128,15 +125,30 @@ class ReservationServiceTest {
                         internalNotes = r.internalNotes,
                     )
             }
-        every { profiles.findByCompanyIdAndUserId(testId(1), testId(10)) } returns
-            CompanyCustomer(companyId = testId(1), userId = testId(10), firstName = "Local", lastName = "Name")
+        every { profiles.findByCompanyIdAndId(testId(1), testId(10)) } returns
+            CompanyCustomer(
+                id = testId(10),
+                companyId = testId(1),
+                phoneNumber = "+48500100200",
+                firstBookingAt = now,
+                firstName = "Local",
+                lastName = "Name",
+            )
         every { profiles.save(any()) } answers { firstArg() }
         every { offerings.findByIdAndCompanyId(testId(30), testId(1)) } returns offering
-        every { users.findByPhoneNumber("+48500100200") } returns User(id = testId(10), phoneNumber = "+48500100200")
+        every { profiles.findByCompanyIdAndPhoneNumber(testId(1), "+48500100200") } returns
+            CompanyCustomer(
+                id = testId(10),
+                companyId = testId(1),
+                phoneNumber = "+48500100200",
+                firstBookingAt = now,
+                firstName = "Local",
+                lastName = "Name",
+            )
     }
 
     private fun customer(startAt: LocalDateTime = start) =
-        service.createReservation(testId(10), testId(20), testId(30), startAt)
+        service.createReservation(testId(10), testId(20), testId(30), startAt, requesterCompanyId = testId(1))
 
     private fun manual(startAt: LocalDateTime = start, owner: Boolean = false, override: Boolean = false) =
         service.createReservationByStaff(
@@ -179,13 +191,13 @@ class ReservationServiceTest {
 
     @Test
     fun `missing catalog resource cannot reveal a foreign company`() {
-        every { jdbc.queryForList<UUID>(any<String>(), testId(30)) } returns emptyList()
+        every { offerings.findByIdAndCompanyId(testId(30), testId(1)) } returns null
         fails(ErrorCode.RESERVATION_NOT_FOUND) { customer() }
     }
 
     @Test
     fun `unknown global customer cannot create booking`() {
-        every { users.existsById(testId(10)) } returns false
+        every { profiles.findByCompanyIdAndId(testId(1), testId(10)) } returns null
         fails(ErrorCode.CUSTOMER_NOT_FOUND) { customer() }
     }
 
@@ -264,10 +276,19 @@ class ReservationServiceTest {
 
     @Test
     fun `first salon booking needs both names and does not create profile on failure`() {
-        every { profiles.findByCompanyIdAndUserId(testId(1), testId(10)) } returns null
+        every { profiles.findByCompanyIdAndId(testId(1), testId(10)) } returns
+            CompanyCustomer(id = testId(10), companyId = testId(1), phoneNumber = "+48500100200")
         fails(ErrorCode.CUSTOMER_NAME_REQUIRED) { customer() }
         verify(exactly = 0) { profiles.save(any()) }
-        service.createReservation(testId(10), testId(20), testId(30), start, firstName = " Jan ", lastName = " Klient ")
+        service.createReservation(
+            testId(10),
+            testId(20),
+            testId(30),
+            start,
+            firstName = " Jan ",
+            lastName = " Klient ",
+            requesterCompanyId = testId(1),
+        )
         verify { profiles.save(match { it.firstName == "Jan" && it.lastName == "Klient" }) }
     }
 

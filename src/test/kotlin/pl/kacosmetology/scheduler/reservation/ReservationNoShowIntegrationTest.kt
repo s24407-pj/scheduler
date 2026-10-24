@@ -158,7 +158,7 @@ class ReservationNoShowIntegrationTest : ReservationContractTestSupport() {
         val ongoing = reservation(localNow.minusMinutes(5))
         val futureId = reservation()
         val other = fixtures.salon()
-        val independent = fixtures.reservation(other, future, customer = salon.customer)
+        val independent = fixtures.reservation(other, future)
         assertEquals(204, ownerBlock("block").response.status)
         assertEquals("BOOKED", state(ongoing))
         assertEquals("CANCELLED", state(futureId))

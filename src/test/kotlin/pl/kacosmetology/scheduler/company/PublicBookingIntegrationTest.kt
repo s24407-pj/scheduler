@@ -15,9 +15,9 @@ import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignment
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.testId
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import software.amazon.awssdk.services.s3.S3Client
 
 @SpringBootTest
@@ -31,7 +31,7 @@ class PublicBookingIntegrationTest {
 
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
 
     @Autowired private lateinit var offeringRepository: OfferingRepository
 
@@ -62,13 +62,11 @@ class PublicBookingIntegrationTest {
         companyId = company.id!!
 
         val employee =
-            userRepository.save(
-                User(
-                    phoneNumber = "+48999000111",
-                    firstName = "Anna",
-                    lastName = "Kowalska",
-                    photoUrl = "https://example.com/a.jpg",
-                ),
+            StaffFixture(
+                phoneNumber = "+48999000111",
+                firstName = "Anna",
+                lastName = "Kowalska",
+                photoUrl = "https://example.com/a.jpg",
             )
         employeeId = employee.id!!
 

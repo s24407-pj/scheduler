@@ -12,7 +12,7 @@ import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.quote.dto.CreateQuoteRequest
 import pl.kacosmetology.scheduler.quote.dto.QuoteResponse
 
-/** Creates durable customer quotes without holding a slot or creating a salon customer profile. */
+/** Creates durable customer quotes without holding a slot or establishing staff visibility. */
 @Service
 class QuoteService(
     private val quotes: BookingQuoteRepository,
@@ -22,7 +22,9 @@ class QuoteService(
 ) {
     /** Saves the current commercial snapshot for ten elapsed minutes from quote creation. */
     @Transactional
-    fun create(customerId: UUID, request: CreateQuoteRequest): QuoteResponse {
+    fun create(customerId: UUID, request: CreateQuoteRequest, companyId: UUID): QuoteResponse {
+        offerings.findByIdAndCompanyId(request.serviceId, companyId)
+            ?: throw ApiException(ErrorCode.NOT_FOUND, "Nie znaleziono usługi")
         val now = clock.instant()
         val start = quoteStartInstant(request.startTime)
         if (!start.isAfter(now)) throw ApiException(ErrorCode.BAD_REQUEST, "Termin musi być w przyszłości")

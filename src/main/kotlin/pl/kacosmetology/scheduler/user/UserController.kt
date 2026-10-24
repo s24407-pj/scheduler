@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
-/** Exposes only the global customer's authentication account; salon profiles are staff-managed. */
+/** Exposes only the company-local customer's authentication account; salon profiles are staff-managed. */
 @RestController
 @RequestMapping("/api/users")
 class UserController(private val userService: UserService) {
@@ -16,7 +16,7 @@ class UserController(private val userService: UserService) {
     @GetMapping("/me")
     @PreAuthorize("hasRole('CUSTOMER')")
     fun getMyProfile(@AuthenticationPrincipal principal: CustomUserDetails): CustomerAccountResponse {
-        val account = userService.getProfile(principal.id)
+        val account = userService.getProfile(principal.id, principal.requireCompanyId())
         return CustomerAccountResponse(requireNotNull(account.id), account.phoneNumber)
     }
 }

@@ -31,7 +31,7 @@ class ReservationDashboardIntegrationTest : ReservationContractTestSupport() {
             id,
         )
         jdbc.update(
-            "UPDATE company_customers SET first_name='Company',last_name='Customer' WHERE company_id=? AND user_id=?",
+            "UPDATE company_customers SET first_name='Company',last_name='Customer' WHERE company_id=? AND id=?",
             salon.company,
             salon.customer,
         )
