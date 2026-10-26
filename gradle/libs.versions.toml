@@ -1,8 +1,8 @@
 [versions]
 kotlin = "2.4.21"
-springBoot = "4.1.1"
+springBoot = "4.1.2"
 springDependencyManagement = "1.1.7"
-awsSdk = "2.56.0"
+awsSdk = "2.57.3"
 springdoc = "3.1.1"
 mockk = "1.14.11"
 springmockk = "5.0.1"
