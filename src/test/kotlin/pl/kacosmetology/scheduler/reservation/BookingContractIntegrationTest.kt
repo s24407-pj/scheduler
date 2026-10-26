@@ -71,8 +71,7 @@ class BookingContractIntegrationTest {
             "employeeId" to employee,
             "serviceId" to salon.service,
             "startTime" to start.toString(),
-            "firstName" to "Jan",
-            "lastName" to "Klient",
+            "firstVisitDetails" to mapOf("firstName" to "Jan", "lastName" to "Klient"),
         )
 
     private fun book(key: String, body: Any = payload(), cookie: jakarta.servlet.http.Cookie = customer()): MvcResult =

@@ -17,9 +17,24 @@ class UserController(private val userService: UserService) {
     @PreAuthorize("hasRole('CUSTOMER')")
     fun getMyProfile(@AuthenticationPrincipal principal: CustomUserDetails): CustomerAccountResponse {
         val account = userService.getProfile(principal.id, principal.requireCompanyId())
-        return CustomerAccountResponse(requireNotNull(account.id), account.phoneNumber)
+        return CustomerAccountResponse(
+            requireNotNull(account.id),
+            account.phoneNumber,
+            account.companyId,
+            if (account.firstBookingAt == null) CustomerProfileState.PENDING else CustomerProfileState.ESTABLISHED,
+        )
     }
 }
 
-/** Global customer authentication identity without company-owned presentation. */
-data class CustomerAccountResponse(val id: UUID, val phoneNumber: String)
+/** Authentication scope and advisory readiness only; salon-owned names and notes remain private. */
+data class CustomerAccountResponse(
+    val id: UUID,
+    val phoneNumber: String,
+    val companyId: UUID,
+    val profileState: CustomerProfileState,
+)
+
+enum class CustomerProfileState {
+    PENDING,
+    ESTABLISHED,
+}

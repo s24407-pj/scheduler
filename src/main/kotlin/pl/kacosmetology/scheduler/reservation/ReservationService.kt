@@ -59,16 +59,19 @@ class ReservationService(
         startTime: LocalDateTime,
         enforceAdvanceCheck: Boolean = true,
         enforceSlotGrid: Boolean = true,
-        firstName: String? = null,
-        lastName: String? = null,
-        contactEmail: String? = null,
+        firstVisitDetails: FirstVisitDetails? = null,
         quoteId: UUID? = null,
         requesterCompanyId: UUID,
     ): BookingResult {
         val companyId = requesterCompanyId
         if (offeringRepository.findByIdAndCompanyId(offeringId, companyId) == null) missingReservation()
         val company = lockCompany(companyId)
-        if (companyCustomers.findByCompanyIdAndId(companyId, customerId) == null) missingCustomer()
+        val profile = companyCustomers.findByCompanyIdAndId(companyId, customerId) ?: missingCustomer()
+        if (profile.firstBookingAt != null && firstVisitDetails != null)
+            conflict(
+                ErrorCode.CUSTOMER_PROFILE_CHANGED,
+                "Profil klienta jest już ustalony. Potwierdź dane salonu przed rezerwacją",
+            )
         if (employeeId != null) checkEmployee(companyId, employeeId, offeringId)
         else
             companyEmployeeRepository
@@ -108,7 +111,13 @@ class ReservationService(
             slotUnavailable()
         }
         checkEmployeeConflict(companyId, selected, startTime, end)
-        ensureProfile(companyId, customerId, firstName, lastName, contactEmail)
+        ensureProfile(
+            companyId,
+            customerId,
+            firstVisitDetails?.firstName,
+            firstVisitDetails?.lastName,
+            firstVisitDetails?.contactEmail,
+        )
         audit.capture()
         val saved =
             reservationRepository.saveAndFlush(
@@ -137,9 +146,7 @@ class ReservationService(
         employeeId: UUID,
         serviceId: UUID,
         startTime: LocalDateTime,
-        customerPhone: String,
-        customerFirstName: String?,
-        customerLastName: String?,
+        customer: StaffCustomerSelection,
         requesterCompanyId: UUID,
         price: Int? = null,
         durationMinutes: Int? = null,
@@ -151,6 +158,26 @@ class ReservationService(
         lockCompany(requesterCompanyId)
         val offering = offeringRepository.findByIdAndCompanyId(serviceId, requesterCompanyId) ?: missingReservation()
         if (!offering.active) conflict(ErrorCode.OFFERING_UNAVAILABLE, "Usługa jest nieaktywna")
+        val profile =
+            when (customer) {
+                is ExistingCustomerSelection ->
+                    companyCustomers.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(
+                        requesterCompanyId,
+                        customer.customerId,
+                    ) ?: missingCustomer()
+                is NewCustomerSelection -> {
+                    val phone = pl.kacosmetology.scheduler.user.internationalPhone(customer.phoneNumber)
+                    companyCustomers.insertIfPhoneAbsent(requesterCompanyId, phone)
+                    val found = checkNotNull(companyCustomers.findByCompanyIdAndPhoneNumber(requesterCompanyId, phone))
+                    if (found.firstBookingAt != null)
+                        throw ApiException(
+                            ErrorCode.CUSTOMER_PHONE_ALREADY_EXISTS,
+                            "Klient z tym numerem już istnieje. Wybierz go po potwierdzeniu tożsamości",
+                            mapOf("existingCustomer" to mapOf("id" to requireNotNull(found.id))),
+                        )
+                    found
+                }
+            }
         val duration = durationMinutes ?: offering.durationMinutes
         val end = startTime.plusMinutes(duration.toLong())
         validateBusinessInterval(startTime, end)
@@ -165,17 +192,11 @@ class ReservationService(
             overrideBlock = overrideEmployeeBlock,
             owner = owner,
         )
-        val phone = canonicalPhone(customerPhone)
-        val customer =
-            companyCustomers.findByCompanyIdAndPhoneNumber(requesterCompanyId, phone)
-                ?: run {
-                    companyCustomers.insertIfPhoneAbsent(requesterCompanyId, phone)
-                    checkNotNull(companyCustomers.findByCompanyIdAndPhoneNumber(requesterCompanyId, phone))
-                }
-        val customerId = requireNotNull(customer.id)
+        val customerId = requireNotNull(profile.id)
         checkBlocked(requesterCompanyId, customerId, startTime, now)
         checkCustomerConflict(requesterCompanyId, customerId, startTime, end)
-        ensureProfile(requesterCompanyId, customerId, customerFirstName, customerLastName, null)
+        if (customer is NewCustomerSelection)
+            ensureProfile(requesterCompanyId, customerId, customer.firstName, customer.lastName, customer.contactEmail)
         audit.capture()
         val saved =
             reservationRepository.saveAndFlush(
@@ -440,6 +461,7 @@ class ReservationService(
                 serviceName = reservation.acceptedServiceName,
                 employeeName = "${employee.firstName} ${employee.lastName}",
                 internalNotes = if (includeInternal) reservation.internalNotes else null,
+                customerId = if (includeInternal) reservation.customerId else null,
             )
     }
 
@@ -851,12 +873,6 @@ class ReservationService(
 
     private fun notify(reservation: Reservation, kind: String, requested: Boolean) {
         applicationEventPublisher.publishEvent(ReservationChangedEvent(requireNotNull(reservation.id), kind, requested))
-    }
-
-    private fun canonicalPhone(phone: String): String {
-        val digits = phone.trim().removePrefix("+")
-        require(digits.matches(Regex("[0-9]{9,15}"))) { "Nieprawidłowy numer telefonu" }
-        return "+$digits"
     }
 
     private fun sqlTime(time: LocalDateTime) = time.atZone(BUSINESS_ZONE).toOffsetDateTime()

@@ -55,7 +55,7 @@ class AuthService(
     fun requestCode(request: RequestCodeRequest, clientIp: String) {
         val limit = otpRequestRateLimiter.check(clientIp)
         if (!limit.allowed) throw RateLimitExceededException(retryAfterSeconds = limit.retryAfterSeconds)
-        val phoneNumber = canonicalPhone(request.phoneNumber)
+        val phoneNumber = pl.kacosmetology.scheduler.user.internationalPhone(request.phoneNumber)
         requireCompany(request.companyId)
         val code = otpStore.issueCode(request.companyId, phoneNumber)
         eventPublisher.publishEvent(OtpIssuedEvent(request.companyId, phoneNumber, code))
@@ -66,7 +66,7 @@ class AuthService(
     fun verifyCode(request: VerifyCodeRequest, clientIp: String): CustomUserDetails {
         val limit = otpVerificationRateLimiter.check(clientIp)
         if (!limit.allowed) throw RateLimitExceededException(retryAfterSeconds = limit.retryAfterSeconds)
-        val phoneNumber = canonicalPhone(request.phoneNumber)
+        val phoneNumber = pl.kacosmetology.scheduler.user.internationalPhone(request.phoneNumber)
         requireCompany(request.companyId)
         requireVerified(otpStore.verifyAndConsumeCode(request.companyId, phoneNumber, request.code), clientIp)
         eventPublisher.publishEvent(OtpConsumedEvent(request.companyId, phoneNumber, request.code))
@@ -77,12 +77,6 @@ class AuthService(
 
     private fun requireCompany(companyId: UUID) {
         if (!companyRepository.existsById(companyId)) throw ApiException(ErrorCode.NOT_FOUND, "Nie znaleziono firmy")
-    }
-
-    private fun canonicalPhone(value: String): String {
-        val digits = value.trim().removePrefix("+")
-        require(digits.matches(Regex("[0-9]{9,15}"))) { "Nieprawidłowy format numeru telefonu" }
-        return "+$digits"
     }
 
     private fun rateLimited(limiter: String, clientIp: String): Nothing {

@@ -102,7 +102,7 @@ See [reservations](../reservations.md).
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| POST | `/api/reservations` | CUSTOMER | Required Idempotency-Key; optional employee means atomic any-employee allocation; first local profile requires names; 201 or current replay 200 |
+| POST | `/api/reservations` | CUSTOMER | Required Idempotency-Key; optional employee means atomic any-employee allocation; pending profile requires firstVisitDetails; established plus details conflicts; 201 or current replay 200 |
 | POST | `/api/reservations/staff` | OWNER, EMPLOYEE | Required Idempotency-Key; manual regular-price booking, explicit duration/price/block override, internalNotes and SMS opt-in |
 | PUT | `/api/reservations/{id}` | OWNER, EMPLOYEE | Direct edit or staff-only internalNotes update, required If-Match; preserves ID/creation time/customer |
 | PATCH | `/api/reservations/{id}/cancel` | CUSTOMER | Required If-Match; own booking strictly before start; optional reason |
@@ -132,7 +132,7 @@ See [reservations](../reservations.md).
 | GET | `/api/customers` | OWNER, EMPLOYEE | Customers of the caller's company after their first successful booking |
 | GET | `/api/customers/{id}` | OWNER, EMPLOYEE | Company-scoped status (no-shows, blocked) |
 | PUT | `/api/customers/{id}/notes` | OWNER, EMPLOYEE | Existing local profile with `first_booking_at` required; never creates a relationship |
-| PUT | `/api/customers/{id}/profile` | OWNER, EMPLOYEE | Updates local names and optional contact email |
+| PUT | `/api/customers/{id}/profile` | OWNER, EMPLOYEE | Updates local names and optional contact email; If-Match profile revision required |
 | GET | `/api/customers/{id}/visits` | OWNER, EMPLOYEE | Company-scoped visit history, existing relationship required |
 | PATCH | `/api/customers/{id}/block` | OWNER | |
 | PATCH | `/api/customers/{id}/unblock` | OWNER | Preserves penalty history; clears manual/automatic block, never restores appointments |
@@ -155,4 +155,6 @@ Generated OpenAPI marks public operations explicitly and describes `sessionAuth`
 
 Resource IDs in paths, queries and JSON are UUID strings (`format: uuid`); newly generated persisted IDs are UUIDv7. Revision/If-Match remains numeric.
 
-Customer IDs refer to `company_customers.id`. `/api/auth/me` returns a non-null `companyId` and null `employmentId` for CUSTOMER; `/api/users/me` retains `{id,phoneNumber}`. Both OTP endpoints reject nonexistent companies with 404 before issuance/consumption. Customer bookings/quotes/history/cancellation are limited to the session company.
+Customer IDs refer to `company_customers.id`. `/api/auth/me` returns a non-null `companyId` and null `employmentId` for CUSTOMER; `/api/users/me` returns `{id,phoneNumber,companyId,profileState}`. Both OTP endpoints reject nonexistent companies with 404 before issuance/consumption. Customer bookings/quotes/history/cancellation are limited to the session company.
+
+Booking customer intent: staff supplies exclusive `customer:{kind:"existing",customerId}` or `{kind:"new",phoneNumber,firstName,lastName,contactEmail?}`; no company is accepted as authority in the body. New established collisions return `409 CUSTOMER_PHONE_ALREADY_EXISTS` plus same-company `existingCustomer:{id}`. Staff success/current replay includes `customerId`; customer responses omit it. Customer first details are grouped in optional `firstVisitDetails` and never update an established profile (`409 CUSTOMER_PROFILE_CHANGED`). Flat booking and OTP name fields are rejected; see [ADR-0018](../adr/0018-explicit-booking-customer-intent.md). OTP/new phone input requires explicit international syntax.

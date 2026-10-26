@@ -12,6 +12,7 @@ data class CustomerStatusResponse(
     val blocked: Boolean,
     val notes: String? = null,
     val contactEmail: String? = null,
+    val revision: Long = 0,
 )
 
 /** Company visit history visible to both staff roles; archived records stay outside ordinary lists. */

@@ -146,15 +146,9 @@ class CustomerNotesIntegrationTest {
     @Test
     fun `GET customer status includes notes`() {
         companyCustomerRepository.save(
-            CompanyCustomer(
-                id = companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!.id,
-                firstName = customer.firstName,
-                lastName = customer.lastName,
-                companyId = companyId,
-                phoneNumber = customer.phoneNumber,
-                firstBookingAt = java.time.Instant.now(),
-                notes = "Notatka testowa",
-            ),
+            companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!.apply {
+                notes = "Notatka testowa"
+            },
         )
 
         mockMvc
@@ -182,15 +176,9 @@ class CustomerNotesIntegrationTest {
     @Test
     fun `PUT null notes clears existing note`() {
         companyCustomerRepository.save(
-            CompanyCustomer(
-                id = companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!.id,
-                firstName = customer.firstName,
-                lastName = customer.lastName,
-                companyId = companyId,
-                phoneNumber = customer.phoneNumber,
-                firstBookingAt = java.time.Instant.now(),
-                notes = "Stara notatka",
-            ),
+            companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!.apply {
+                notes = "Stara notatka"
+            },
         )
 
         mockMvc

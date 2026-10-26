@@ -1195,8 +1195,6 @@ class SessionSecurityIntegrationTest {
                     "companyId" to owner.companyId,
                     "phoneNumber" to phone,
                     "code" to code,
-                    "firstName" to "Customer",
-                    "lastName" to "Session",
                 ),
             )
         assertEquals(200, result.response.status)

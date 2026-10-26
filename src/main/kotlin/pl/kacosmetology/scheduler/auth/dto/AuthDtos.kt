@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 import java.util.*
 
-private const val PHONE_REGEXP = "^\\s*\\+?[0-9]{9,15}\\s*$"
+private const val PHONE_REGEXP = pl.kacosmetology.scheduler.user.INTERNATIONAL_PHONE_PATTERN
 
 data class RequestCodeRequest(
     @field:NotNull(message = "Firma jest wymagana") val companyId: UUID,
@@ -25,8 +25,6 @@ data class VerifyCodeRequest(
     @field:Size(min = 6, max = 6, message = "Kod SMS musi mieć dokładnie 6 cyfr")
     @field:Pattern(regexp = "^[0-9]{6}$", message = "Kod musi zawierać tylko cyfry")
     val code: String,
-    @field:Size(max = 50, message = "Imię nie może być dłuższe niż 50 znaków") val firstName: String? = null,
-    @field:Size(max = 50, message = "Nazwisko nie może być dłuższe niż 50 znaków") val lastName: String? = null,
 )
 
 data class StaffLoginRequest(

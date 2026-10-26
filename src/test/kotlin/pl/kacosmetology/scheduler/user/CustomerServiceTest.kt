@@ -63,7 +63,12 @@ class CustomerServiceTest {
                 lastName = "Name",
             )
         every { profiles.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(testId(1), testId(2)) } returns local
-        service.updateProfile(testId(2), testId(1), UpdateCustomerProfileRequest("After", "Name", "local@example.test"))
+        service.updateProfile(
+            testId(2),
+            testId(1),
+            UpdateCustomerProfileRequest("After", "Name", "local@example.test"),
+            0,
+        )
         assertEquals("After", local.firstName)
         assertEquals("+48500100200", local.phoneNumber)
     }

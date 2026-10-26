@@ -134,6 +134,10 @@ class ReservationServiceTest {
                 firstName = "Local",
                 lastName = "Name",
             )
+        every { profiles.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(testId(1), testId(10)) } answers
+            {
+                profiles.findByCompanyIdAndId(testId(1), testId(10))
+            }
         every { profiles.save(any()) } answers { firstArg() }
         every { offerings.findByIdAndCompanyId(testId(30), testId(1)) } returns offering
         every { profiles.findByCompanyIdAndPhoneNumber(testId(1), "+48500100200") } returns
@@ -155,9 +159,7 @@ class ReservationServiceTest {
             testId(20),
             testId(30),
             startAt,
-            "+48500100200",
-            "Local",
-            "Name",
+            pl.kacosmetology.scheduler.reservation.dto.ExistingCustomerSelection(testId(10)),
             testId(1),
             overrideEmployeeBlock = override,
             owner = owner,
@@ -285,8 +287,7 @@ class ReservationServiceTest {
             testId(20),
             testId(30),
             start,
-            firstName = " Jan ",
-            lastName = " Klient ",
+            firstVisitDetails = pl.kacosmetology.scheduler.reservation.dto.FirstVisitDetails(" Jan ", " Klient "),
             requesterCompanyId = testId(1),
         )
         verify { profiles.save(match { it.firstName == "Jan" && it.lastName == "Klient" }) }
@@ -432,9 +433,7 @@ class ReservationServiceTest {
                 testId(20),
                 testId(30),
                 start,
-                "+48500100200",
-                "Local",
-                "Name",
+                pl.kacosmetology.scheduler.reservation.dto.ExistingCustomerSelection(testId(10)),
                 testId(1),
                 internalNotes = "  Klientka zgłasza podrażnienie po poprzednim zabiegu.  ",
             )

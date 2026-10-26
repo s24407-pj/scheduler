@@ -49,7 +49,7 @@ For rootless Podman, set `DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 | Deployment, proxy trust, networking, persistence | [deployment](./docs/deployment.md) |
 | Load/performance tests | [perf-tests](./perf-tests/README.md) |
 
-Check the [ADR index](./docs/adr/README.md). ADR-0017 supersedes the global-customer portions of ADR-0011/0012 and the profile-establishment rule in ADR-0016; OTP outbox scope refines ADR-0015. ADR-0016 supersedes ADR-0001/0002/0003/0006/0010. Follow current domain docs/accepted decisions; report discrepancies. Do not implement **Proposed** ADRs without user agreement. Supersede changed accepted decisions with a new ADR, preserving history.
+Check the [ADR index](./docs/adr/README.md). ADR-0018 supersedes flat-field customer booking intent, adds profile revisions, international input. ADR-0017 supersedes the global-customer portions of ADR-0011/0012 and the profile-establishment rule in ADR-0016; OTP outbox scope refines ADR-0015. ADR-0016 supersedes ADR-0001/0002/0003/0006/0010. Follow current domain docs/accepted decisions; report discrepancies. Do not implement **Proposed** ADRs without user agreement. Supersede changed accepted decisions with a new ADR, preserving history.
 
 ## Project and architecture
 

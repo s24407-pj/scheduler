@@ -22,3 +22,4 @@ Docs describe the code as it is. Where an accepted decision is not implemented y
 Final implementation and evidence: [revised scheduler contract](./implementation-report.md).
 
 Current customer identity and fresh-baseline contract: [ADR-0017](./adr/0017-company-local-customers.md).
+Explicit booking intent and customer profile revisions: [ADR-0018](./adr/0018-explicit-booking-customer-intent.md).

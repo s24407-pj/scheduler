@@ -27,7 +27,7 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
     @Test
     fun `first booking requires names and failed submission creates no salon profile`() {
         shift()
-        assertEquals(400, book(customerBody() - "firstName").response.status)
+        assertEquals(400, book(customerBody() - "firstVisitDetails").response.status)
         assertEquals(0L, visibleCustomers())
         assertEquals(0L, count("reservations"))
     }
@@ -37,10 +37,17 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
         shift()
         profile()
         assertEquals(
-            201,
+            409,
             book(
                     customerBody() +
-                        mapOf("firstName" to "Hijack", "lastName" to "Changed", "contactEmail" to "wrong@example.test"),
+                        mapOf(
+                            "firstVisitDetails" to
+                                mapOf(
+                                    "firstName" to "Hijack",
+                                    "lastName" to "Changed",
+                                    "contactEmail" to "wrong@example.test",
+                                ),
+                        ),
                 )
                 .response
                 .status,
@@ -190,10 +197,16 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
     @Test
     fun `future customer booking cap is atomic across concurrent nonoverlapping requests`() {
         shift()
+        profile()
         jdbc.update("UPDATE companies SET max_future_customer_bookings=1 WHERE id=?", salon.company)
         val cookie = customerCookie()
         val results =
-            race(listOf({ book(cookie = cookie) }, { book(customerBody(future.plusHours(1)), cookie = cookie) }))
+            race(
+                listOf(
+                    { book(customerBody() - "firstVisitDetails", cookie = cookie) },
+                    { book(customerBody(future.plusHours(1)) - "firstVisitDetails", cookie = cookie) },
+                ),
+            )
         assertEquals(listOf(201, 409), results.map { it.response.status }.sorted())
         assertEquals(1L, count("reservations"))
         assertTrue(results.any { it.response.contentAsString.contains("BOOKING_LIMIT_REACHED") })
@@ -264,7 +277,15 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
                     {
                         manual(
                             manualBody(employee = other.employee, service = other.service, phone = "+48500100200") +
-                                mapOf("customerFirstName" to "Other"),
+                                mapOf(
+                                    "customer" to
+                                        mapOf(
+                                            "kind" to "new",
+                                            "phoneNumber" to "+48500100200",
+                                            "firstName" to "Other",
+                                            "lastName" to "Klient",
+                                        ),
+                                ),
                             cookie = b,
                         )
                     },

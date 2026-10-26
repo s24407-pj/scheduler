@@ -90,10 +90,11 @@ class CompanyCustomerIsolationIntegrationTest : ReservationContractTestSupport()
                     )
                     .contentType("application/json")
                     .content(json.writeValueAsString(body))
+            if (operation == "profile") request.header("If-Match", "\"0\"")
             assertEquals(404, mvc.perform(request).andReturn().response.status)
         }
         shift()
-        val invalid = customerBody().toMutableMap().apply { remove("firstName") }
+        val invalid = customerBody() - "firstVisitDetails"
         assertEquals(400, book(invalid).response.status)
         assertNull(customers.findById(customer).orElseThrow().firstBookingAt)
         val booked = book()

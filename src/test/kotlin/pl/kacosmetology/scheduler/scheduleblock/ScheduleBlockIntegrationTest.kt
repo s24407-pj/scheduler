@@ -207,8 +207,7 @@ class ScheduleBlockIntegrationTest {
                 "employeeId" to employee.id!!,
                 "serviceId" to offering.id!!,
                 "startTime" to startTime.toString(),
-                "firstName" to "Klient",
-                "lastName" to "Testowy",
+                "firstVisitDetails" to mapOf("firstName" to "Klient", "lastName" to "Testowy"),
             )
         val blockBody =
             mapOf(

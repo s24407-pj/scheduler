@@ -64,12 +64,12 @@ class AuthServiceTest {
     private val testPhone = "+48111222333"
 
     @Test
-    fun `requestCode normalizes phone and publishes durable issuance intent`() {
+    fun `requestCode uses explicit international phone and publishes durable issuance intent`() {
         every { otpRequestRateLimiter.check(testIp) } returns RateLimitDecision(true, 0)
         every { otpStore.issueCode(testId(9), testPhone) } returns "123456"
         every { eventPublisher.publishEvent(any<OtpIssuedEvent>()) } just Runs
 
-        authService.requestCode(RequestCodeRequest(testId(9), " 48111222333 "), testIp)
+        authService.requestCode(RequestCodeRequest(testId(9), testPhone), testIp)
 
         verify(exactly = 1) { otpStore.issueCode(testId(9), testPhone) }
         verify {
@@ -138,7 +138,7 @@ class AuthServiceTest {
                 lastName = "",
             )
 
-        val response = authService.verifyCode(VerifyCodeRequest(testId(9), " 48111222333 ", "123456"), testIp)
+        val response = authService.verifyCode(VerifyCodeRequest(testId(9), testPhone, "123456"), testIp)
 
         assertEquals(testId(1), response.id)
         assertEquals("ROLE_CUSTOMER", response.role)

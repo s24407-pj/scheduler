@@ -360,9 +360,13 @@ class EmployeeOfferingIntegrationTest {
                 "serviceId" to otherOffering.id!!,
                 "startTime" to
                     LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0).toString(),
-                "customerPhone" to customer.phoneNumber,
-                "customerFirstName" to "Klient",
-                "customerLastName" to "Test",
+                "customer" to
+                    mapOf(
+                        "kind" to "new",
+                        "phoneNumber" to customer.phoneNumber,
+                        "firstName" to "Klient",
+                        "lastName" to "Test",
+                    ),
             )
 
         mockMvc

@@ -82,8 +82,19 @@ class CustomerController(
     fun updateProfile(
         @PathVariable id: UUID,
         @Valid @RequestBody request: pl.kacosmetology.scheduler.user.dto.UpdateCustomerProfileRequest,
+        @RequestHeader("If-Match") revision: String,
         @AuthenticationPrincipal principal: CustomUserDetails,
-    ) = customerService.updateProfile(id, principal.requireCompanyId(), request)
+    ) =
+        customerService.updateProfile(
+            id,
+            principal.requireCompanyId(),
+            request,
+            revision.removeSurrounding("\"").toLongOrNull()?.takeIf { it >= 0 }
+                ?: throw pl.kacosmetology.scheduler.config.ApiException(
+                    pl.kacosmetology.scheduler.config.ErrorCode.REVISION_REQUIRED,
+                    "If-Match musi zawierać wersję profilu",
+                ),
+        )
 
     /** Unblocks a customer without resetting durable no-show history. Requires OWNER role. */
     @PatchMapping("/{id}/unblock")

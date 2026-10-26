@@ -118,8 +118,7 @@ abstract class ReservationContractTestSupport {
             "employeeId" to employee,
             "serviceId" to service,
             "startTime" to start.toString(),
-            "firstName" to "Jan",
-            "lastName" to "Klient",
+            "firstVisitDetails" to mapOf("firstName" to "Jan", "lastName" to "Klient"),
         )
 
     protected fun book(
@@ -144,9 +143,16 @@ abstract class ReservationContractTestSupport {
             "employeeId" to employee,
             "serviceId" to service,
             "startTime" to start.toString(),
-            "customerPhone" to phone,
-            "customerFirstName" to "Jan",
-            "customerLastName" to "Klient",
+            "customer" to
+                (jdbc
+                    .queryForList(
+                        "SELECT id FROM company_customers WHERE company_id=? AND phone_number=? AND first_booking_at IS NOT NULL",
+                        jdbc.queryForObject<UUID>("SELECT company_id FROM offerings WHERE id=?", service),
+                        phone,
+                    )
+                    .singleOrNull()
+                    ?.let { mapOf("kind" to "existing", "customerId" to it["id"]) }
+                    ?: mapOf("kind" to "new", "phoneNumber" to phone, "firstName" to "Jan", "lastName" to "Klient")),
         )
 
     protected fun phone(customer: UUID): String =

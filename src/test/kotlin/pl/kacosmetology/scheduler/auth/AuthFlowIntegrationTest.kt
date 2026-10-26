@@ -112,8 +112,6 @@ class AuthFlowIntegrationTest {
                 companyId,
                 phoneNumber = phoneNumber,
                 code = otpCode!!,
-                firstName = "Jan",
-                lastName = "Kowalski",
             )
 
         mockMvc
@@ -138,12 +136,12 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
-    fun `OTP verification needs no names and normalizes phone before identity lookup`() {
+    fun `OTP verification needs no names and uses explicit international phone`() {
         mockMvc
             .post("/api/auth/request-code") {
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content = """{"companyId":"$companyId","phoneNumber":" 48111222444 "}"""
+                content = """{"companyId":"$companyId","phoneNumber":"+48111222444"}"""
             }
             .andExpect { status { isOk() } }
         val phone = "+48111222444"
@@ -152,7 +150,7 @@ class AuthFlowIntegrationTest {
             .post("/api/auth/verify-code") {
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content = """{"companyId":"$companyId","phoneNumber":"48111222444","code":"$code"}"""
+                content = """{"companyId":"$companyId","phoneNumber":"+48111222444","code":"$code"}"""
             }
             .andExpect {
                 status { isOk() }
@@ -326,7 +324,7 @@ class AuthFlowIntegrationTest {
                 contentType = MediaType.APPLICATION_JSON
                 content =
                     objectMapper.writeValueAsString(
-                        VerifyCodeRequest(companyId, phoneNumber, firstCode, "Jan", "Nowak"),
+                        VerifyCodeRequest(companyId, phoneNumber, firstCode),
                     )
             }
             .andExpect { status { isTooManyRequests() } }
@@ -348,7 +346,7 @@ class AuthFlowIntegrationTest {
                 contentType = MediaType.APPLICATION_JSON
                 content =
                     objectMapper.writeValueAsString(
-                        VerifyCodeRequest(companyId, phoneNumber, replacementCode, "Jan", "Nowak"),
+                        VerifyCodeRequest(companyId, phoneNumber, replacementCode),
                     )
             }
             .andExpect {
@@ -369,8 +367,7 @@ class AuthFlowIntegrationTest {
             }
             .andExpect { status { isOk() } }
         val code = requireNotNull(redisTemplate.opsForValue().get("otp:$companyId:$phoneNumber"))
-        val requestBody =
-            objectMapper.writeValueAsString(VerifyCodeRequest(companyId, phoneNumber, code, "Jan", "Nowak"))
+        val requestBody = objectMapper.writeValueAsString(VerifyCodeRequest(companyId, phoneNumber, code))
 
         val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)

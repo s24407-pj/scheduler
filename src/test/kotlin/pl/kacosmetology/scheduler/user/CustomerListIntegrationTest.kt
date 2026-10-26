@@ -199,15 +199,9 @@ class CustomerListIntegrationTest {
     @Test
     fun `GET customers includes notes when set`() {
         companyCustomerRepository.save(
-            CompanyCustomer(
-                id = companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!.id,
-                companyId = companyId,
-                phoneNumber = customer.phoneNumber,
-                firstBookingAt = java.time.Instant.now(),
-                firstName = customer.firstName,
-                lastName = customer.lastName,
-                notes = "VIP klientka",
-            ),
+            companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!.apply {
+                notes = "VIP klientka"
+            },
         )
 
         mockMvc

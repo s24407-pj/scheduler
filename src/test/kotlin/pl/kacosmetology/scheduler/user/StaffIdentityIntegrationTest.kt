@@ -440,6 +440,7 @@ class StaffIdentityIntegrationTest {
                 .cookie(cookie)
                 .contentType("application/json")
                 .content(mapper.writeValueAsString(body))
+        if (path.startsWith("/api/customers/") && path.endsWith("/profile")) request.header("If-Match", "\"0\"")
         expectedContexts[cookie.value]?.let { request.header("X-Expected-Session-Context", it) }
         return mvc.perform(request).andReturn()
     }

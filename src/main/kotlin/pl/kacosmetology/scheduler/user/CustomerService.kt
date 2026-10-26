@@ -33,6 +33,7 @@ class CustomerService(
                     block?.blocked ?: false,
                     profile.notes,
                     profile.contactEmail,
+                    profile.version,
                 )
             }
             .sortedWith(compareBy({ it.lastName }, { it.firstName }))
@@ -57,6 +58,7 @@ class CustomerService(
             blocked = block?.blocked ?: false,
             notes = companyCustomer.notes,
             contactEmail = companyCustomer.contactEmail,
+            revision = companyCustomer.version,
         )
     }
 
@@ -103,10 +105,16 @@ class CustomerService(
         customerId: UUID,
         companyId: UUID,
         request: pl.kacosmetology.scheduler.user.dto.UpdateCustomerProfileRequest,
+        revision: Long,
     ) {
         val profile =
             companyCustomerRepository.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(companyId, customerId)
                 ?: throw NoSuchElementException("Klient nie istnieje")
+        if (profile.version != revision)
+            throw pl.kacosmetology.scheduler.config.ApiException(
+                pl.kacosmetology.scheduler.config.ErrorCode.CONCURRENT_MODIFICATION,
+                "Profil klienta został zmieniony. Odśwież dane",
+            )
         profile.firstName = request.firstName.trim()
         profile.lastName = request.lastName.trim()
         profile.contactEmail = request.contactEmail?.trim()?.ifBlank { null }

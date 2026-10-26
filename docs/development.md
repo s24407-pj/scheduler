@@ -71,13 +71,13 @@ The `dev` profile runs `DataInitializer` on startup. It is idempotent.
 ### Signing in with cookies and CSRF
 
 ```bash
-# Fresh seeded database: companyId=1. For an existing database use its seeded company ID.
+# A fresh development seed has one company for this staff email.
 # jq is used only to extract the CSRF token; the session identifier is never read.
 csrf=$(curl -fsS -c /tmp/scheduler-cookies http://localhost:8080/api/auth/csrf | jq -r .token)
 curl -fsS -b /tmp/scheduler-cookies -c /tmp/scheduler-cookies \
-  http://localhost:8080/api/auth/login-staff \
+  http://localhost:8080/api/auth/login-staff-email \
   -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $csrf" \
-  -d '{"companyId":1,"email":"gabinet@kacosmetology.pl","password":"admin123"}'
+  -d '{"email":"gabinet@kacosmetology.pl","password":"admin123"}'
 # Authentication clears CSRF: refresh before any further mutation.
 csrf=$(curl -fsS -b /tmp/scheduler-cookies -c /tmp/scheduler-cookies \
   http://localhost:8080/api/auth/csrf | jq -r .token)

@@ -20,6 +20,8 @@ class CompanyCustomer(
     @Column(name = "first_booking_at") var firstBookingAt: Instant? = null,
     @Column(name = "created_at", insertable = false, updatable = false) val createdAt: OffsetDateTime? = null,
 ) {
+    @Version @Column(nullable = false) var version: Long = 0
+
     @Id
     @UuidGenerator(style = UuidGenerator.Style.VERSION_7)
     var id: UUID? = id
