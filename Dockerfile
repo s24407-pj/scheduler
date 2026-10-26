@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM docker.io/library/gradle:9.8.1-jdk25 AS build
+FROM docker.io/library/gradle:9.8.2-jdk25 AS build
 WORKDIR /app
 
 COPY build.gradle.kts settings.gradle.kts gradle.properties ./
