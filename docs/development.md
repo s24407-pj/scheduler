@@ -145,6 +145,34 @@ Every feature needs a service unit test and an HTTP integration test. Test names
 
 Load tests (k6, Prometheus, Grafana) are described in [`perf-tests/README.md`](../perf-tests/README.md).
 
+### Coverage reports and CI gate
+
+Coverage includes all production code, with unit, repository, and integration tests contributing to one backend-wide result. Kover uses its default coverage engine with no manual production-code exclusions. CI requires at least **80% line coverage** and **60% branch coverage**; these backend-wide thresholds remain independent of the additional module gates below.
+
+Critical modules also have independent minimums. Each module is evaluated separately, aggregating its package and all subpackages (including DTOs and, for `auth`, SMS delivery); coverage elsewhere cannot compensate for a module below its minimum.
+
+| Package under `pl.kacosmetology.scheduler` | Minimum lines | Minimum branches |
+| --- | --- | --- |
+| `auth` | 90% | 70% |
+| `reservation` (booking) | 90% | 70% |
+| `security` | 90% | 70% |
+| `user` (company-local customer identity and blocks) | 90% | 60% |
+| `company` (company and staff membership) | 90% | 60% |
+
+`koverVerify` enforces the global gate and all five module gates using the same test run. For a single module, use `./gradlew koverVerifyAuth` (or the `Reservation`, `Security`, `User`, or `Company` suffix). All gates stay explicit rather than running with ordinary local `check`/`build`.
+
+Tenant isolation spans multiple modules. These gates complement the existing cross-company integration scenarios in `CompanyCustomerIsolationIntegrationTest`, `CompanyCustomerRepositoryTest`, `StaffIdentityIntegrationTest`, and `SessionSecurityIntegrationTest`; coverage percentages alone do not verify tenant isolation.
+
+```bash
+./gradlew koverHtmlReport koverXmlReport          # Run tests and generate reports
+./gradlew koverVerify                            # Generate reports and enforce global and module thresholds
+./gradlew build koverVerify                      # Same checks as CI
+```
+
+Open `build/reports/kover/html/index.html` for source-level coverage. The machine-readable XML report is `build/reports/kover/report.xml`. Both reports are generated before verification and remain available if a threshold fails. CI includes them in the existing `backend-test-reports` artifact.
+
+Use the complete test suite for authoritative coverage; filtered `test --tests ...` runs produce partial coverage and can fail the gate. The existing Docker/Podman prerequisites also apply to coverage tasks. Ordinary `test`, `build`, and `build -x test` do not enforce thresholds; coverage verification is an explicit task.
+
 ## Formatting
 
 Kotlin sources and Gradle scripts are formatted with ktfmt (kotlinlang style, 120 columns) through Spotless. `./gradlew build` and CI run `spotlessCheck` and fail on unformatted code.
@@ -159,9 +187,10 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 ## Continuous integration
 
-GitHub Actions runs `./gradlew build --no-daemon --console=plain --stacktrace`.
+GitHub Actions runs `./gradlew build koverVerify --no-daemon --console=plain --stacktrace`.
 The Gradle `check` lifecycle already includes `spotlessCheck`, so formatting and tests
-are checked in one invocation. The wrapper download has a SHA-256 checksum, a
+are checked in one invocation. The explicit `koverVerify` task also enforces coverage
+and generates HTML/XML reports. The wrapper download has a SHA-256 checksum, a
 30-second network timeout and three retries. `setup-gradle` also validates the wrapper
 JAR before execution.
 

@@ -1,3 +1,5 @@
+import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
+
 // Wersje bibliotek i pluginów są definiowane w gradle/libs.versions.toml
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -6,6 +8,7 @@ plugins {
     alias(libs.plugins.spring.dependency.management)
     alias(libs.plugins.kotlin.jpa)
     alias(libs.plugins.spotless)
+    alias(libs.plugins.kover)
 }
 
 group = "pl.kacosmetology"
@@ -112,3 +115,65 @@ tasks.withType<Test> {
 tasks.named<Jar>("jar") {
     enabled = false
 }
+
+val moduleCoverageBranchMinimums =
+    mapOf("auth" to 70, "reservation" to 70, "security" to 70, "user" to 60, "company" to 60)
+
+kover {
+    // Filtered variants share JVM test data while verifying each module independently.
+    currentProject {
+        moduleCoverageBranchMinimums.keys.forEach { module ->
+            createVariant(module) {
+                add("jvm")
+            }
+        }
+    }
+    reports {
+        total {
+            html {
+                htmlDir = layout.buildDirectory.dir("reports/kover/html")
+            }
+            xml {
+                xmlFile = layout.buildDirectory.file("reports/kover/report.xml")
+            }
+            verify {
+                onCheck = false
+                rule("Whole-backend coverage") {
+                    minBound(80, CoverageUnit.LINE)
+                    minBound(60, CoverageUnit.BRANCH)
+                }
+            }
+        }
+        moduleCoverageBranchMinimums.forEach { (module, branchMinimum) ->
+            variant(module) {
+                filters {
+                    includes {
+                        packages("pl.kacosmetology.scheduler.$module")
+                    }
+                }
+                verify {
+                    onCheck = false
+                    rule("$module coverage") {
+                        minBound(90, CoverageUnit.LINE)
+                        minBound(branchMinimum, CoverageUnit.BRANCH)
+                    }
+                }
+            }
+        }
+    }
+}
+
+val moduleCoverageVerificationTaskNames =
+    moduleCoverageBranchMinimums.keys.map { "koverVerify${it.replaceFirstChar(Char::uppercaseChar)}" }
+
+// Keep reports available when verification fails, without adding a gate to ordinary local builds.
+tasks.named("koverVerify") {
+    dependsOn("koverHtmlReport", "koverXmlReport")
+    dependsOn(moduleCoverageVerificationTaskNames)
+}
+
+tasks
+    .matching { it.name in moduleCoverageVerificationTaskNames }
+    .configureEach {
+        dependsOn("koverHtmlReport", "koverXmlReport")
+    }

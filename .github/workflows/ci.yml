@@ -51,8 +51,8 @@ jobs:
           docker info
 
       # build already includes spotlessCheck through the check lifecycle.
-      - name: Build, check formatting and run tests
-        run: ./gradlew build --no-daemon --console=plain --stacktrace 2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
+      - name: Build, check formatting, run tests and verify coverage
+        run: ./gradlew build koverVerify --no-daemon --console=plain --stacktrace 2>&1 | tee "$RUNNER_TEMP/gradle-build.log"
 
       - name: Docker diagnostics
         if: failure()
