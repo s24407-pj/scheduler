@@ -147,11 +147,25 @@ Load tests (k6, Prometheus, Grafana) are described in [`perf-tests/README.md`](.
 
 ### Coverage reports and CI gate
 
-Coverage includes all production code, with unit, repository, and integration tests contributing to one backend-wide result. Kover uses its default coverage engine with no manual production-code exclusions. CI requires at least **80% line coverage** and **60% branch coverage**; these are aggregate thresholds, not per-package minimums.
+Coverage includes all production code, with unit, repository, and integration tests contributing to one backend-wide result. Kover uses its default coverage engine with no manual production-code exclusions. CI requires at least **80% line coverage** and **60% branch coverage**; these backend-wide thresholds remain independent of the additional module gates below.
+
+Critical modules also have independent minimums. Each module is evaluated separately, aggregating its package and all subpackages (including DTOs and, for `auth`, SMS delivery); coverage elsewhere cannot compensate for a module below its minimum.
+
+| Package under `pl.kacosmetology.scheduler` | Minimum lines | Minimum branches |
+| --- | --- | --- |
+| `auth` | 90% | 70% |
+| `reservation` (booking) | 90% | 70% |
+| `security` | 90% | 70% |
+| `user` (company-local customer identity and blocks) | 90% | 60% |
+| `company` (company and staff membership) | 90% | 60% |
+
+`koverVerify` enforces the global gate and all five module gates using the same test run. For a single module, use `./gradlew koverVerifyAuth` (or the `Reservation`, `Security`, `User`, or `Company` suffix). All gates stay explicit rather than running with ordinary local `check`/`build`.
+
+Tenant isolation spans multiple modules. These gates complement the existing cross-company integration scenarios in `CompanyCustomerIsolationIntegrationTest`, `CompanyCustomerRepositoryTest`, `StaffIdentityIntegrationTest`, and `SessionSecurityIntegrationTest`; coverage percentages alone do not verify tenant isolation.
 
 ```bash
 ./gradlew koverHtmlReport koverXmlReport          # Run tests and generate reports
-./gradlew koverVerify                            # Generate reports and enforce both thresholds
+./gradlew koverVerify                            # Generate reports and enforce global and module thresholds
 ./gradlew build koverVerify                      # Same checks as CI
 ```
 

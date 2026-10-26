@@ -116,7 +116,18 @@ tasks.named<Jar>("jar") {
     enabled = false
 }
 
+val moduleCoverageBranchMinimums =
+    mapOf("auth" to 70, "reservation" to 70, "security" to 70, "user" to 60, "company" to 60)
+
 kover {
+    // Filtered variants share JVM test data while verifying each module independently.
+    currentProject {
+        moduleCoverageBranchMinimums.keys.forEach { module ->
+            createVariant(module) {
+                add("jvm")
+            }
+        }
+    }
     reports {
         total {
             html {
@@ -133,10 +144,36 @@ kover {
                 }
             }
         }
+        moduleCoverageBranchMinimums.forEach { (module, branchMinimum) ->
+            variant(module) {
+                filters {
+                    includes {
+                        packages("pl.kacosmetology.scheduler.$module")
+                    }
+                }
+                verify {
+                    onCheck = false
+                    rule("$module coverage") {
+                        minBound(90, CoverageUnit.LINE)
+                        minBound(branchMinimum, CoverageUnit.BRANCH)
+                    }
+                }
+            }
+        }
     }
 }
+
+val moduleCoverageVerificationTaskNames =
+    moduleCoverageBranchMinimums.keys.map { "koverVerify${it.replaceFirstChar(Char::uppercaseChar)}" }
 
 // Keep reports available when verification fails, without adding a gate to ordinary local builds.
 tasks.named("koverVerify") {
     dependsOn("koverHtmlReport", "koverXmlReport")
+    dependsOn(moduleCoverageVerificationTaskNames)
 }
+
+tasks
+    .matching { it.name in moduleCoverageVerificationTaskNames }
+    .configureEach {
+        dependsOn("koverHtmlReport", "koverXmlReport")
+    }
