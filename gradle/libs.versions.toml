@@ -11,6 +11,7 @@ testcontainersRedis = "3.0.0"
 konsist = "0.18.1"
 spotless = "8.10.4"
 ktfmt = "0.65"
+kover = "0.9.11"
 
 [libraries]
 aws-s3 = { module = "software.amazon.awssdk:s3", version.ref = "awsSdk" }
@@ -31,3 +32,4 @@ kotlin-jpa = { id = "org.jetbrains.kotlin.plugin.jpa", version.ref = "kotlin" }
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
 spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }

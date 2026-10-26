@@ -1,3 +1,5 @@
+import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
+
 // Wersje bibliotek i pluginów są definiowane w gradle/libs.versions.toml
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -6,6 +8,7 @@ plugins {
     alias(libs.plugins.spring.dependency.management)
     alias(libs.plugins.kotlin.jpa)
     alias(libs.plugins.spotless)
+    alias(libs.plugins.kover)
 }
 
 group = "pl.kacosmetology"
@@ -111,4 +114,29 @@ tasks.withType<Test> {
 
 tasks.named<Jar>("jar") {
     enabled = false
+}
+
+kover {
+    reports {
+        total {
+            html {
+                htmlDir = layout.buildDirectory.dir("reports/kover/html")
+            }
+            xml {
+                xmlFile = layout.buildDirectory.file("reports/kover/report.xml")
+            }
+            verify {
+                onCheck = false
+                rule("Whole-backend coverage") {
+                    minBound(80, CoverageUnit.LINE)
+                    minBound(60, CoverageUnit.BRANCH)
+                }
+            }
+        }
+    }
+}
+
+// Keep reports available when verification fails, without adding a gate to ordinary local builds.
+tasks.named("koverVerify") {
+    dependsOn("koverHtmlReport", "koverXmlReport")
 }
