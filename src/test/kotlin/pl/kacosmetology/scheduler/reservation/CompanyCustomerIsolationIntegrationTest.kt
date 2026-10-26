@@ -90,7 +90,7 @@ class CompanyCustomerIsolationIntegrationTest : ReservationContractTestSupport()
                     )
                     .contentType("application/json")
                     .content(json.writeValueAsString(body))
-            if (operation == "profile") request.header("If-Match", "\"0\"")
+            request.header("If-Match", "\"0\"")
             assertEquals(404, mvc.perform(request).andReturn().response.status)
         }
         shift()
