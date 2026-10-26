@@ -49,7 +49,7 @@ Every error is RFC 9457 Problem Details (`application/problem+json`) with stable
 | `RATE_LIMITED` | 429 |
 | `INTERNAL_ERROR` | 500 |
 
-Booking keys remain bound after failed input/business validation. `IDEMPOTENCY_CONFLICT` means a changed payload; `IDEMPOTENCY_IN_PROGRESS` means another execution held the key beyond five seconds. `REVISION_REQUIRED` identifies a missing or invalid `If-Match` header on reservation and schedule-block updates. `CONCURRENT_MODIFICATION` identifies a stale revision. A replayed lifecycle command after reversal conflicts with `INVALID_STATUS_TRANSITION`.
+Booking keys remain bound after failed input/business validation. `IDEMPOTENCY_CONFLICT` means a changed payload; `IDEMPOTENCY_IN_PROGRESS` means another execution held the key beyond five seconds. `REVISION_REQUIRED` identifies a missing or invalid `If-Match` header on reservation, schedule-block, and customer profile/notes updates. `CONCURRENT_MODIFICATION` identifies a stale revision. A replayed lifecycle command after reversal conflicts with `INVALID_STATUS_TRANSITION`.
 
 Foreign staff/customer/company resources return the same opaque missing error as nonexistent ones. A completed visit may be cancelled by staff with a private reason; elapsed or corrected outcomes follow the current [reservation contract](../reservations.md).
 

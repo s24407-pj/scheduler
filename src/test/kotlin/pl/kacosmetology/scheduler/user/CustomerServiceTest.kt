@@ -6,6 +6,8 @@ import io.mockk.verify
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.dto.UpdateCustomerProfileRequest
 
@@ -47,7 +49,28 @@ class CustomerServiceTest {
     @Test
     fun `notes cannot establish company relationship`() {
         every { profiles.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(testId(1), testId(2)) } returns null
-        assertThrows<NoSuchElementException> { service.setCustomerNotes(testId(2), testId(1), "intrusion") }
+        assertThrows<NoSuchElementException> { service.setCustomerNotes(testId(2), testId(1), "intrusion", 0) }
+        verify(exactly = 0) { profiles.save(any()) }
+    }
+
+    @Test
+    fun `stale notes revision leaves existing note unchanged`() {
+        val local =
+            CompanyCustomer(
+                    companyId = testId(1),
+                    id = testId(2),
+                    phoneNumber = "+48500100200",
+                    firstBookingAt = java.time.Instant.EPOCH,
+                    notes = "Existing note",
+                )
+                .apply { version = 1 }
+        every { profiles.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(testId(1), testId(2)) } returns local
+        val error =
+            assertThrows<ApiException> {
+                service.setCustomerNotes(testId(2), testId(1), "Stale write", 0)
+            }
+        assertEquals(ErrorCode.CONCURRENT_MODIFICATION, error.code)
+        assertEquals("Existing note", local.notes)
         verify(exactly = 0) { profiles.save(any()) }
     }
 

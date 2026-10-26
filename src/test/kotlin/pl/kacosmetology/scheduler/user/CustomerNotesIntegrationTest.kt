@@ -7,6 +7,9 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.NullAndEmptySource
+import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
@@ -109,10 +112,105 @@ class CustomerNotesIntegrationTest {
         )
     }
 
+    private fun currentRevision(): Long =
+        companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!.version
+
+    @Test
+    fun `second staff notes write with stale revision is rejected without overwriting first write`() {
+        val revision = currentRevision()
+        mockMvc
+            .put("/api/customers/${customer.id!!}/notes") {
+                with(csrf())
+                cookie(ownerSession)
+                header("If-Match", "\"$revision\"")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(mapOf("notes" to "First write"))
+            }
+            .andExpect { status { isNoContent() } }
+
+        mockMvc
+            .put("/api/customers/${customer.id!!}/notes") {
+                with(csrf())
+                cookie(employeeSession)
+                header("If-Match", "\"$revision\"")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(mapOf("notes" to "Second write"))
+            }
+            .andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value("CONCURRENT_MODIFICATION") }
+            }
+
+        val record = companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!
+        assertEquals("First write", record.notes)
+        assertEquals(revision + 1, record.version)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["notes", "profile"])
+    fun `notes and profile edits share the same revision`(first: String) {
+        val revision = currentRevision()
+        val bodies =
+            mapOf(
+                "notes" to mapOf("notes" to "Saved note"),
+                "profile" to mapOf("firstName" to "Updated", "lastName" to "Name"),
+            )
+        mockMvc
+            .put("/api/customers/${customer.id!!}/$first") {
+                with(csrf())
+                cookie(ownerSession)
+                header("If-Match", "\"$revision\"")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(bodies.getValue(first))
+            }
+            .andExpect { status { isNoContent() } }
+
+        val second = if (first == "notes") "profile" else "notes"
+        mockMvc
+            .put("/api/customers/${customer.id!!}/$second") {
+                with(csrf())
+                cookie(employeeSession)
+                header("If-Match", "\"$revision\"")
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(bodies.getValue(second))
+            }
+            .andExpect {
+                status { isConflict() }
+                jsonPath("$.code") { value("CONCURRENT_MODIFICATION") }
+            }
+        val record = companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!
+        assertEquals(if (first == "notes") "Saved note" else null, record.notes)
+        assertEquals(if (first == "profile") "Updated" else customer.firstName, record.firstName)
+        assertEquals(revision + 1, record.version)
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = ["invalid", "-1"])
+    fun `notes require valid profile revision`(revision: String?) {
+        val before = currentRevision()
+        mockMvc
+            .put("/api/customers/${customer.id!!}/notes") {
+                with(csrf())
+                cookie(ownerSession)
+                if (revision != null) header("If-Match", revision)
+                contentType = MediaType.APPLICATION_JSON
+                content = objectMapper.writeValueAsString(mapOf("notes" to "Rejected write"))
+            }
+            .andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value("REVISION_REQUIRED") }
+            }
+        val record = companyCustomerRepository.findByCompanyIdAndId(companyId, customer.id!!)!!
+        assertNull(record.notes)
+        assertEquals(before, record.version)
+    }
+
     @Test
     fun `PUT notes as owner should return 204 and persist note`() {
         mockMvc
             .put("/api/customers/${customer.id!!}/notes") {
+                header("If-Match", "\"${currentRevision()}\"")
                 with(csrf())
                 cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
@@ -130,6 +228,7 @@ class CustomerNotesIntegrationTest {
     fun `PUT notes as employee should return 204 and persist note`() {
         mockMvc
             .put("/api/customers/${customer.id!!}/notes") {
+                header("If-Match", "\"${currentRevision()}\"")
                 with(csrf())
                 cookie(employeeSession)
                 contentType = MediaType.APPLICATION_JSON
@@ -183,6 +282,7 @@ class CustomerNotesIntegrationTest {
 
         mockMvc
             .put("/api/customers/${customer.id!!}/notes") {
+                header("If-Match", "\"${currentRevision()}\"")
                 with(csrf())
                 cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
@@ -200,6 +300,7 @@ class CustomerNotesIntegrationTest {
     fun `PUT blank string clears note stored as null`() {
         mockMvc
             .put("/api/customers/${customer.id!!}/notes") {
+                header("If-Match", "\"${currentRevision()}\"")
                 with(csrf())
                 cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
@@ -217,6 +318,7 @@ class CustomerNotesIntegrationTest {
     fun `unauthenticated PUT notes should return 401`() {
         mockMvc
             .put("/api/customers/${customer.id!!}/notes") {
+                header("If-Match", "\"${currentRevision()}\"")
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = objectMapper.writeValueAsString(mapOf("notes" to "Test"))
@@ -230,6 +332,7 @@ class CustomerNotesIntegrationTest {
     fun `customer-role PUT notes should return 403`() {
         mockMvc
             .put("/api/customers/${customer.id!!}/notes") {
+                header("If-Match", "\"${currentRevision()}\"")
                 with(csrf())
                 cookie(customerSession)
                 contentType = MediaType.APPLICATION_JSON
@@ -246,6 +349,7 @@ class CustomerNotesIntegrationTest {
 
         mockMvc
             .put("/api/customers/${customer.id!!}/notes") {
+                header("If-Match", "\"${currentRevision()}\"")
                 with(csrf())
                 cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON
@@ -260,6 +364,7 @@ class CustomerNotesIntegrationTest {
     fun `PUT notes for non-existent customer should return 404`() {
         mockMvc
             .put("/api/customers/${testId(999999)}/notes") {
+                header("If-Match", "\"${currentRevision()}\"")
                 with(csrf())
                 cookie(ownerSession)
                 contentType = MediaType.APPLICATION_JSON

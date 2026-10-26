@@ -131,7 +131,7 @@ See [reservations](../reservations.md).
 | ------ | ---- | ------ | ----- |
 | GET | `/api/customers` | OWNER, EMPLOYEE | Customers of the caller's company after their first successful booking |
 | GET | `/api/customers/{id}` | OWNER, EMPLOYEE | Company-scoped status (no-shows, blocked) |
-| PUT | `/api/customers/{id}/notes` | OWNER, EMPLOYEE | Existing local profile with `first_booking_at` required; never creates a relationship |
+| PUT | `/api/customers/{id}/notes` | OWNER, EMPLOYEE | Existing local profile with `first_booking_at` required; If-Match profile revision required; never creates a relationship |
 | PUT | `/api/customers/{id}/profile` | OWNER, EMPLOYEE | Updates local names and optional contact email; If-Match profile revision required |
 | GET | `/api/customers/{id}/visits` | OWNER, EMPLOYEE | Company-scoped visit history, existing relationship required |
 | PATCH | `/api/customers/{id}/block` | OWNER | |

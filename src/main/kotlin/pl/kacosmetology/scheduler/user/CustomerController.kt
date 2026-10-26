@@ -62,11 +62,12 @@ class CustomerController(
     fun setCustomerNotes(
         @PathVariable id: UUID,
         @Valid @RequestBody request: UpdateCustomerNotesRequest,
+        @RequestHeader("If-Match") revision: String,
         @AuthenticationPrincipal userDetails: CustomUserDetails,
     ) {
         val companyId =
             userDetails.companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Brak przypisanej firmy")
-        customerService.setCustomerNotes(id, companyId, request.notes)
+        customerService.setCustomerNotes(id, companyId, request.notes, parseProfileRevision(revision))
     }
 
     /** Both staff roles may read all visits in the company's existing customer relationship. */
@@ -89,12 +90,15 @@ class CustomerController(
             id,
             principal.requireCompanyId(),
             request,
-            revision.removeSurrounding("\"").toLongOrNull()?.takeIf { it >= 0 }
-                ?: throw pl.kacosmetology.scheduler.config.ApiException(
-                    pl.kacosmetology.scheduler.config.ErrorCode.REVISION_REQUIRED,
-                    "If-Match musi zawierać wersję profilu",
-                ),
+            parseProfileRevision(revision),
         )
+
+    private fun parseProfileRevision(revision: String): Long =
+        revision.removeSurrounding("\"").toLongOrNull()?.takeIf { it >= 0 }
+            ?: throw pl.kacosmetology.scheduler.config.ApiException(
+                pl.kacosmetology.scheduler.config.ErrorCode.REVISION_REQUIRED,
+                "If-Match musi zawierać wersję profilu",
+            )
 
     /** Unblocks a customer without resetting durable no-show history. Requires OWNER role. */
     @PatchMapping("/{id}/unblock")

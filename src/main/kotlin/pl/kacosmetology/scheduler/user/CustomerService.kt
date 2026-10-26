@@ -64,13 +64,15 @@ class CustomerService(
 
     /**
      * Updates a free-text note for an existing local customer at the given company. Blank notes are normalised to null
-     * (cleared). Throws [NoSuchElementException] if the user is not found.
+     * (cleared). Requires the current profile revision to prevent lost updates. Throws [NoSuchElementException] if the
+     * user is not found.
      */
     @Transactional
-    fun setCustomerNotes(customerId: UUID, companyId: UUID, notes: String?) {
+    fun setCustomerNotes(customerId: UUID, companyId: UUID, notes: String?, revision: Long) {
         val record =
             companyCustomerRepository.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(companyId, customerId)
                 ?: throw NoSuchElementException("Klient nie istnieje")
+        requireProfileRevision(record, revision)
         record.notes = notes?.ifBlank { null }
         companyCustomerRepository.save(record)
     }
@@ -110,14 +112,18 @@ class CustomerService(
         val profile =
             companyCustomerRepository.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(companyId, customerId)
                 ?: throw NoSuchElementException("Klient nie istnieje")
+        requireProfileRevision(profile, revision)
+        profile.firstName = request.firstName.trim()
+        profile.lastName = request.lastName.trim()
+        profile.contactEmail = request.contactEmail?.trim()?.ifBlank { null }
+    }
+
+    private fun requireProfileRevision(profile: CompanyCustomer, revision: Long) {
         if (profile.version != revision)
             throw pl.kacosmetology.scheduler.config.ApiException(
                 pl.kacosmetology.scheduler.config.ErrorCode.CONCURRENT_MODIFICATION,
                 "Profil klienta został zmieniony. Odśwież dane",
             )
-        profile.firstName = request.firstName.trim()
-        profile.lastName = request.lastName.trim()
-        profile.contactEmail = request.contactEmail?.trim()?.ifBlank { null }
     }
 
     /** Manually blocks only a legitimate local customer and cancels future visits atomically. */
