@@ -67,7 +67,6 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 
     // Test - Testcontainers
-    testImplementation(libs.testcontainers.junit.jupiter)
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.testcontainers.redis)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
