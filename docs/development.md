@@ -206,6 +206,10 @@ JUnit XML and generated OpenAPI document, including on failures, for seven days.
 Docker availability is checked before building, and failed jobs print container state.
 The required check name remains `Build & Test`.
 
+Security checks run in a separate workflow, without integration tests. See
+[security scanning](./security.md) for PR/main/daily coverage, report artifacts,
+required-check configuration and vulnerability exceptions.
+
 
 ## Company-local customer baseline (2026-10-24)
 

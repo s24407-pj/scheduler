@@ -64,6 +64,14 @@ Cloudflare sends the real client IP in `CF-Connecting-IP`. Traefik does not trus
 
 Rejected alternative: making Traefik trust Cloudflare ranges and having Tomcat walk `X-Forwarded-For`. Tomcat matches proxies by regex, so the Cloudflare ranges would have to be maintained as regexes in two places.
 
+## Security before release
+
+Review the independent [security checks](./security.md), including the production-image
+Trivy report. CI scans a Dockerfile-built candidate by immutable local image ID. Dokploy
+currently rebuilds from source, so a successful candidate scan does not verify the exact
+deployed bytes. Scan the deployed image too, or promote a single scanned registry digest
+and configure Dokploy to use that digest. A failed container scan blocks release.
+
 ## Persistence and verification
 
 Keep the Compose project identity and named volumes `postgres_data` (PostgreSQL 18, `/var/lib/postgresql`) and `redis_data` (`/data`) across redeployments. Redis uses AOF (`--appendonly yes`). Health checks and `unless-stopped` restart policies apply to both dependencies. Do not run `down -v` or enable fresh-volume replacement on production data. Back up PostgreSQL and Redis and verify restoration.

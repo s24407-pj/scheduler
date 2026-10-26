@@ -43,3 +43,7 @@ out/
 .env
 
 /.claude/settings.local.json
+
+### Security reports and Python gate tests ###
+/security-reports/
+/.github/security/__pycache__/
