@@ -110,19 +110,19 @@ class OtpStore(
     }
 
     /** Issues a fresh code or rejects without consuming the accepted-phone or daily SMS allowance. */
-    fun issueCode(phoneNumber: String): String {
+    fun issueCode(companyId: UUID, phoneNumber: String): String {
         val candidate = random.nextInt(1_000_000).toString().padStart(6, '0')
         val result =
             checkNotNull(
                 redisTemplate.execute(
                     issueScript,
                     listOf(
-                        "otp:$phoneNumber",
+                        "otp:$companyId:$phoneNumber",
                         "otp:cooldown:$phoneNumber",
                         "rate:sms:$phoneNumber",
-                        "otp:previous:$phoneNumber",
+                        "otp:previous:$companyId:$phoneNumber",
                         "otp:global-daily",
-                        "otp:delivery-day:$phoneNumber",
+                        "otp:delivery-day:$companyId:$phoneNumber",
                     ),
                     candidate,
                     UUID.randomUUID().toString(),
@@ -136,16 +136,21 @@ class OtpStore(
     }
 
     /** First-attempt allowance belongs to its Redis issuance day; a later UTC day needs a fresh reservation. */
-    fun firstDeliveryNeedsBudget(phoneNumber: String): Boolean =
-        checkNotNull(redisTemplate.execute(firstDeliveryBudgetScript, listOf("otp:delivery-day:$phoneNumber"))) == 1L
+    fun firstDeliveryNeedsBudget(companyId: UUID, phoneNumber: String): Boolean =
+        checkNotNull(
+            redisTemplate.execute(firstDeliveryBudgetScript, listOf("otp:delivery-day:$companyId:$phoneNumber")),
+        ) == 1L
 
     /** Remaining original lifetime only when the same unconsumed code is still usable; never extends its expiry. */
-    fun deliveryTtlMillis(phoneNumber: String, code: String): Long? =
-        checkNotNull(redisTemplate.execute(deliveryTtlScript, listOf("otp:$phoneNumber"), code)).takeIf { it > 0 }
+    fun deliveryTtlMillis(companyId: UUID, phoneNumber: String, code: String): Long? =
+        checkNotNull(redisTemplate.execute(deliveryTtlScript, listOf("otp:$companyId:$phoneNumber"), code)).takeIf {
+            it > 0
+        }
 
     /** Records at most three failures, preserves expiry, and consumes success in a single Redis operation. */
-    fun verifyAndConsumeCode(phoneNumber: String, submittedCode: String): OtpVerificationResult {
-        val result = checkNotNull(redisTemplate.execute(verifyScript, listOf("otp:$phoneNumber"), submittedCode))
+    fun verifyAndConsumeCode(companyId: UUID, phoneNumber: String, submittedCode: String): OtpVerificationResult {
+        val result =
+            checkNotNull(redisTemplate.execute(verifyScript, listOf("otp:$companyId:$phoneNumber"), submittedCode))
         return when (result) {
             0L -> OtpVerificationResult.EXPIRED_OR_MISSING
             1L -> OtpVerificationResult.VERIFIED

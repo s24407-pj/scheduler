@@ -4,11 +4,11 @@ import java.util.*
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
-/** Reads phone-only customer accounts; company profiles are handled by [CustomerService]. */
+/** Reads company-local customer accounts; staff-visible profiles are handled by [CustomerService]. */
 @Service
-class UserService(private val userRepository: UserRepository) {
+class UserService(private val userRepository: CompanyCustomerRepository) {
     /** Loads the current authentication identity. */
     @Transactional(readOnly = true)
-    fun getProfile(userId: UUID): User =
-        userRepository.findById(userId).orElseThrow { NoSuchElementException("Klient nie istnieje") }
+    fun getProfile(userId: UUID, companyId: UUID): CompanyCustomer =
+        userRepository.findByCompanyIdAndId(companyId, userId) ?: throw NoSuchElementException("Klient nie istnieje")
 }

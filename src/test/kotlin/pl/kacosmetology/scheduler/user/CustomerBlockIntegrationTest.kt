@@ -32,6 +32,7 @@ import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 import pl.kacosmetology.scheduler.reservation.dto.CreateReservationRequest
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.services.s3.S3Client
@@ -52,7 +53,7 @@ class CustomerBlockIntegrationTest {
 
     @Autowired private lateinit var testSessions: TestSessions
 
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
 
     @Autowired private lateinit var companyRepository: CompanyRepository
 
@@ -66,9 +67,9 @@ class CustomerBlockIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private lateinit var owner: User
-    private lateinit var employee: User
-    private lateinit var customer: User
+    private lateinit var owner: StaffFixture
+    private lateinit var employee: StaffFixture
+    private lateinit var customer: CompanyCustomer
     private var companyId: UUID = testId(0)
     private var serviceId: UUID = testId(0)
     private lateinit var ownerSession: Cookie
@@ -87,21 +88,29 @@ class CustomerBlockIntegrationTest {
         val company = companyRepository.save(Company(name = "Block Test Salon", maxNoShows = 3))
         companyId = company.id!!
 
-        owner = userRepository.save(User(phoneNumber = "+48800111001", firstName = "Owner", lastName = "Test"))
+        owner = StaffFixture(phoneNumber = "+48800111001", firstName = "Owner", lastName = "Test")
         val ownerEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
             )
         ownerSession = testSessions.staff(owner, ownerEmployment)
 
-        employee = userRepository.save(User(phoneNumber = "+48800222001", firstName = "Employee", lastName = "Test"))
+        employee = StaffFixture(phoneNumber = "+48800222001", firstName = "Employee", lastName = "Test")
         val employeeEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
             )
         employeeSession = testSessions.staff(employee, employeeEmployment)
 
-        customer = userRepository.save(User(phoneNumber = "+48800333001", firstName = "Klient", lastName = "Test"))
+        customer =
+            userRepository.save(
+                CompanyCustomer(
+                    companyId = companyId,
+                    phoneNumber = "+48800333001",
+                    firstName = "Klient",
+                    lastName = "Test",
+                ),
+            )
         customerSession = testSessions.customer(customer)
 
         val service =
@@ -112,8 +121,10 @@ class CustomerBlockIntegrationTest {
 
         profiles.save(
             CompanyCustomer(
+                id = customer.id,
                 companyId = companyId,
-                userId = customer.id!!,
+                phoneNumber = customer.phoneNumber,
+                firstBookingAt = java.time.Instant.now(),
                 firstName = "Klient",
                 lastName = "Test",
             ),
@@ -245,7 +256,12 @@ class CustomerBlockIntegrationTest {
     fun `foreign customer without a local profile gets opaque 404`() {
         val otherCustomer =
             userRepository.save(
-                User(phoneNumber = "+48800444001", firstName = "Obcy", lastName = "Klient"),
+                CompanyCustomer(
+                    companyId = companyId,
+                    phoneNumber = "+48800444001",
+                    firstName = "Obcy",
+                    lastName = "Klient",
+                ),
             )
 
         mockMvc

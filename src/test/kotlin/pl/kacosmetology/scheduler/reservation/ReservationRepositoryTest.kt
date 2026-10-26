@@ -42,7 +42,7 @@ class ReservationRepositoryTest : ReservationContractTestSupport() {
         assertFalse(
             repository.existsCustomerOverlapping(foreign.company, salon.customer, future, future.plusMinutes(30)),
         )
-        fixtures.reservation(foreign, future, customer = salon.customer)
+        fixtures.reservation(foreign, future)
         assertEquals(2L, count("reservations"))
     }
 
@@ -96,7 +96,7 @@ class ReservationRepositoryTest : ReservationContractTestSupport() {
         assertEquals(
             customer,
             repository
-                .findAllByCustomerIdAndArchivedFalseOrderByStartTimeDesc(salon.customer)
+                .findAllByCompanyIdAndCustomerIdAndArchivedFalseOrderByStartTimeDesc(salon.company, salon.customer)
                 .first { it.id == customer }
                 .id,
         )

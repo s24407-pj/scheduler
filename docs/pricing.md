@@ -4,9 +4,9 @@ Prices are integer whole złoty. Fractional prices are invalid JSON input. Custo
 
 ## Customer quote
 
-`POST /api/quotes` requires a CUSTOMER cookie session and CSRF. The body contains `serviceId` and an offset-free Warsaw `startTime`. The service determines the company. The start must be strictly future and must identify a unique Warsaw instant; DST gaps and overlaps are invalid. No employee is bound and no capacity is held.
+`POST /api/quotes` requires a CUSTOMER cookie session and CSRF. The body contains `serviceId` and an offset-free Warsaw `startTime`. The service must belong to the session company; foreign services return opaque 404. The write also requires the captured session-context header. The start must be strictly future and must identify a unique Warsaw instant; DST gaps and overlaps are invalid. No employee is bound and no capacity is held.
 
-The 201 response contains a server-generated `quoteId`, company/service IDs, accepted `serviceName`, integer `price`, `durationMinutes`, local `startTime`, and an absolute `expiresAt`. The server persists the customer, company, service, start instant, accepted commercial terms and creation/expiry instants. Quote creation does not establish a company customer profile.
+The 201 response contains a server-generated `quoteId`, company/service IDs, accepted `serviceName`, integer `price`, `durationMinutes`, local `startTime`, and an absolute `expiresAt`. The server persists the customer, company, service, start instant, accepted commercial terms and creation/expiry instants. The customer already has a pending or established local identity. Quote creation does not set `first_booking_at` or establish staff visibility.
 
 A quote protects its accepted name, price and duration for ten elapsed minutes, until but excluding `expiresAt`. Send its UUID in the booking request. The booking transaction resolves it using an authoritative business-clock instant after locking/replay lookup. A valid quote preserves the agreement if the catalog service was renamed, repriced, made cheaper, changed duration or deactivated. All current hard booking rules still apply: qualified active employee, schedules, blocks, overlaps, booking restrictions and valid appointment times.
 

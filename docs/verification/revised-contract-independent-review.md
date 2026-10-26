@@ -1,3 +1,5 @@
+> Historical review of the pre-ADR-0017 contract. Global-customer and profile-creation findings below are superseded by [ADR-0017](../adr/0017-company-local-customers.md); current behavior is verified by CompanyCustomerIsolationIntegrationTest.
+
 # Independent scheduler acceptance review
 
 Reviewed final snapshot: `c8a0c24` in isolated read-only worktree `scheduler-final-review`, branch `agent/final-review`. Runtime/test source is `ae14285`; `a9e87c7` changes only local Podman verification documentation and `c8a0c24` aligns optional performance clients with the implemented API. Reviewer is independent of implementation and made no production edits. The complete clean build passed: **71 suites, 554 tests, zero failures/errors/skips**. Final runtime, schema, tests, generated OpenAPI, documentation and recorded architecture decisions were inspected. **76 acceptance rows PASS; no required PARTIAL or FAIL remains.** Historical phase counts are explicitly marked orchestrator-recorded below; final suite/startup evidence was independently verified.

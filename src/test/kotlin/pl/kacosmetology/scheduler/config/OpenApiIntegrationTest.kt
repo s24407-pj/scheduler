@@ -55,7 +55,7 @@ class OpenApiIntegrationTest {
             jsonPath("$.paths['/api/auth/logout-all'].post.security[0].sessionAuth") { exists() }
             jsonPath("$.paths['/api/auth/logout-all'].post.security[0].csrfToken") { exists() }
             jsonPath("$.paths['/api/auth/logout-all'].post.security[0].expectedSessionContext") { doesNotExist() }
-            jsonPath("$.paths['/api/reservations'].post.security[0].expectedSessionContext") { doesNotExist() }
+            jsonPath("$.paths['/api/reservations'].post.security[0].expectedSessionContext") { exists() }
             jsonPath("$.components.schemas.StaffEmailLoginRequest.properties.companyId") { doesNotExist() }
             jsonPath("$.components.schemas.StaffLoginCompany.properties.passwordHash") { doesNotExist() }
             jsonPath("$.paths['/api/auth/staff-password'].post.security[0].sessionAuth") { doesNotExist() }
@@ -89,6 +89,7 @@ class OpenApiIntegrationTest {
         }
         for ((path, method) in
             listOf(
+                "/api/customers/{id}/profile" to "put",
                 "/api/reservations/{id}" to "put",
                 "/api/reservations/{id}/cancel" to "patch",
                 "/api/reservations/{id}/restore" to "patch",
@@ -125,6 +126,13 @@ class OpenApiIntegrationTest {
             "int64",
             api["components"]["schemas"]["ReservationResponse"]["properties"]["revision"]["format"].asString(),
         )
+        val schemas = api["components"]["schemas"]
+        assertNotNull(schemas["CreateReservationRequest"]["properties"]["firstVisitDetails"])
+        assertNull(schemas["CreateReservationRequest"]["properties"]["firstName"])
+        assertNotNull(schemas["StaffCreateReservationRequest"]["properties"]["customer"])
+        assertNull(schemas["StaffCreateReservationRequest"]["properties"]["customerPhone"])
+        assertNull(schemas["VerifyCodeRequest"]["properties"]["firstName"])
+        assertNotNull(schemas["CustomerAccountResponse"]["properties"]["profileState"])
         java.nio.file.Files.createDirectories(java.nio.file.Path.of("build/generated"))
         java.nio.file.Files.writeString(java.nio.file.Path.of("build/generated/openapi.json"), response.contentAsString)
     }

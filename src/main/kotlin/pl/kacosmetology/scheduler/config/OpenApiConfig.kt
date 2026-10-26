@@ -60,9 +60,9 @@ class OpenApiConfig {
                         .`in`(SecurityScheme.In.HEADER)
                         .name(ExpectedSessionContextFilter.HEADER)
                         .description(
-                            "Required equality precondition for staff writes, not an authentication credential: " +
+                            "Required equality precondition for protected writes, not an authentication credential: " +
                                 "v1:userId:companyId:employmentId:ROLE_OWNER (or ROLE_EMPLOYEE), captured from auth/me " +
-                                "when opening the form. Missing/malformed: 400 SESSION_CONTEXT_REQUIRED; " +
+                                "when opening the form; customers use v1:userId:companyId:null:ROLE_CUSTOMER. Missing/malformed: 400 SESSION_CONTEXT_REQUIRED; " +
                                 "changed cookie scope: 409 SESSION_CONTEXT_CHANGED. Not required for customer logout-all.",
                         ),
                 )
@@ -94,8 +94,38 @@ class OpenApiConfig {
                     "errors",
                     ObjectSchema().additionalProperties(StringSchema()).description("Polish field validation messages"),
                 )
+                .addProperty("existingCustomer", ObjectSchema().addProperty("id", StringSchema().format("uuid")))
                 .required(listOf("status", "code")),
         )
+        // springdoc otherwise emits circular union/subtype inheritance for the Jackson sealed selector.
+        for ((name, kind, requiredFields) in
+            listOf(
+                Triple("ExistingCustomerSelection", "existing", listOf("kind", "customerId")),
+                Triple("NewCustomerSelection", "new", listOf("kind", "phoneNumber", "firstName", "lastName")),
+            )) {
+            val generated = api.components.schemas[name] ?: continue
+            val properties =
+                generated.allOf?.flatMap { it.properties?.entries.orEmpty() }?.associate { it.key to it.value }
+                    ?: generated.properties.orEmpty()
+            api.components.addSchemas(
+                name,
+                ObjectSchema().apply {
+                    properties.forEach { (key, value) -> addProperty(key, value) }
+                    addProperty("kind", StringSchema()._enum(listOf(kind)))
+                    required = requiredFields
+                    additionalProperties = false
+                },
+            )
+        }
+        api.components.schemas["StaffCustomerSelection"]?.apply {
+            properties = null
+            required = null
+            discriminator.mapping =
+                mapOf(
+                    "existing" to "#/components/schemas/ExistingCustomerSelection",
+                    "new" to "#/components/schemas/NewCustomerSelection",
+                )
+        }
         api.paths?.forEach { (path, item) ->
             item.readOperationsMap().forEach { (method, operation) ->
                 val public =
@@ -117,12 +147,8 @@ class OpenApiConfig {
                 val requirement = SecurityRequirement()
                 if (!public) requirement.addList(SESSION_AUTH)
                 if (unsafe) requirement.addList("csrfToken")
-                val customerOnly =
-                    (path == "/api/quotes" && method == PathItem.HttpMethod.POST) ||
-                        (path == "/api/reservations" && method == PathItem.HttpMethod.POST) ||
-                        (path == "/api/reservations/{id}/cancel" && method == PathItem.HttpMethod.PATCH)
                 val logoutAll = path == "/api/auth/logout-all" && method == PathItem.HttpMethod.POST
-                if (!public && unsafe && !customerOnly && !logoutAll) requirement.addList("expectedSessionContext")
+                if (!public && unsafe && !logoutAll) requirement.addList("expectedSessionContext")
                 if (
                     logoutAll && operation.parameters?.none { it.name == ExpectedSessionContextFilter.HEADER } != false
                 ) {

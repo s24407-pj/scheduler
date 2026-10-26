@@ -21,10 +21,11 @@ import pl.kacosmetology.scheduler.offering.OfferingImage
 import pl.kacosmetology.scheduler.offering.OfferingImageRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomer
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
@@ -39,7 +40,7 @@ class EmployeeOfferingIntegrationTest {
 
     @Autowired private lateinit var testSessions: TestSessions
 
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
 
     @Autowired private lateinit var companyRepository: CompanyRepository
 
@@ -74,14 +75,14 @@ class EmployeeOfferingIntegrationTest {
         val company = companyRepository.save(Company(name = "Salon Usługowy"))
         companyId = company.id!!
 
-        val owner = userRepository.save(User(phoneNumber = "+48100100100", firstName = "Owner", lastName = "Test"))
+        val owner = StaffFixture(phoneNumber = "+48100100100", firstName = "Owner", lastName = "Test")
         val ownerEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
             )
         ownerSession = testSessions.staff(owner, ownerEmployment)
 
-        val employee = userRepository.save(User(phoneNumber = "+48200200200", firstName = "Emp", lastName = "Test"))
+        val employee = StaffFixture(phoneNumber = "+48200200200", firstName = "Emp", lastName = "Test")
         val employeeEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
@@ -193,7 +194,14 @@ class EmployeeOfferingIntegrationTest {
     @Test
     fun `GET assignments should return 403 for customer`() {
         val customer =
-            userRepository.save(User(phoneNumber = "+48300300300", firstName = "Customer", lastName = "Test"))
+            userRepository.save(
+                CompanyCustomer(
+                    companyId = companyId,
+                    phoneNumber = "+48300300300",
+                    firstName = "Customer",
+                    lastName = "Test",
+                ),
+            )
         val customerSession = testSessions.customer(customer)
 
         mockMvc
@@ -208,8 +216,7 @@ class EmployeeOfferingIntegrationTest {
     @Test
     fun `GET assignments should return 404 for employee outside owner company`() {
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
-        val otherEmployee =
-            userRepository.save(User(phoneNumber = "+48400400400", firstName = "Other", lastName = "Employee"))
+        val otherEmployee = StaffFixture(phoneNumber = "+48400400400", firstName = "Other", lastName = "Employee")
         companyEmployeeRepository.save(
             CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE"),
         )
@@ -337,7 +344,15 @@ class EmployeeOfferingIntegrationTest {
             ),
         )
 
-        val customer = userRepository.save(User(phoneNumber = "+48999888777", firstName = "Klient", lastName = "Test"))
+        val customer =
+            userRepository.save(
+                CompanyCustomer(
+                    companyId = companyId,
+                    phoneNumber = "+48999888777",
+                    firstName = "Klient",
+                    lastName = "Test",
+                ),
+            )
 
         val body =
             mapOf(
@@ -345,9 +360,13 @@ class EmployeeOfferingIntegrationTest {
                 "serviceId" to otherOffering.id!!,
                 "startTime" to
                     LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0).toString(),
-                "customerPhone" to customer.phoneNumber,
-                "customerFirstName" to "Klient",
-                "customerLastName" to "Test",
+                "customer" to
+                    mapOf(
+                        "kind" to "new",
+                        "phoneNumber" to customer.phoneNumber,
+                        "firstName" to "Klient",
+                        "lastName" to "Test",
+                    ),
             )
 
         mockMvc

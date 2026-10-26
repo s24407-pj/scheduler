@@ -9,7 +9,7 @@ import org.springframework.stereotype.Repository
 import pl.kacosmetology.scheduler.auth.sms.SmsSendingStats
 import pl.kacosmetology.scheduler.auth.sms.SmsWork
 
-/** Durable phone-only OTP delivery metadata. Plaintext exists only while a still-live code needs delivery. */
+/** Durable company/phone OTP delivery metadata. Plaintext exists only while a still-live code needs delivery. */
 @Repository
 class OtpDeliveryRepository(private val jdbc: JdbcTemplate) {
     /** Serializes replacement intent for one canonical phone without creating an identity or profile. */
@@ -18,34 +18,37 @@ class OtpDeliveryRepository(private val jdbc: JdbcTemplate) {
     }
 
     /** Replacing a still-current code clears older pending plaintext while retaining terminal metadata. */
-    fun discardOtherPending(phone: String, currentCode: String, now: Instant) {
+    fun discardOtherPending(companyId: UUID, phone: String, currentCode: String, now: Instant) {
         jdbc.update(
-            "UPDATE otp_deliveries SET state='DISCARDED',code=NULL,updated_at=? WHERE phone_number=? AND code<>? AND state IN ('PENDING','TEMPORARY_FAILURE')",
+            "UPDATE otp_deliveries SET state='DISCARDED',code=NULL,updated_at=? WHERE company_id=? AND phone_number=? AND code<>? AND state IN ('PENDING','TEMPORARY_FAILURE')",
             Timestamp.from(now),
+            companyId,
             phone,
             currentCode,
         )
     }
 
     /** Discards only the exact consumed code, so a delayed consume event never invalidates its replacement. */
-    fun discardConsumed(phone: String, code: String, now: Instant) {
+    fun discardConsumed(companyId: UUID, phone: String, code: String, now: Instant) {
         jdbc.update(
-            "UPDATE otp_deliveries SET state='DISCARDED',code=NULL,updated_at=? WHERE phone_number=? AND code=? AND state IN ('PENDING','TEMPORARY_FAILURE')",
+            "UPDATE otp_deliveries SET state='DISCARDED',code=NULL,updated_at=? WHERE company_id=? AND phone_number=? AND code=? AND state IN ('PENDING','TEMPORARY_FAILURE')",
             Timestamp.from(now),
+            companyId,
             phone,
             code,
         )
     }
 
     /** Creates intent in the issuing transaction; an already-invalid code retains metadata without plaintext. */
-    fun insert(id: UUID, phone: String, code: String?, now: Instant, expiry: Instant) {
+    fun insert(id: UUID, companyId: UUID, phone: String, code: String?, now: Instant, expiry: Instant) {
         jdbc.update(
             """
-            INSERT INTO otp_deliveries(id,phone_number,code,state,attempts,created_at,expires_at,next_attempt_at,updated_at)
-            VALUES (?,?,?, ?,0,?,?,?,?) ON CONFLICT(id) DO NOTHING
+            INSERT INTO otp_deliveries(id,company_id,phone_number,code,state,attempts,created_at,expires_at,next_attempt_at,updated_at)
+            VALUES (?,?,?,?, ?,0,?,?,?,?) ON CONFLICT(id) DO NOTHING
             """
                 .trimIndent(),
             id,
+            companyId,
             phone,
             code,
             if (code == null) "DISCARDED" else "PENDING",
@@ -106,6 +109,7 @@ class OtpDeliveryRepository(private val jdbc: JdbcTemplate) {
                 { rs, _ ->
                     OtpDelivery(
                         rs.getObject("id", UUID::class.java),
+                        rs.getObject("company_id", UUID::class.java),
                         rs.getString("phone_number"),
                         rs.getString("code"),
                         rs.getString("state"),
@@ -161,6 +165,7 @@ class OtpDeliveryRepository(private val jdbc: JdbcTemplate) {
 /** Secret-bearing internal work item, deliberately without a generated toString/equals representation. */
 class OtpDelivery(
     val id: UUID,
+    val companyId: UUID,
     val phone: String,
     val code: String?,
     val state: String,

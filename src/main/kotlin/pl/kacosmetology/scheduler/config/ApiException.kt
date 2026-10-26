@@ -17,6 +17,8 @@ enum class ErrorCode(val status: HttpStatus) {
     EMPLOYEE_OFFERING_NOT_ASSIGNED(HttpStatus.CONFLICT),
     CUSTOMER_BLOCKED(HttpStatus.CONFLICT),
     BOOKING_ADVANCE_REQUIRED(HttpStatus.CONFLICT),
+    CUSTOMER_PHONE_ALREADY_EXISTS(HttpStatus.CONFLICT),
+    CUSTOMER_PROFILE_CHANGED(HttpStatus.CONFLICT),
     CUSTOMER_NAME_REQUIRED(HttpStatus.BAD_REQUEST),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED),
@@ -46,4 +48,5 @@ enum class ErrorCode(val status: HttpStatus) {
  * Business error with a stable [code]. [RestExceptionHandler] renders it as a ProblemDetail with the code's HTTP
  * status, [message] as `detail`, and the code name as `code`.
  */
-class ApiException(val code: ErrorCode, message: String) : RuntimeException(message)
+class ApiException(val code: ErrorCode, message: String, val extensions: Map<String, Any> = emptyMap()) :
+    RuntimeException(message)

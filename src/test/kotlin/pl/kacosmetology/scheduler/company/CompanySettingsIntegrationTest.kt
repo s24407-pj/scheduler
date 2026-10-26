@@ -17,10 +17,10 @@ import org.springframework.test.web.servlet.put
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
@@ -35,7 +35,7 @@ class CompanySettingsIntegrationTest {
 
     @Autowired private lateinit var testSessions: TestSessions
 
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
 
     @Autowired private lateinit var companyRepository: CompanyRepository
 
@@ -62,15 +62,14 @@ class CompanySettingsIntegrationTest {
         val company = companyRepository.save(Company(name = "Salon Testowy"))
         companyId = company.id!!
 
-        val owner = userRepository.save(User(phoneNumber = "+48100200300", firstName = "Owner", lastName = "Test"))
+        val owner = StaffFixture(phoneNumber = "+48100200300", firstName = "Owner", lastName = "Test")
         val ownerEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = owner.id!!, role = "OWNER"),
             )
         ownerSession = testSessions.staff(owner, ownerEmployment)
 
-        val employee =
-            userRepository.save(User(phoneNumber = "+48300200100", firstName = "Employee", lastName = "Test"))
+        val employee = StaffFixture(phoneNumber = "+48300200100", firstName = "Employee", lastName = "Test")
         val employeeEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),

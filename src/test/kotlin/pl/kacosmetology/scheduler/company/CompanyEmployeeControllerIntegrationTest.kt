@@ -13,10 +13,11 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomer
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import software.amazon.awssdk.services.s3.S3Client
 
 @SpringBootTest
@@ -28,7 +29,7 @@ class CompanyEmployeeControllerIntegrationTest {
 
     @Autowired private lateinit var testSessions: TestSessions
 
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
 
     @Autowired private lateinit var companyRepository: CompanyRepository
 
@@ -52,7 +53,7 @@ class CompanyEmployeeControllerIntegrationTest {
         val company = companyRepository.save(Company(name = "Salon Testowy"))
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
 
-        val owner = userRepository.save(User(phoneNumber = "+48100200300", firstName = "Owner", lastName = "Test"))
+        val owner = StaffFixture(phoneNumber = "+48100200300", firstName = "Owner", lastName = "Test")
         ownerUserId = owner.id!!
         companyEmployeeRepository.save(
             CompanyEmployee(
@@ -65,16 +66,14 @@ class CompanyEmployeeControllerIntegrationTest {
             ),
         )
 
-        val employee =
-            userRepository.save(User(phoneNumber = "+48300200100", firstName = "Employee", lastName = "Test"))
+        val employee = StaffFixture(phoneNumber = "+48300200100", firstName = "Employee", lastName = "Test")
         val employeeEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = company.id!!, userId = employee.id!!, role = "EMPLOYEE"),
             )
         employeeSession = testSessions.staff(employee, employeeEmployment)
 
-        val outsider =
-            userRepository.save(User(phoneNumber = "+48500600700", firstName = "Outsider", lastName = "Test"))
+        val outsider = StaffFixture(phoneNumber = "+48500600700", firstName = "Outsider", lastName = "Test")
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = otherCompany.id!!,
@@ -86,7 +85,15 @@ class CompanyEmployeeControllerIntegrationTest {
             ),
         )
 
-        val customer = userRepository.save(User(phoneNumber = "+48700800900", firstName = "Jan", lastName = "Nowak"))
+        val customer =
+            userRepository.save(
+                CompanyCustomer(
+                    companyId = company.id!!,
+                    phoneNumber = "+48700800900",
+                    firstName = "Jan",
+                    lastName = "Nowak",
+                ),
+            )
         customerSession = testSessions.customer(customer)
     }
 

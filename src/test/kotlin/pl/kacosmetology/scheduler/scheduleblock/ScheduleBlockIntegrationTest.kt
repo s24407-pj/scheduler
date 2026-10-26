@@ -30,10 +30,11 @@ import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
 import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomer
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -48,7 +49,7 @@ class ScheduleBlockIntegrationTest {
     @Autowired private lateinit var mockMvc: MockMvc
     @Autowired private lateinit var objectMapper: ObjectMapper
     @Autowired private lateinit var testSessions: TestSessions
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
     @Autowired private lateinit var companyRepository: CompanyRepository
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
     @Autowired private lateinit var scheduleBlockRepository: ScheduleBlockRepository
@@ -58,8 +59,8 @@ class ScheduleBlockIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private lateinit var employee: User
-    private lateinit var owner: User
+    private lateinit var employee: StaffFixture
+    private lateinit var owner: StaffFixture
     private var companyId: UUID = testId(0)
     private lateinit var employeeSession: Cookie
     private lateinit var ownerSession: Cookie
@@ -78,9 +79,8 @@ class ScheduleBlockIntegrationTest {
 
         val company = companyRepository.save(Company(name = "Salon Testowy"))
         companyId = company.id!!
-        employee =
-            userRepository.save(User(phoneNumber = "+48700800900", firstName = "Pracownik", lastName = "Testowy"))
-        owner = userRepository.save(User(phoneNumber = "+48111222333", firstName = "Właściciel", lastName = "Testowy"))
+        employee = StaffFixture(phoneNumber = "+48700800900", firstName = "Pracownik", lastName = "Testowy")
+        owner = StaffFixture(phoneNumber = "+48111222333", firstName = "Właściciel", lastName = "Testowy")
         val employeeEmployment =
             companyEmployeeRepository.save(
                 CompanyEmployee(companyId = companyId, userId = employee.id!!, role = "EMPLOYEE"),
@@ -188,7 +188,12 @@ class ScheduleBlockIntegrationTest {
     fun `concurrent reservation and schedule block should persist exactly one busy interval`() {
         val customer =
             userRepository.save(
-                User(phoneNumber = "+48600600600", firstName = "Klient", lastName = "Testowy"),
+                CompanyCustomer(
+                    companyId = companyId,
+                    phoneNumber = "+48600600600",
+                    firstName = "Klient",
+                    lastName = "Testowy",
+                ),
             )
         val customerSession = testSessions.customer(customer)
         val offering =
@@ -202,8 +207,7 @@ class ScheduleBlockIntegrationTest {
                 "employeeId" to employee.id!!,
                 "serviceId" to offering.id!!,
                 "startTime" to startTime.toString(),
-                "firstName" to "Klient",
-                "lastName" to "Testowy",
+                "firstVisitDetails" to mapOf("firstName" to "Klient", "lastName" to "Testowy"),
             )
         val blockBody =
             mapOf(
@@ -286,10 +290,7 @@ class ScheduleBlockIntegrationTest {
 
     @Test
     fun `DELETE schedule-blocks should return 403 when trying to delete another employee block`() {
-        val otherEmployee =
-            userRepository.save(
-                User(phoneNumber = "+48600100200", firstName = "Inny", lastName = "Pracownik"),
-            )
+        val otherEmployee = StaffFixture(phoneNumber = "+48600100200", firstName = "Inny", lastName = "Pracownik")
         companyEmployeeRepository.save(
             CompanyEmployee(companyId = companyId, userId = otherEmployee.id!!, role = "EMPLOYEE"),
         )
@@ -484,10 +485,7 @@ class ScheduleBlockIntegrationTest {
     @Test
     fun `POST schedule-blocks owner receives 404 for employee from another company`() {
         val otherCompany = companyRepository.save(Company(name = "Obcy Salon POST"))
-        val otherEmployee =
-            userRepository.save(
-                User(phoneNumber = "+48900100201", firstName = "Obcy", lastName = "Pracownik"),
-            )
+        val otherEmployee = StaffFixture(phoneNumber = "+48900100201", firstName = "Obcy", lastName = "Pracownik")
         companyEmployeeRepository.save(
             CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE"),
         )
@@ -515,10 +513,7 @@ class ScheduleBlockIntegrationTest {
     @Test
     fun `GET schedule-blocks owner receives 404 for employee from another company`() {
         val otherCompany = companyRepository.save(Company(name = "Obcy Salon GET"))
-        val otherEmployee =
-            userRepository.save(
-                User(phoneNumber = "+48900100202", firstName = "Obcy", lastName = "Pracownik"),
-            )
+        val otherEmployee = StaffFixture(phoneNumber = "+48900100202", firstName = "Obcy", lastName = "Pracownik")
         companyEmployeeRepository.save(
             CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE"),
         )
@@ -595,10 +590,7 @@ class ScheduleBlockIntegrationTest {
 
     @Test
     fun `database rejects schedule block for employee outside company`() {
-        val outsider =
-            userRepository.save(
-                User(phoneNumber = "+48900100203", firstName = "Bez", lastName = "Firmy"),
-            )
+        val outsider = StaffFixture(phoneNumber = "+48900100203", firstName = "Bez", lastName = "Firmy")
 
         assertThrows<DataIntegrityViolationException> {
             scheduleBlockRepository.saveAndFlush(
@@ -666,8 +658,7 @@ class ScheduleBlockIntegrationTest {
     @Test
     fun `DELETE schedule-blocks owner cannot delete block from another company`() {
         val otherCompany = companyRepository.save(Company(name = "Inny Salon"))
-        val otherEmployee =
-            userRepository.save(User(phoneNumber = "+48999888777", firstName = "Obcy", lastName = "Pracownik"))
+        val otherEmployee = StaffFixture(phoneNumber = "+48999888777", firstName = "Obcy", lastName = "Pracownik")
         companyEmployeeRepository.save(
             CompanyEmployee(companyId = otherCompany.id!!, userId = otherEmployee.id!!, role = "EMPLOYEE"),
         )
@@ -693,7 +684,7 @@ class ScheduleBlockIntegrationTest {
 
     @Test
     fun `employee explicit coworker target is rejected and coworker block reasons are readable`() {
-        val other = userRepository.save(User(phoneNumber = "+48555444333", firstName = "Inny", lastName = "Pracownik"))
+        val other = StaffFixture(phoneNumber = "+48555444333", firstName = "Inny", lastName = "Pracownik")
         companyEmployeeRepository.save(CompanyEmployee(companyId = companyId, userId = other.id!!, role = "EMPLOYEE"))
         val start = testDate.atTime(9, 0)
         val end = testDate.atTime(10, 0)
@@ -836,6 +827,7 @@ class ScheduleBlockIntegrationTest {
 
     @Test
     fun `PUT rejects occupied reservation interval`() {
+        val customer = userRepository.save(CompanyCustomer(companyId = companyId, phoneNumber = "+48500999111"))
         val block = savedBlock()
         val offering =
             serviceRepository.save(Offering(companyId = companyId, name = "Test", durationMinutes = 60, price = 100))
@@ -843,7 +835,7 @@ class ScheduleBlockIntegrationTest {
             Reservation(
                 companyId = companyId,
                 employeeId = employee.id!!,
-                customerId = owner.id!!,
+                customerId = customer.id!!,
                 serviceId = offering.id!!,
                 price = 100,
                 startTime = testDate.atTime(12, 0),

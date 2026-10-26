@@ -42,8 +42,12 @@ class OtpRedisIntegrationTest {
     @MockkBean private lateinit var s3Client: S3Client
     private val phone = "+48111222333"
 
+    private lateinit var companyId: java.util.UUID
+    @Autowired private lateinit var companyRepository: pl.kacosmetology.scheduler.company.CompanyRepository
+
     @BeforeEach
     fun reset() {
+        companyId = companyRepository.save(pl.kacosmetology.scheduler.company.Company(name = "OTP Salon")).id!!
         awaitWorkers()
         redis.connectionFactory!!.connection.use { it.serverCommands().flushAll() }
         clearMocks(smsSender)
@@ -58,52 +62,55 @@ class OtpRedisIntegrationTest {
 
     @Test
     fun `issuance has exact code lifetime cooldown and accepted rolling phone allowance`() {
-        val first = store.issueCode(phone)
+        val first = store.issueCode(companyId, phone)
         assertTrue(first.matches(Regex("[0-9]{6}")))
-        assertTrue(redis.getExpire("otp:$phone") in 299L..300L)
-        val cooldown = assertThrows<RateLimitExceededException> { store.issueCode(phone) }
+        assertTrue(redis.getExpire("otp:$companyId:$phone") in 299L..300L)
+        val cooldown = assertThrows<RateLimitExceededException> { store.issueCode(companyId, phone) }
         assertTrue(cooldown.retryAfterSeconds in 59L..60L)
         assertEquals(1L, redis.opsForZSet().zCard("rate:sms:$phone"))
         var previous = first
         repeat(2) {
             redis.delete("otp:cooldown:$phone")
-            val replacement = store.issueCode(phone)
+            val replacement = store.issueCode(companyId, phone)
             assertNotEquals(previous, replacement)
             previous = replacement
         }
         redis.delete("otp:cooldown:$phone")
-        assertThrows<RateLimitExceededException> { store.issueCode(phone) }
+        assertThrows<RateLimitExceededException> { store.issueCode(companyId, phone) }
         assertEquals(3L, redis.opsForZSet().zCard("rate:sms:$phone"))
         expireWindow("rate:sms:$phone", 300_000)
-        assertNotEquals(previous, store.issueCode(phone))
+        assertNotEquals(previous, store.issueCode(companyId, phone))
     }
 
     @Test
     fun `three failures lock code and replacement restores fresh allowance and expiry`() {
-        val code = store.issueCode(phone)
+        val code = store.issueCode(companyId, phone)
         val wrong = if (code == "000000") "000001" else "000000"
-        redis.expire("otp:$phone", Duration.ofSeconds(60))
-        assertEquals(OtpVerificationResult.INVALID, store.verifyAndConsumeCode(phone, wrong))
-        assertEquals(OtpVerificationResult.INVALID, store.verifyAndConsumeCode(phone, wrong))
-        assertEquals(OtpVerificationResult.ATTEMPTS_EXCEEDED, store.verifyAndConsumeCode(phone, wrong))
-        assertEquals(OtpVerificationResult.ATTEMPTS_EXCEEDED, store.verifyAndConsumeCode(phone, code))
-        assertTrue(redis.getExpire("otp:$phone") <= 60)
+        redis.expire("otp:$companyId:$phone", Duration.ofSeconds(60))
+        assertEquals(OtpVerificationResult.INVALID, store.verifyAndConsumeCode(companyId, phone, wrong))
+        assertEquals(OtpVerificationResult.INVALID, store.verifyAndConsumeCode(companyId, phone, wrong))
+        assertEquals(OtpVerificationResult.ATTEMPTS_EXCEEDED, store.verifyAndConsumeCode(companyId, phone, wrong))
+        assertEquals(OtpVerificationResult.ATTEMPTS_EXCEEDED, store.verifyAndConsumeCode(companyId, phone, code))
+        assertTrue(redis.getExpire("otp:$companyId:$phone") <= 60)
         redis.delete("otp:cooldown:$phone")
-        val replacement = store.issueCode(phone)
+        val replacement = store.issueCode(companyId, phone)
         assertNotEquals(code, replacement)
-        assertTrue(redis.getExpire("otp:$phone") in 299L..300L)
-        assertEquals(OtpVerificationResult.INVALID, store.verifyAndConsumeCode(phone, code))
-        assertEquals(OtpVerificationResult.VERIFIED, store.verifyAndConsumeCode(phone, replacement))
-        assertEquals(OtpVerificationResult.EXPIRED_OR_MISSING, store.verifyAndConsumeCode(phone, replacement))
+        assertTrue(redis.getExpire("otp:$companyId:$phone") in 299L..300L)
+        assertEquals(OtpVerificationResult.INVALID, store.verifyAndConsumeCode(companyId, phone, code))
+        assertEquals(OtpVerificationResult.VERIFIED, store.verifyAndConsumeCode(companyId, phone, replacement))
+        assertEquals(
+            OtpVerificationResult.EXPIRED_OR_MISSING,
+            store.verifyAndConsumeCode(companyId, phone, replacement),
+        )
     }
 
     @Test
     fun `consumption and replacement are atomic under simultaneous callers`() {
-        val code = store.issueCode(phone)
-        val consumed = concurrently(12) { store.verifyAndConsumeCode(phone, code) }
+        val code = store.issueCode(companyId, phone)
+        val consumed = concurrently(12) { store.verifyAndConsumeCode(companyId, phone, code) }
         assertEquals(1, consumed.count { it == OtpVerificationResult.VERIFIED })
         redis.delete("otp:cooldown:$phone")
-        val issued = concurrently(12) { runCatching { store.issueCode(phone) }.getOrNull() }
+        val issued = concurrently(12) { runCatching { store.issueCode(companyId, phone) }.getOrNull() }
         assertEquals(1, issued.count { it != null })
         assertNotEquals(code, issued.single { it != null })
         assertEquals(2L, redis.opsForZSet().zCard("rate:sms:$phone"))
@@ -113,8 +120,8 @@ class OtpRedisIntegrationTest {
     fun `cooldown denials count against IP requests but not accepted phone issuance`() {
         repeat(10) { index ->
             assertTrue(requests.check("ip").allowed)
-            if (index == 0) store.issueCode(phone)
-            else assertThrows<RateLimitExceededException> { store.issueCode(phone) }
+            if (index == 0) store.issueCode(companyId, phone)
+            else assertThrows<RateLimitExceededException> { store.issueCode(companyId, phone) }
         }
         val denied = requests.check("ip")
         assertFalse(denied.allowed)
@@ -147,11 +154,12 @@ class OtpRedisIntegrationTest {
     @Test
     fun `global daily cap is atomic and resets only on next UTC day`() {
         val capped = OtpStore(redis, 2, MockEnvironment())
-        val results = concurrently(10) { index -> runCatching { capped.issueCode("+4890000000$index") }.isSuccess }
+        val results =
+            concurrently(10) { index -> runCatching { capped.issueCode(companyId, "+4890000000$index") }.isSuccess }
         assertEquals(2, results.count { it })
         assertEquals("2", redis.opsForHash<String, String>().get("otp:global-daily", "count"))
         redis.opsForHash<String, String>().put("otp:global-daily", "day", "0")
-        capped.issueCode("+48888888888")
+        capped.issueCode(companyId, "+48888888888")
         assertEquals("1", redis.opsForHash<String, String>().get("otp:global-daily", "count"))
     }
 
@@ -168,13 +176,13 @@ class OtpRedisIntegrationTest {
     fun `rollback never sends OTP SMS and provider failure never fails committed request`() {
         assertThrows<IllegalStateException> {
             TransactionTemplate(transactionManager).executeWithoutResult {
-                authService.requestCode(RequestCodeRequest(phone), "ip")
+                authService.requestCode(RequestCodeRequest(companyId, phone), "ip")
                 error("rollback")
             }
         }
         verify(exactly = 0) { smsSender.sendOtp(any(), any()) }
         every { smsSender.sendOtp(any(), any()) } throws IllegalStateException("provider rejected")
-        authService.requestCode(RequestCodeRequest("+48444444444"), "other")
+        authService.requestCode(RequestCodeRequest(companyId, "+48444444444"), "other")
         awaitWorkers()
         verify(exactly = 1) { smsSender.sendOtp("+48444444444", any()) }
     }

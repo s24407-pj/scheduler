@@ -26,6 +26,12 @@ class QuoteServiceTest {
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
     private val service = QuoteService(repository, offerings, policy, clock)
 
+    @org.junit.jupiter.api.BeforeEach
+    fun scopedOffering() {
+        every { offerings.findByIdAndCompanyId(testId(2), testId(1)) } returns
+            Offering(id = testId(2), companyId = testId(1), name = "Changed", durationMinutes = 60, price = 200)
+    }
+
     @Test
     fun `creates durable snapshot with UUID ten elapsed minute lifetime using UTC JVM clock`() {
         val start = LocalDateTime.parse("2026-06-01T10:01:00")
@@ -36,7 +42,7 @@ class QuoteServiceTest {
             )
         val saved = slot<BookingQuote>()
         every { repository.save(capture(saved)) } answers { firstArg() }
-        val result = service.create(testId(3), CreateQuoteRequest(testId(2), start))
+        val result = service.create(testId(3), CreateQuoteRequest(testId(2), start), testId(1))
         assertEquals("Accepted", result.serviceName)
         assertEquals(86, result.price)
         assertEquals(30, result.durationMinutes)
@@ -51,7 +57,7 @@ class QuoteServiceTest {
     fun `past or current start never creates quote`() {
         listOf("2026-06-01T09:59:59", "2026-06-01T10:00:00").forEach {
             assertThrows<ApiException> {
-                service.create(testId(3), CreateQuoteRequest(testId(2), LocalDateTime.parse(it)))
+                service.create(testId(3), CreateQuoteRequest(testId(2), LocalDateTime.parse(it)), testId(1))
             }
         }
         verify(exactly = 0) { repository.save(any()) }

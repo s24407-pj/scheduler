@@ -33,12 +33,12 @@ class QuoteEndpointTest {
     @MockkBean private lateinit var service: QuoteService
     @MockkBean private lateinit var limits: RedisRollingRateLimiter
     @MockkBean private lateinit var submissions: BookingSubmissionService
-    private val customer = CustomUserDetails(testId(3), "+48111222333", "ROLE_CUSTOMER")
+    private val customer = CustomUserDetails(testId(3), "+48111222333", "ROLE_CUSTOMER", testId(1))
     private val body = """{"serviceId":"${testId(2)}","startTime":"2026-06-01T14:00:00"}"""
 
     @Test
     fun `customer creates quote with CSRF using authenticated account identity`() {
-        every { service.create(testId(3), any()) } returns
+        every { service.create(testId(3), any(), testId(1)) } returns
             QuoteResponse(
                 UUID.randomUUID(),
                 testId(1),
@@ -51,6 +51,7 @@ class QuoteEndpointTest {
             )
         mvc.post("/api/quotes") {
                 with(user(customer))
+                header("X-Expected-Session-Context", "v1:${testId(3)}:${testId(1)}:null:ROLE_CUSTOMER")
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = body
@@ -60,12 +61,13 @@ class QuoteEndpointTest {
                 jsonPath("$.price") { value(86) }
                 jsonPath("$.quoteId") { exists() }
             }
-        verify(exactly = 1) { service.create(testId(3), any()) }
+        verify(exactly = 1) { service.create(testId(3), any(), testId(1)) }
     }
 
     @Test
     fun `quote endpoint rejects anonymous staff and missing CSRF`() {
         mvc.post("/api/quotes") {
+                header("X-Expected-Session-Context", "v1:${testId(3)}:${testId(1)}:null:ROLE_CUSTOMER")
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = body
@@ -73,6 +75,7 @@ class QuoteEndpointTest {
             .andExpect { status { isUnauthorized() } }
         mvc.post("/api/quotes") {
                 with(user(CustomUserDetails(testId(3), "staff", "ROLE_OWNER", testId(1), testId(5))))
+                header("X-Expected-Session-Context", "v1:${testId(3)}:${testId(1)}:null:ROLE_CUSTOMER")
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = body
@@ -84,13 +87,14 @@ class QuoteEndpointTest {
                 content = body
             }
             .andExpect { status { isForbidden() } }
-        verify(exactly = 0) { service.create(any(), any()) }
+        verify(exactly = 0) { service.create(any(), any(), any()) }
     }
 
     @Test
     fun `quote endpoint rejects malformed UUID service ID`() {
         mvc.post("/api/quotes") {
                 with(user(customer))
+                header("X-Expected-Session-Context", "v1:${testId(3)}:${testId(1)}:null:ROLE_CUSTOMER")
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
                 content = body.replace("\"${testId(2)}\"", "100.9")

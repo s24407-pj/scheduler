@@ -2,6 +2,8 @@
 
 **Status:** Accepted. Supersedes lifecycle/idempotency portions of ADR-0001, ADR-0002, ADR-0003, ADR-0006 and ADR-0010.
 
+Customer identity/scope and OTP/profile establishment rules are superseded where applicable by [ADR-0017](./0017-company-local-customers.md). Other decisions remain in force.
+
 ## Decision
 
 The authoritative reservation behavior is documented in [reservations](../reservations.md). BOOKED is the only initial state. IDs/creation time and accepted commercial terms survive edits, outcomes, restoration and archive. Appointment deletion is unavailable.

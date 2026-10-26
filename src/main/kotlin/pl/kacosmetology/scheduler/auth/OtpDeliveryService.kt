@@ -54,10 +54,11 @@ class OtpDeliveryService(
     fun stage(event: OtpIssuedEvent) {
         repository.lockPhone(event.phoneNumber)
         val now = clock.instant()
-        val remaining = otpStore.deliveryTtlMillis(event.phoneNumber, event.code)
-        if (remaining != null) repository.discardOtherPending(event.phoneNumber, event.code, now)
+        val remaining = otpStore.deliveryTtlMillis(event.companyId, event.phoneNumber, event.code)
+        if (remaining != null) repository.discardOtherPending(event.companyId, event.phoneNumber, event.code, now)
         repository.insert(
             event.id,
+            event.companyId,
             event.phoneNumber,
             if (remaining == null) null else event.code,
             now,
@@ -68,7 +69,7 @@ class OtpDeliveryService(
     /** Removes a successfully consumed pending secret, preserving any newer replacement delivery. */
     @Transactional(propagation = Propagation.MANDATORY)
     fun discardConsumed(event: OtpConsumedEvent) {
-        repository.discardConsumed(event.phoneNumber, event.code, clock.instant())
+        repository.discardConsumed(event.companyId, event.phoneNumber, event.code, clock.instant())
     }
 
     /** Startup never blindly repeats an unknown in-flight provider call; pending live work remains retryable. */
@@ -90,11 +91,15 @@ class OtpDeliveryService(
         val now = clock.instant()
         if (row.state !in setOf("PENDING", "TEMPORARY_FAILURE") || row.nextAttemptAt.isAfter(now)) return null
         val code = row.code
-        if (code == null || !now.isBefore(row.expiresAt) || otpStore.deliveryTtlMillis(row.phone, code) == null) {
+        if (
+            code == null ||
+                !now.isBefore(row.expiresAt) ||
+                otpStore.deliveryTtlMillis(row.companyId, row.phone, code) == null
+        ) {
             repository.result(id, "DISCARDED", now)
             return null
         }
-        if (row.attempts > 0 || otpStore.firstDeliveryNeedsBudget(row.phone)) {
+        if (row.attempts > 0 || otpStore.firstDeliveryNeedsBudget(row.companyId, row.phone)) {
             val allowance = budget.reserve()
             if (!allowance.allowed) {
                 val retry = now.plusSeconds(allowance.retryAfterSeconds)
@@ -114,7 +119,10 @@ class OtpDeliveryService(
     private fun deliver(id: UUID) {
         val attempt = transactions.execute { prepare(id) } ?: return
         val code = requireNotNull(attempt.code)
-        if (!clock.instant().isBefore(attempt.expiresAt) || otpStore.deliveryTtlMillis(attempt.phone, code) == null) {
+        if (
+            !clock.instant().isBefore(attempt.expiresAt) ||
+                otpStore.deliveryTtlMillis(attempt.companyId, attempt.phone, code) == null
+        ) {
             transactions.executeWithoutResult {
                 if (repository.lock(id)?.state == "SENDING") repository.result(id, "DISCARDED", clock.instant())
             }
@@ -139,7 +147,7 @@ class OtpDeliveryService(
                         if (
                             retry.isBefore(row.expiresAt) &&
                                 row.code != null &&
-                                otpStore.deliveryTtlMillis(row.phone, row.code) != null
+                                otpStore.deliveryTtlMillis(row.companyId, row.phone, row.code) != null
                         )
                             "TEMPORARY_FAILURE"
                         else "DISCARDED"

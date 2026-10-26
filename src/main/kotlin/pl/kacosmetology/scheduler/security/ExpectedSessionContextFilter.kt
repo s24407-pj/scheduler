@@ -9,7 +9,7 @@ import org.springframework.web.servlet.HandlerExceptionResolver
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.ErrorCode
 
-/** Binds a staff write to the account scope that opened its form, independently of the current cookie. */
+/** Binds a company-scoped write to the account scope that opened its form, independently of the current cookie. */
 class ExpectedSessionContextFilter(private val exceptionResolver: HandlerExceptionResolver) : OncePerRequestFilter() {
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, chain: FilterChain) {
         val principal = SecurityContextHolder.getContext().authentication?.principal as? CustomUserDetails
@@ -17,7 +17,7 @@ class ExpectedSessionContextFilter(private val exceptionResolver: HandlerExcepti
             principal != null && requiresContext(request.method, request.requestURI.removePrefix(request.contextPath))
         ) {
             val supplied = request.getHeader(HEADER)
-            if (principal.role in STAFF_ROLES || supplied != null) {
+            if (principal.role in STAFF_ROLES || principal.role == "ROLE_CUSTOMER" || supplied != null) {
                 val error =
                     when {
                         supplied == null ||
@@ -48,7 +48,8 @@ class ExpectedSessionContextFilter(private val exceptionResolver: HandlerExcepti
         private val STAFF_ROLES = setOf("ROLE_OWNER", "ROLE_EMPLOYEE")
         private val SAFE_METHODS = setOf("GET", "HEAD", "OPTIONS", "TRACE")
         private const val UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-        private val FORMAT = Regex("v1:$UUID_PATTERN:$UUID_PATTERN:$UUID_PATTERN:ROLE_(OWNER|EMPLOYEE)")
+        private val FORMAT =
+            Regex("v1:$UUID_PATTERN:$UUID_PATTERN:(?:$UUID_PATTERN:ROLE_(OWNER|EMPLOYEE)|null:ROLE_CUSTOMER)")
 
         /** Public authentication and recovery actions do not originate in an authenticated staff form. */
         fun requiresContext(method: String, path: String): Boolean =

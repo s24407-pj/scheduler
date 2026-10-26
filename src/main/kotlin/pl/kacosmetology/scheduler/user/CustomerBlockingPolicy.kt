@@ -68,9 +68,11 @@ class CustomerBlockingPolicy(
     fun cancelFuture(companyId: UUID, customerId: UUID) {
         val now = LocalDateTime.ofInstant(clock.instant(), BUSINESS_ZONE)
         val future =
-            reservations.findAllByCustomerIdAndArchivedFalseOrderByStartTimeDesc(customerId).filter {
-                it.companyId == companyId && it.status == ReservationStatus.BOOKED && it.startTime.isAfter(now)
-            }
+            reservations
+                .findAllByCompanyIdAndCustomerIdAndArchivedFalseOrderByStartTimeDesc(companyId, customerId)
+                .filter {
+                    it.companyId == companyId && it.status == ReservationStatus.BOOKED && it.startTime.isAfter(now)
+                }
         future.forEach {
             audit.capture()
             it.status = ReservationStatus.CANCELLED
@@ -86,7 +88,7 @@ class CustomerBlockingPolicy(
     private fun lockAndValidate(companyId: UUID, customerId: UUID) {
         if (
             companies.findByIdForUpdate(companyId) == null ||
-                profiles.findByCompanyIdAndUserId(companyId, customerId) == null
+                profiles.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(companyId, customerId) == null
         ) {
             throw ApiException(ErrorCode.CUSTOMER_NOT_FOUND, "Klient nie istnieje w tym salonie")
         }

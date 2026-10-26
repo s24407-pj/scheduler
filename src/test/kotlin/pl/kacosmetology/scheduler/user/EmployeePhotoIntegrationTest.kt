@@ -23,6 +23,7 @@ import pl.kacosmetology.scheduler.company.CompanyEmployee
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.core.sync.RequestBody
@@ -39,7 +40,7 @@ class EmployeePhotoIntegrationTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
 
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
 
     @Autowired private lateinit var companyRepository: CompanyRepository
 
@@ -51,8 +52,8 @@ class EmployeePhotoIntegrationTest {
 
     @MockkBean private lateinit var s3Client: S3Client
 
-    private lateinit var owner: User
-    private lateinit var employee: User
+    private lateinit var owner: StaffFixture
+    private lateinit var employee: StaffFixture
     private lateinit var ownerEmployment: CompanyEmployee
     private lateinit var employeeEmployment: CompanyEmployee
     private var companyId: UUID = testId(0)
@@ -67,8 +68,8 @@ class EmployeePhotoIntegrationTest {
         val company = companyRepository.save(Company(name = "Test Salon"))
         companyId = company.id!!
 
-        owner = userRepository.save(User(phoneNumber = "+48100000001", firstName = "Owner", lastName = "Test"))
-        employee = userRepository.save(User(phoneNumber = "+48100000002", firstName = "Employee", lastName = "Test"))
+        owner = StaffFixture(phoneNumber = "+48100000001", firstName = "Owner", lastName = "Test")
+        employee = StaffFixture(phoneNumber = "+48100000002", firstName = "Employee", lastName = "Test")
 
         ownerEmployment =
             companyEmployeeRepository.save(
@@ -148,8 +149,7 @@ class EmployeePhotoIntegrationTest {
 
     @Test
     fun `POST photo - employee not in company returns 404`() {
-        val outsider =
-            userRepository.save(User(phoneNumber = "+48199999999", firstName = "Outside", lastName = "Person"))
+        val outsider = StaffFixture(phoneNumber = "+48199999999", firstName = "Outside", lastName = "Person")
         val file = MockMultipartFile("photo", "photo.jpg", "image/jpeg", pngBytes())
 
         mockMvc

@@ -23,10 +23,11 @@ import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.reservation.ReservationStatus
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlock
 import pl.kacosmetology.scheduler.scheduleblock.ScheduleBlockRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
 import pl.kacosmetology.scheduler.testId
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomer
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkSchedule
 import pl.kacosmetology.scheduler.workschedule.EmployeeWorkScheduleRepository
 import software.amazon.awssdk.services.s3.S3Client
@@ -40,7 +41,7 @@ class AvailabilityIntegrationTest {
 
     @Autowired private lateinit var companyRepository: CompanyRepository
 
-    @Autowired private lateinit var userRepository: UserRepository
+    @Autowired private lateinit var userRepository: CompanyCustomerRepository
 
     @Autowired private lateinit var companyEmployeeRepository: CompanyEmployeeRepository
 
@@ -92,10 +93,16 @@ class AvailabilityIntegrationTest {
 
         val company = companyRepository.save(Company(name = "Salon Włosów"))
         companyId = company.id!!
-        val employee =
-            userRepository.save(User(phoneNumber = "+48111222333", firstName = "Fryzjer", lastName = "Testowy"))
+        val employee = StaffFixture(phoneNumber = "+48111222333", firstName = "Fryzjer", lastName = "Testowy")
         val customer =
-            userRepository.save(User(phoneNumber = "+48999888777", firstName = "Klient", lastName = "Testowy"))
+            userRepository.save(
+                CompanyCustomer(
+                    companyId = companyId,
+                    phoneNumber = "+48999888777",
+                    firstName = "Klient",
+                    lastName = "Testowy",
+                ),
+            )
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = company.id!!,
@@ -255,8 +262,7 @@ class AvailabilityIntegrationTest {
         val newCompanyId = discountCompany.id!!
 
         // Re-create employee and offering under the new company
-        val newEmployee =
-            userRepository.save(User(phoneNumber = "+48777666555", firstName = "Fryzjer2", lastName = "Testowy2"))
+        val newEmployee = StaffFixture(phoneNumber = "+48777666555", firstName = "Fryzjer2", lastName = "Testowy2")
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = newCompanyId,
@@ -327,8 +333,7 @@ class AvailabilityIntegrationTest {
     @Test
     fun `foreign employee is opaque 404`() {
         val otherCompany = companyRepository.save(Company(name = "Obcy Salon"))
-        val otherEmployee =
-            userRepository.save(User(phoneNumber = "+48111999000", firstName = "Obcy", lastName = "Pracownik"))
+        val otherEmployee = StaffFixture(phoneNumber = "+48111999000", firstName = "Obcy", lastName = "Pracownik")
         companyEmployeeRepository.save(
             CompanyEmployee(
                 companyId = otherCompany.id!!,

@@ -20,7 +20,7 @@ class AccountSessionRegistryTest {
     private val values = mockk<ValueOperations<String, String>>()
     private val sessions = mockk<FindByIndexNameSessionRepository<Session>>()
     private val login = Instant.parse("2026-10-15T10:00:00Z")
-    private val customer = CustomUserDetails(testId(12), "+48500100200", "ROLE_CUSTOMER")
+    private val customer = CustomUserDetails(testId(12), "+48500100200", "ROLE_CUSTOMER", testId(1))
     private val staff = CustomUserDetails(testId(12), "+48500100200", "ROLE_EMPLOYEE", testId(8), testId(31))
     private var generation = 0L
 
@@ -46,7 +46,7 @@ class AccountSessionRegistryTest {
         val customerAttributes = registry.sessionAttributes(customer)
         val staffAttributes = registry.sessionAttributes(staff)
         assertEquals(
-            "customer:${testId(12)}:0",
+            "customer:${testId(1)}:${testId(12)}:0",
             customerAttributes[FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME],
         )
         assertEquals(

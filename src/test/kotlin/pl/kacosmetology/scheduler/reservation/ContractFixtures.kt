@@ -32,7 +32,8 @@ class ContractFixtures(private val jdbc: JdbcTemplate) {
             )!!
         val customer =
             jdbc.queryForObject<UUID>(
-                "INSERT INTO customer_accounts(phone_number) VALUES(?) RETURNING id",
+                "INSERT INTO company_customers(company_id,phone_number) VALUES(?,?) RETURNING id",
+                company,
                 "+48" + (100000000..999999999).random(),
             )!!
         return Salon(company, employee, staff, service, customer)
@@ -40,7 +41,7 @@ class ContractFixtures(private val jdbc: JdbcTemplate) {
 
     fun profile(s: Salon, customer: UUID = s.customer) {
         jdbc.update(
-            "INSERT INTO company_customers(company_id,user_id,first_name,last_name) VALUES(?,?,'Jan','Klient') ON CONFLICT DO NOTHING",
+            "UPDATE company_customers SET first_name='Jan',last_name='Klient',first_booking_at=CURRENT_TIMESTAMP WHERE company_id=? AND id=?",
             s.company,
             customer,
         )

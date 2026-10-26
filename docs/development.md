@@ -71,13 +71,13 @@ The `dev` profile runs `DataInitializer` on startup. It is idempotent.
 ### Signing in with cookies and CSRF
 
 ```bash
-# Fresh seeded database: companyId=1. For an existing database use its seeded company ID.
+# A fresh development seed has one company for this staff email.
 # jq is used only to extract the CSRF token; the session identifier is never read.
 csrf=$(curl -fsS -c /tmp/scheduler-cookies http://localhost:8080/api/auth/csrf | jq -r .token)
 curl -fsS -b /tmp/scheduler-cookies -c /tmp/scheduler-cookies \
-  http://localhost:8080/api/auth/login-staff \
+  http://localhost:8080/api/auth/login-staff-email \
   -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $csrf" \
-  -d '{"companyId":1,"email":"gabinet@kacosmetology.pl","password":"admin123"}'
+  -d '{"email":"gabinet@kacosmetology.pl","password":"admin123"}'
 # Authentication clears CSRF: refresh before any further mutation.
 csrf=$(curl -fsS -b /tmp/scheduler-cookies -c /tmp/scheduler-cookies \
   http://localhost:8080/api/auth/csrf | jq -r .token)
@@ -87,7 +87,7 @@ curl -fsS -b /tmp/scheduler-cookies -c /tmp/scheduler-cookies -X POST \
 rm -f /tmp/scheduler-cookies
 ```
 
-For customers, obtain CSRF first, call `request-code`, then `verify-code` with the same cookie jar/header. In development inspect the local Redis `otp:<canonical-phone>` key; codes are never logged. Verification needs only phone and six-digit code; names are collected atomically with the first successful salon booking. Refresh CSRF after verification. Authentication JSON identifies the authenticated account and contains no credential. Browser clients use `credentials: 'include'`; follow the [frontend contract](./architecture.md#csrf-cookies-and-frontend-contract).
+For customers, obtain CSRF first, call `request-code`, then `verify-code` with the same cookie jar/header. In development inspect the local Redis `otp:<companyId>:<canonical-phone>` key; codes are never logged. Both request and verification require `companyId`; verification otherwise needs only phone and six-digit code; names are collected atomically with the first successful salon booking. Refresh CSRF after verification. Authentication JSON identifies the authenticated account and contains no credential. Browser clients use `credentials: 'include'`; follow the [frontend contract](./architecture.md#csrf-cookies-and-frontend-contract).
 
 
 ## Configuration
@@ -176,3 +176,10 @@ The `backend-test-reports` artifact contains the Gradle console log, HTML report
 JUnit XML and generated OpenAPI document, including on failures, for seven days.
 Docker availability is checked before building, and failed jobs print container state.
 The required check name remains `Build & Test`.
+
+
+## Company-local customer baseline (2026-10-24)
+
+The authorized fresh schema consolidates former V1–V4 into `V1__init_schema.sql` and removes global customer accounts. Existing databases are incompatible: stop the old application, explicitly recreate only the intended development database, and clear that environment's Redis session/OTP/cache data before applying V1. Startup does not reset databases. Do not bypass Flyway checksums or mark the old schema as migrated. This baseline provides no data-preserving upgrade.
+
+Deploy clients and API together. OTP bodies now require a salon `companyId`; customer `/api/auth/me` includes that company. Protected customer writes require `X-Expected-Session-Context: v1:<userId>:<companyId>:null:ROLE_CUSTOMER`. Names are required at the first successful booking, and pending OTP identities are not listed to staff. Staff login and its existing context format remain unchanged.

@@ -6,7 +6,7 @@ A short index of paths and authorization rules. Request and response schemas com
 
 All unsafe methods require `X-XSRF-TOKEN` and its cookie, including public auth calls. Successful login returns status and sets HttpOnly `SESSION`; refresh `/api/auth/csrf` after authentication/logout. See the [frontend contract](../architecture.md#csrf-cookies-and-frontend-contract).
 
-Authenticated staff mutations additionally require `X-Expected-Session-Context: v1:userId:companyId:employmentId:ROLE_OWNER` (or `ROLE_EMPLOYEE`) captured from `/api/auth/me` when opening the authenticated UI. Use lowercase canonical UUIDs. This includes `/api/auth/logout-all`, but excludes public authentication, password recovery and `/api/auth/logout`. Missing/malformed/duplicate headers return 400 `SESSION_CONTEXT_REQUIRED`; a changed cookie identity returns 409 `SESSION_CONTEXT_CHANGED` without executing the write. Customer-only requests do not require this header. See the [session-context contract](../architecture.md#csrf-cookies-and-frontend-contract).
+Authenticated staff mutations additionally require `X-Expected-Session-Context: v1:userId:companyId:employmentId:ROLE_OWNER` (or `ROLE_EMPLOYEE`) captured from `/api/auth/me` when opening the authenticated UI. Use lowercase canonical UUIDs. This includes `/api/auth/logout-all`, but excludes public authentication, password recovery and `/api/auth/logout`. Missing/malformed/duplicate headers return 400 `SESSION_CONTEXT_REQUIRED`; a changed cookie identity returns 409 `SESSION_CONTEXT_CHANGED` without executing the write. Customer writes also require this header, with `v1:customerId:companyId:null:ROLE_CUSTOMER` (literal `null` employment); the same exclusions apply. See the [session-context contract](../architecture.md#csrf-cookies-and-frontend-contract).
 
 Times and dates: see [time handling](../time-handling.md). Errors: see [errors](./errors.md).
 
@@ -20,8 +20,8 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| POST | `/api/auth/request-code` | Public | Sends six-digit OTP after commit; 60s cooldown, rolling phone/IP limits and global daily cap |
-| POST | `/api/auth/verify-code` | Public | Creates phone-only customer HttpOnly session without names; atomic single-use OTP, rolling IP limit |
+| POST | `/api/auth/request-code` | Public | Requires `companyId` and phone; Sends six-digit OTP after commit; 60s cooldown, rolling phone/IP limits and global daily cap |
+| POST | `/api/auth/verify-code` | Public | Requires `companyId`, phone and six-digit code; creates a company-local phone-only customer HttpOnly session without names; atomic single-use OTP, rolling IP limit |
 | POST | `/api/auth/login-staff` | Public | `companyId`, normalized `email`, `password`; failed authentication is generic 401; compatibility/high-membership fallback |
 | POST | `/api/auth/login-staff-email` | Public, anonymous only | `{email,password}`; authenticate one verified account or return verified company choices plus a 120s opaque grant; generic 401, IP/email 429 |
 | POST | `/api/auth/complete-staff-login` | Public, anonymous only | `{selectionToken,companyId}`; anonymous SESSION cookie binding, atomic single use, locked version/generation revalidation; generic 401 on invalid/expired/wrong-browser grant, independent IP 429 |
@@ -102,7 +102,7 @@ See [reservations](../reservations.md).
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| POST | `/api/reservations` | CUSTOMER | Required Idempotency-Key; optional employee means atomic any-employee allocation; first local profile requires names; 201 or current replay 200 |
+| POST | `/api/reservations` | CUSTOMER | Required Idempotency-Key; optional employee means atomic any-employee allocation; pending profile requires firstVisitDetails; established plus details conflicts; 201 or current replay 200 |
 | POST | `/api/reservations/staff` | OWNER, EMPLOYEE | Required Idempotency-Key; manual regular-price booking, explicit duration/price/block override, internalNotes and SMS opt-in |
 | PUT | `/api/reservations/{id}` | OWNER, EMPLOYEE | Direct edit or staff-only internalNotes update, required If-Match; preserves ID/creation time/customer |
 | PATCH | `/api/reservations/{id}/cancel` | CUSTOMER | Required If-Match; own booking strictly before start; optional reason |
@@ -129,10 +129,10 @@ See [reservations](../reservations.md).
 
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
-| GET | `/api/customers` | OWNER, EMPLOYEE | Customers of the caller's company |
+| GET | `/api/customers` | OWNER, EMPLOYEE | Customers of the caller's company after their first successful booking |
 | GET | `/api/customers/{id}` | OWNER, EMPLOYEE | Company-scoped status (no-shows, blocked) |
-| PUT | `/api/customers/{id}/notes` | OWNER, EMPLOYEE | Existing local profile required; never creates a relationship |
-| PUT | `/api/customers/{id}/profile` | OWNER, EMPLOYEE | Updates local names and optional contact email |
+| PUT | `/api/customers/{id}/notes` | OWNER, EMPLOYEE | Existing local profile with `first_booking_at` required; If-Match profile revision required; never creates a relationship |
+| PUT | `/api/customers/{id}/profile` | OWNER, EMPLOYEE | Updates local names and optional contact email; If-Match profile revision required |
 | GET | `/api/customers/{id}/visits` | OWNER, EMPLOYEE | Company-scoped visit history, existing relationship required |
 | PATCH | `/api/customers/{id}/block` | OWNER | |
 | PATCH | `/api/customers/{id}/unblock` | OWNER | Preserves penalty history; clears manual/automatic block, never restores appointments |
@@ -154,3 +154,7 @@ Only `/actuator/health` is public and returns aggregate status without details/c
 Generated OpenAPI marks public operations explicitly and describes `sessionAuth` (HttpOnly `SESSION` cookie) separately from `csrfToken` (`X-XSRF-TOKEN` header). Every unsafe operation requires CSRF, including anonymous login/OTP/logout.
 
 Resource IDs in paths, queries and JSON are UUID strings (`format: uuid`); newly generated persisted IDs are UUIDv7. Revision/If-Match remains numeric.
+
+Customer IDs refer to `company_customers.id`. `/api/auth/me` returns a non-null `companyId` and null `employmentId` for CUSTOMER; `/api/users/me` returns `{id,phoneNumber,companyId,profileState}`. Both OTP endpoints reject nonexistent companies with 404 before issuance/consumption. Customer bookings/quotes/history/cancellation are limited to the session company.
+
+Booking customer intent: staff supplies exclusive `customer:{kind:"existing",customerId}` or `{kind:"new",phoneNumber,firstName,lastName,contactEmail?}`; no company is accepted as authority in the body. New established collisions return `409 CUSTOMER_PHONE_ALREADY_EXISTS` plus same-company `existingCustomer:{id}`. Staff success/current replay includes `customerId`; customer responses omit it. Customer first details are grouped in optional `firstVisitDetails` and never update an established profile (`409 CUSTOMER_PROFILE_CHANGED`). Flat booking and OTP name fields are rejected; see [ADR-0018](../adr/0018-explicit-booking-customer-intent.md). OTP/new phone input requires explicit international syntax.

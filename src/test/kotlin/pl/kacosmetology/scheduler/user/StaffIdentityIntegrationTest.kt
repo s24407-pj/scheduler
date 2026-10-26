@@ -49,7 +49,7 @@ class StaffIdentityIntegrationTest {
     @Autowired private lateinit var redis: StringRedisTemplate
     @Autowired private lateinit var companies: CompanyRepository
     @Autowired private lateinit var accounts: CompanyEmployeeRepository
-    @Autowired private lateinit var customers: UserRepository
+    @Autowired private lateinit var customers: CompanyCustomerRepository
     @Autowired private lateinit var profiles: CompanyCustomerRepository
     @Autowired private lateinit var links: StaffPasswordLinkRepository
     @Autowired private lateinit var passwords: PasswordEncoder
@@ -68,7 +68,7 @@ class StaffIdentityIntegrationTest {
 
     @BeforeEach
     fun setup() {
-        jdbc.execute("TRUNCATE companies, customer_accounts RESTART IDENTITY CASCADE")
+        jdbc.execute("TRUNCATE companies, company_customers RESTART IDENTITY CASCADE")
         redis.connectionFactory!!.connection.use { it.serverCommands().flushAll() }
         every { clock.instant() } returns now
         every { clock.zone } returns ZoneId.of("Europe/Warsaw")
@@ -140,7 +140,7 @@ class StaffIdentityIntegrationTest {
         val first = login(employee.companyId, "employee@example.test")
         val second = login(employee.companyId, "employee@example.test")
         val untouched = login(foreign.companyId, "employee@example.test")
-        val customer = customers.save(User(phoneNumber = "+48500100200"))
+        val customer = customers.save(CompanyCustomer(companyId = company.id!!, phoneNumber = "+48500100200"))
         val customerSession = fixtures.customer(customer)
         assertEquals(
             401,
@@ -202,25 +202,33 @@ class StaffIdentityIntegrationTest {
 
     @Test
     fun `company customer read notes and profile writes require legitimate local relationship`() {
-        val account = customers.save(User(phoneNumber = "+48500100200"))
-        profiles.save(
-            CompanyCustomer(
-                companyId = otherCompany.id!!,
-                userId = account.id!!,
-                firstName = "Private",
-                lastName = "Other",
-                notes = "secret",
-            ),
-        )
-        assertEquals(404, mvc.perform(get("/api/customers/${account.id}").cookie(owner)).andReturn().response.status)
+        val foreign =
+            profiles.save(
+                CompanyCustomer(
+                    companyId = otherCompany.id!!,
+                    phoneNumber = "+48500100200",
+                    firstBookingAt = now,
+                    firstName = "Private",
+                    lastName = "Other",
+                    notes = "secret",
+                ),
+            )
+        assertEquals(404, mvc.perform(get("/api/customers/${foreign.id}").cookie(owner)).andReturn().response.status)
         assertEquals(
             404,
-            putJson("/api/customers/${account.id}/notes", mapOf("notes" to "intrusion"), owner).response.status,
+            putJson("/api/customers/${foreign.id}/notes", mapOf("notes" to "intrusion"), owner).response.status,
         )
-        assertEquals(1, profiles.count())
-        profiles.save(
-            CompanyCustomer(companyId = company.id!!, userId = account.id!!, firstName = "Local", lastName = "Name"),
-        )
+        val account =
+            profiles.save(
+                CompanyCustomer(
+                    companyId = company.id!!,
+                    phoneNumber = foreign.phoneNumber,
+                    firstBookingAt = now,
+                    firstName = "Local",
+                    lastName = "Name",
+                ),
+            )
+        assertEquals(2, profiles.count())
         assertEquals(
             204,
             putJson(
@@ -231,8 +239,8 @@ class StaffIdentityIntegrationTest {
                 .response
                 .status,
         )
-        assertEquals("Private", profiles.findByCompanyIdAndUserId(otherCompany.id!!, account.id!!)!!.firstName)
-        assertEquals("Edited", profiles.findByCompanyIdAndUserId(company.id!!, account.id!!)!!.firstName)
+        assertEquals("Private", profiles.findByCompanyIdAndId(otherCompany.id!!, foreign.id!!)!!.firstName)
+        assertEquals("Edited", profiles.findByCompanyIdAndId(company.id!!, account.id!!)!!.firstName)
         val customerSession = fixtures.customer(account)
         assertEquals(
             405,
@@ -291,7 +299,7 @@ class StaffIdentityIntegrationTest {
     @Test
     fun `disable preserves ongoing and future visits and returns future warning`() {
         val employee = employee(company.id!!)
-        val customer = customers.save(User(phoneNumber = "+48500100200"))
+        val customer = customers.save(CompanyCustomer(companyId = company.id!!, phoneNumber = "+48500100200"))
         val offering =
             offerings.save(
                 pl.kacosmetology.scheduler.offering.Offering(
@@ -432,6 +440,8 @@ class StaffIdentityIntegrationTest {
                 .cookie(cookie)
                 .contentType("application/json")
                 .content(mapper.writeValueAsString(body))
+        if (path.startsWith("/api/customers/") && (path.endsWith("/profile") || path.endsWith("/notes")))
+            request.header("If-Match", "\"0\"")
         expectedContexts[cookie.value]?.let { request.header("X-Expected-Session-Context", it) }
         return mvc.perform(request).andReturn()
     }

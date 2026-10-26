@@ -16,13 +16,12 @@ import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.security.AccountSessionRegistry
 import pl.kacosmetology.scheduler.security.CustomUserDetails
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 
 /** Handles authentication flows: SMS OTP for customers and email/password for staff. */
 @Service
 class AuthService(
-    private val userRepository: UserRepository,
+    private val userRepository: CompanyCustomerRepository,
     private val otpStore: OtpStore,
     private val eventPublisher: ApplicationEventPublisher,
     private val passwordEncoder: PasswordEncoder,
@@ -56,27 +55,28 @@ class AuthService(
     fun requestCode(request: RequestCodeRequest, clientIp: String) {
         val limit = otpRequestRateLimiter.check(clientIp)
         if (!limit.allowed) throw RateLimitExceededException(retryAfterSeconds = limit.retryAfterSeconds)
-        val phoneNumber = canonicalPhone(request.phoneNumber)
-        val code = otpStore.issueCode(phoneNumber)
-        eventPublisher.publishEvent(OtpIssuedEvent(phoneNumber, code))
+        val phoneNumber = pl.kacosmetology.scheduler.user.internationalPhone(request.phoneNumber)
+        requireCompany(request.companyId)
+        val code = otpStore.issueCode(request.companyId, phoneNumber)
+        eventPublisher.publishEvent(OtpIssuedEvent(request.companyId, phoneNumber, code))
     }
 
-    /** Consumes an OTP once and creates only a global phone authentication account, without salon profile data. */
+    /** Consumes an OTP once and creates a company-local phone identity, without establishing staff visibility. */
     @Transactional
     fun verifyCode(request: VerifyCodeRequest, clientIp: String): CustomUserDetails {
         val limit = otpVerificationRateLimiter.check(clientIp)
         if (!limit.allowed) throw RateLimitExceededException(retryAfterSeconds = limit.retryAfterSeconds)
-        val phoneNumber = canonicalPhone(request.phoneNumber)
-        requireVerified(otpStore.verifyAndConsumeCode(phoneNumber, request.code), clientIp)
-        eventPublisher.publishEvent(OtpConsumedEvent(phoneNumber, request.code))
-        val user = userRepository.findByPhoneNumber(phoneNumber) ?: userRepository.save(User(phoneNumber = phoneNumber))
-        return CustomUserDetails(requireNotNull(user.id), user.phoneNumber, "ROLE_CUSTOMER")
+        val phoneNumber = pl.kacosmetology.scheduler.user.internationalPhone(request.phoneNumber)
+        requireCompany(request.companyId)
+        requireVerified(otpStore.verifyAndConsumeCode(request.companyId, phoneNumber, request.code), clientIp)
+        eventPublisher.publishEvent(OtpConsumedEvent(request.companyId, phoneNumber, request.code))
+        userRepository.insertIfPhoneAbsent(request.companyId, phoneNumber)
+        val user = checkNotNull(userRepository.findByCompanyIdAndPhoneNumber(request.companyId, phoneNumber))
+        return CustomUserDetails(requireNotNull(user.id), user.phoneNumber, "ROLE_CUSTOMER", request.companyId)
     }
 
-    private fun canonicalPhone(value: String): String {
-        val digits = value.trim().removePrefix("+")
-        require(digits.matches(Regex("[0-9]{9,15}"))) { "Nieprawidłowy format numeru telefonu" }
-        return "+$digits"
+    private fun requireCompany(companyId: UUID) {
+        if (!companyRepository.existsById(companyId)) throw ApiException(ErrorCode.NOT_FOUND, "Nie znaleziono firmy")
     }
 
     private fun rateLimited(limiter: String, clientIp: String): Nothing {

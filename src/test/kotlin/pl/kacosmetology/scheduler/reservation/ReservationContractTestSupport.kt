@@ -22,9 +22,9 @@ import pl.kacosmetology.scheduler.TestcontainersConfiguration
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
 import pl.kacosmetology.scheduler.company.CompanyEmployeeRepository
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
+import pl.kacosmetology.scheduler.security.StaffFixture
 import pl.kacosmetology.scheduler.security.TestSessions
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
@@ -39,7 +39,7 @@ abstract class ReservationContractTestSupport {
     @Autowired protected lateinit var json: ObjectMapper
     @Autowired protected lateinit var fixtures: ContractFixtures
     @Autowired protected lateinit var sessions: TestSessions
-    @Autowired protected lateinit var customers: UserRepository
+    @Autowired protected lateinit var customers: CompanyCustomerRepository
     @Autowired protected lateinit var staffAccounts: CompanyEmployeeRepository
     @Autowired protected lateinit var repository: ReservationRepository
     @Autowired protected lateinit var slotPolicy: pl.kacosmetology.scheduler.availability.BookableSlotPolicy
@@ -70,12 +70,13 @@ abstract class ReservationContractTestSupport {
 
     protected fun staffCookie(id: UUID = salon.staff): Cookie =
         staffAccounts.findById(id).orElseThrow().let {
-            sessions.staff(User(id = it.userId, phoneNumber = "+48999000111"), it)
+            sessions.staff(StaffFixture(id = it.userId, phoneNumber = "+48999000111"), it)
         }
 
     protected fun newCustomer(): UUID =
         jdbc.queryForObject<UUID>(
-            "INSERT INTO customer_accounts(phone_number) VALUES(?) RETURNING id",
+            "INSERT INTO company_customers(company_id,phone_number) VALUES(?,?) RETURNING id",
+            salon.company,
             "+48" + (100000000..999999999).random(),
         )!!
 
@@ -117,8 +118,7 @@ abstract class ReservationContractTestSupport {
             "employeeId" to employee,
             "serviceId" to service,
             "startTime" to start.toString(),
-            "firstName" to "Jan",
-            "lastName" to "Klient",
+            "firstVisitDetails" to mapOf("firstName" to "Jan", "lastName" to "Klient"),
         )
 
     protected fun book(
@@ -143,13 +143,20 @@ abstract class ReservationContractTestSupport {
             "employeeId" to employee,
             "serviceId" to service,
             "startTime" to start.toString(),
-            "customerPhone" to phone,
-            "customerFirstName" to "Jan",
-            "customerLastName" to "Klient",
+            "customer" to
+                (jdbc
+                    .queryForList(
+                        "SELECT id FROM company_customers WHERE company_id=? AND phone_number=? AND first_booking_at IS NOT NULL",
+                        jdbc.queryForObject<UUID>("SELECT company_id FROM offerings WHERE id=?", service),
+                        phone,
+                    )
+                    .singleOrNull()
+                    ?.let { mapOf("kind" to "existing", "customerId" to it["id"]) }
+                    ?: mapOf("kind" to "new", "phoneNumber" to phone, "firstName" to "Jan", "lastName" to "Klient")),
         )
 
     protected fun phone(customer: UUID): String =
-        jdbc.queryForObject<String>("SELECT phone_number FROM customer_accounts WHERE id=?", customer)!!
+        jdbc.queryForObject<String>("SELECT phone_number FROM company_customers WHERE id=?", customer)!!
 
     protected fun postJson(path: String, body: Any, cookie: Cookie?, key: String? = null): MvcResult {
         val request = post(path).with(csrf()).contentType("application/json").content(json.writeValueAsString(body))
@@ -195,6 +202,9 @@ abstract class ReservationContractTestSupport {
 
     protected fun state(id: UUID): String =
         jdbc.queryForObject<String>("SELECT status FROM reservations WHERE id=?", id)!!
+
+    protected fun visibleCustomers(): Long =
+        jdbc.queryForObject<Long>("SELECT count(*) FROM company_customers WHERE first_booking_at IS NOT NULL")!!
 
     protected fun count(table: String): Long = jdbc.queryForObject<Long>("SELECT count(*) FROM $table")!!
 

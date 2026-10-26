@@ -26,6 +26,7 @@ data class ReservationResponse(
     val employeeName: String = "",
     val archived: Boolean = false,
     @field:JsonInclude(JsonInclude.Include.NON_NULL) val internalNotes: String? = null,
+    @field:JsonInclude(JsonInclude.Include.NON_NULL) val customerId: UUID? = null,
 )
 
 /** Staff-facing DTO — includes customerId for the employee's schedule view. */

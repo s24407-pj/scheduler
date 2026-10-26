@@ -55,8 +55,9 @@ import pl.kacosmetology.scheduler.security.AccountSessionRegistry
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.ExpectedSessionContextFilter
 import pl.kacosmetology.scheduler.security.SessionAuthorizationFilter
-import pl.kacosmetology.scheduler.user.User
-import pl.kacosmetology.scheduler.user.UserRepository
+import pl.kacosmetology.scheduler.security.StaffFixture
+import pl.kacosmetology.scheduler.user.CompanyCustomer
+import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import software.amazon.awssdk.services.s3.S3Client
 import tools.jackson.databind.ObjectMapper
 
@@ -69,7 +70,7 @@ class SessionSecurityIntegrationTest {
     @Autowired private lateinit var mapper: ObjectMapper
     @Autowired private lateinit var sessions: RedisIndexedSessionRepository
     @Autowired private lateinit var redis: StringRedisTemplate
-    @Autowired private lateinit var users: UserRepository
+    @Autowired private lateinit var users: CompanyCustomerRepository
     @Autowired private lateinit var companies: CompanyRepository
     @Autowired private lateinit var employments: CompanyEmployeeRepository
     @Autowired private lateinit var reservations: ReservationRepository
@@ -88,7 +89,7 @@ class SessionSecurityIntegrationTest {
     @Autowired private lateinit var testSessions: pl.kacosmetology.scheduler.security.TestSessions
     private lateinit var loginTime: Instant
 
-    private lateinit var staff: User
+    private lateinit var staff: StaffFixture
     private lateinit var owner: CompanyEmployee
     private lateinit var employee: CompanyEmployee
     private val password = "securePassword1"
@@ -107,14 +108,12 @@ class SessionSecurityIntegrationTest {
         companies.deleteAll()
         every { smsSender.sendOtp(any(), any()) } just Runs
         staff =
-            users.save(
-                User(
-                    phoneNumber = "+48500123456",
-                    firstName = "Staff",
-                    lastName = "Session",
-                    email = "sessions@salon.pl",
-                    passwordHash = passwords.encode(password),
-                ),
+            StaffFixture(
+                phoneNumber = "+48500123456",
+                firstName = "Staff",
+                lastName = "Session",
+                email = "sessions@salon.pl",
+                passwordHash = passwords.encode(password),
             )
         val a = companies.save(Company(name = "Alpha"))
         val b = companies.save(Company(name = "Beta"))
@@ -149,7 +148,7 @@ class SessionSecurityIntegrationTest {
         val browser = customer("+48500999888")
         val me = me(browser)
         assertEquals("ROLE_CUSTOMER", me["authorities"][0].asString())
-        assertTrue(me["companyId"].isNull)
+        assertEquals(owner.companyId.toString(), me["companyId"].asString())
         assertTrue(me["employmentId"].isNull)
         assertEquals(200, mvc.perform(get("/api/users/me").cookie(browser.session!!)).andReturn().response.status)
         assertNotNull(sessions.findById(id(browser.session)))
@@ -353,7 +352,8 @@ class SessionSecurityIntegrationTest {
     @Test
     fun `customer logout all isolates customer account from staff and other customers`() {
         val first = customer(staff.phoneNumber)
-        val second = csrf(testSessions.customer(staff))
+        val second =
+            csrf(testSessions.customer(users.findByCompanyIdAndPhoneNumber(owner.companyId, staff.phoneNumber)!!))
         val staffBrowser = login(owner.id!!)
         val otherCustomer = customer("+48500777777")
         assertEquals(204, post(first, "/api/auth/logout-all").response.status)
@@ -498,7 +498,7 @@ class SessionSecurityIntegrationTest {
     @Test
     fun `employment reassigned to another user invalidates session`() {
         val browser = login(owner.id!!)
-        val other = users.save(User(phoneNumber = "+48500333333", firstName = "Other", lastName = "User"))
+        val other = StaffFixture(phoneNumber = "+48500333333", firstName = "Other", lastName = "User")
         jdbc.update("update company_employees set user_id = ? where id = ?", other.id, owner.id)
         assertRevoked(browser)
     }
@@ -507,7 +507,6 @@ class SessionSecurityIntegrationTest {
     fun `deleted staff account invalidates session`() {
         val browser = login(owner.id!!)
         employments.deleteAll()
-        users.deleteById(staff.id!!)
         assertRevoked(browser)
     }
 
@@ -521,7 +520,7 @@ class SessionSecurityIntegrationTest {
 
     @Test
     fun `foreign employment selection cannot create session`() {
-        val other = users.save(User(phoneNumber = "+48500444444", firstName = "Other", lastName = "Staff"))
+        val other = StaffFixture(phoneNumber = "+48500444444", firstName = "Other", lastName = "Staff")
         val foreign =
             employments.save(CompanyEmployee(companyId = owner.companyId, userId = other.id!!, role = "OWNER"))
         val result =
@@ -602,8 +601,15 @@ class SessionSecurityIntegrationTest {
     fun `recycled phone number cannot bind an old account session to a new user`() {
         val browser = customer("+48500888888")
         val userId = UUID.fromString(me(browser)["userId"].asString())
-        jdbc.update("update customer_accounts set phone_number = ? where id = ?", "+48500888889", userId)
-        users.save(User(phoneNumber = "+48500888888", firstName = "New", lastName = "Identity"))
+        jdbc.update("update company_customers set phone_number = ? where id = ?", "+48500888889", userId)
+        users.save(
+            CompanyCustomer(
+                companyId = owner.companyId,
+                phoneNumber = "+48500888888",
+                firstName = "New",
+                lastName = "Identity",
+            ),
+        )
         assertRevoked(browser)
     }
 
@@ -1174,13 +1180,22 @@ class SessionSecurityIntegrationTest {
 
     private fun customer(phone: String): Browser {
         val anonymous = csrf()
-        assertEquals(200, post(anonymous, "/api/auth/request-code", mapOf("phoneNumber" to phone)).response.status)
-        val code = requireNotNull(redis.opsForValue().get("otp:$phone"))
+        assertEquals(
+            200,
+            post(anonymous, "/api/auth/request-code", mapOf("companyId" to owner.companyId, "phoneNumber" to phone))
+                .response
+                .status,
+        )
+        val code = requireNotNull(redis.opsForValue().get("otp:${owner.companyId}:$phone"))
         val result =
             post(
                 anonymous,
                 "/api/auth/verify-code",
-                mapOf("phoneNumber" to phone, "code" to code, "firstName" to "Customer", "lastName" to "Session"),
+                mapOf(
+                    "companyId" to owner.companyId,
+                    "phoneNumber" to phone,
+                    "code" to code,
+                ),
             )
         assertEquals(200, result.response.status)
         assertFalse(mapper.readTree(result.response.contentAsString).has("token"))

@@ -27,8 +27,8 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
     @Test
     fun `first booking requires names and failed submission creates no salon profile`() {
         shift()
-        assertEquals(400, book(customerBody() - "firstName").response.status)
-        assertEquals(0L, count("company_customers"))
+        assertEquals(400, book(customerBody() - "firstVisitDetails").response.status)
+        assertEquals(0L, visibleCustomers())
         assertEquals(0L, count("reservations"))
     }
 
@@ -37,10 +37,17 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
         shift()
         profile()
         assertEquals(
-            201,
+            409,
             book(
                     customerBody() +
-                        mapOf("firstName" to "Hijack", "lastName" to "Changed", "contactEmail" to "wrong@example.test"),
+                        mapOf(
+                            "firstVisitDetails" to
+                                mapOf(
+                                    "firstName" to "Hijack",
+                                    "lastName" to "Changed",
+                                    "contactEmail" to "wrong@example.test",
+                                ),
+                        ),
                 )
                 .response
                 .status,
@@ -57,7 +64,7 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
         assertEquals(409, book(customerBody(future.withHour(20))).response.status)
         block()
         assertEquals(409, book().response.status)
-        assertEquals(0L, count("company_customers"))
+        assertEquals(0L, visibleCustomers())
     }
 
     @Test
@@ -119,7 +126,15 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
         assertEquals(201, book().response.status)
         val other = fixtures.salon()
         fixtures.shift(other, future)
-        assertEquals(201, book(customerBody(employee = other.employee, service = other.service)).response.status)
+        assertEquals(
+            201,
+            book(
+                    customerBody(employee = other.employee, service = other.service),
+                    cookie = customerCookie(other.customer),
+                )
+                .response
+                .status,
+        )
         assertEquals(2L, count("reservations"))
     }
 
@@ -182,10 +197,16 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
     @Test
     fun `future customer booking cap is atomic across concurrent nonoverlapping requests`() {
         shift()
+        profile()
         jdbc.update("UPDATE companies SET max_future_customer_bookings=1 WHERE id=?", salon.company)
         val cookie = customerCookie()
         val results =
-            race(listOf({ book(cookie = cookie) }, { book(customerBody(future.plusHours(1)), cookie = cookie) }))
+            race(
+                listOf(
+                    { book(customerBody() - "firstVisitDetails", cookie = cookie) },
+                    { book(customerBody(future.plusHours(1)) - "firstVisitDetails", cookie = cookie) },
+                ),
+            )
         assertEquals(listOf(201, 409), results.map { it.response.status }.sorted())
         assertEquals(1L, count("reservations"))
         assertTrue(results.any { it.response.contentAsString.contains("BOOKING_LIMIT_REACHED") })
@@ -237,7 +258,7 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
             val result = request.get(15, TimeUnit.SECONDS)
             assertEquals(409, result.response.status, result.response.contentAsString)
             assertEquals("BOOKING_ADVANCE_REQUIRED", tree(result)["code"].stringValue())
-            assertEquals(0L, count("company_customers"))
+            assertEquals(0L, visibleCustomers())
         } finally {
             release.countDown()
             pool.shutdownNow()
@@ -245,7 +266,7 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
     }
 
     @Test
-    fun `simultaneous manual first visits at different companies share only canonical phone identity`() {
+    fun `simultaneous manual first visits at different companies create independent canonical phone identities`() {
         val other = fixtures.salon()
         val a = staffCookie()
         val b = staffCookie(other.staff)
@@ -256,7 +277,15 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
                     {
                         manual(
                             manualBody(employee = other.employee, service = other.service, phone = "+48500100200") +
-                                mapOf("customerFirstName" to "Other"),
+                                mapOf(
+                                    "customer" to
+                                        mapOf(
+                                            "kind" to "new",
+                                            "phoneNumber" to "+48500100200",
+                                            "firstName" to "Other",
+                                            "lastName" to "Klient",
+                                        ),
+                                ),
                             cookie = b,
                         )
                     },
@@ -268,14 +297,16 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
             results.joinToString { it.response.contentAsString },
         )
         assertEquals(
-            1L,
+            2L,
             jdbc.queryForObject<Long>(
-                "SELECT count(*) FROM customer_accounts WHERE phone_number='+48500100200'",
+                "SELECT count(*) FROM company_customers WHERE phone_number='+48500100200'",
             ),
         )
         assertEquals(
             setOf("Jan", "Other"),
-            jdbc.queryForList<String>("SELECT first_name FROM company_customers").toSet(),
+            jdbc
+                .queryForList<String>("SELECT first_name FROM company_customers WHERE first_booking_at IS NOT NULL")
+                .toSet(),
         )
     }
 

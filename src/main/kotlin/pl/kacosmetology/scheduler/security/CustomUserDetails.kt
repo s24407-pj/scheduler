@@ -18,10 +18,10 @@ data class CustomUserDetails(
     /** Returns the exact staff company scope or rejects an unscoped principal. */
     fun requireCompanyId(): UUID = companyId ?: throw ResponseStatusException(HttpStatus.FORBIDDEN)
 
-    /** Separates global customer accounts from each company's independent staff account. */
+    /** Separates company-local customer accounts from each company's independent staff account. */
     fun accountKey(): String =
         when (role) {
-            "ROLE_CUSTOMER" -> "customer:$id"
+            "ROLE_CUSTOMER" -> "customer:${requireCompanyId()}:$id"
             "ROLE_OWNER",
             "ROLE_EMPLOYEE" -> "staff:${requireNotNull(employmentId)}"
             else -> error("Unsupported authentication realm")
@@ -42,6 +42,6 @@ data class CustomUserDetails(
     override fun isEnabled(): Boolean = true
 
     private companion object {
-        private const val serialVersionUID: Long = 2L
+        private const val serialVersionUID: Long = 3L
     }
 }

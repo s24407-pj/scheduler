@@ -36,7 +36,9 @@ class RestExceptionHandler : ResponseEntityExceptionHandler() {
     /** Maps a coded business error to its status and code. */
     @ExceptionHandler(ApiException::class)
     fun handleApiException(ex: ApiException): ResponseEntity<ProblemDetail> =
-        problem(ex.code, ex.message ?: ex.code.name)
+        problem(ex.code, ex.message ?: ex.code.name).also { response ->
+            ex.extensions.forEach { (key, value) -> response.body?.setProperty(key, value) }
+        }
 
     /**
      * Maps a database constraint violation to 409; exclusion-constraint overlaps become [ErrorCode.SLOT_UNAVAILABLE].

@@ -22,7 +22,7 @@ class NotificationDetails(private val jdbc: JdbcTemplate) {
                 """
                 SELECT r.*, c.phone_number AS customer_phone, co.name AS company_name,
                     e.first_name AS employee_first_name, e.last_name AS employee_last_name
-                FROM reservations r JOIN customer_accounts c ON c.id=r.customer_id
+                FROM reservations r JOIN company_customers c ON c.id=r.customer_id AND c.company_id=r.company_id
                 JOIN companies co ON co.id=r.company_id
                 JOIN company_employees e ON e.company_id=r.company_id AND e.user_id=r.employee_id
                 WHERE r.id=?

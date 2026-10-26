@@ -39,14 +39,22 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
     fun `manual first visit creates only phone account and company profile atomically`() {
         val created = manual(manualBody(phone = "+48500100200"))
         assertEquals(201, created.response.status, created.response.contentAsString)
-        assertEquals(2L, count("customer_accounts"))
-        assertEquals(1L, count("company_customers"))
+        assertEquals(2L, count("company_customers"))
+        assertEquals(1L, visibleCustomers())
         assertEquals(
             400,
-            manual(manualBody(future.plusHours(1), phone = "+48500100201") - "customerFirstName").response.status,
+            manual(
+                    manualBody(future.plusHours(1), phone = "+48500100201") +
+                        mapOf(
+                            "customer" to
+                                mapOf("kind" to "new", "phoneNumber" to "+48500100201", "lastName" to "Klient"),
+                        ),
+                )
+                .response
+                .status,
         )
-        assertEquals(2L, count("customer_accounts"))
-        assertEquals(1L, count("company_customers"))
+        assertEquals(2L, count("company_customers"))
+        assertEquals(1L, visibleCustomers())
     }
 
     @Test
@@ -120,10 +128,12 @@ class ReservationStaffIntegrationTest : ReservationContractTestSupport() {
     fun `reducing customer booking cap preserves existing visits and allows staff intervention`() {
         shift()
         assertEquals(201, book().response.status)
-        assertEquals(201, book(customerBody(future.plusHours(1))).response.status)
+        assertEquals(201, book(customerBody(future.plusHours(1)) - "firstVisitDetails").response.status)
         jdbc.update("UPDATE companies SET max_future_customer_bookings=1 WHERE id=?", salon.company)
         assertEquals(2L, count("reservations"))
-        assertEquals(409, book(customerBody(future.plusHours(2))).response.status)
+        val capped = book(customerBody(future.plusHours(2)) - "firstVisitDetails")
+        assertEquals(409, capped.response.status)
+        assertEquals("BOOKING_LIMIT_REACHED", tree(capped)["code"].asString())
         assertEquals(201, manual(manualBody(future.plusHours(2))).response.status)
         assertEquals(3, jdbc.queryForObject<Int>("SELECT count(*) FROM reservations WHERE status='BOOKED'"))
     }

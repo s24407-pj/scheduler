@@ -23,8 +23,9 @@ class SessionAuthorizationFilter(
                     when {
                         principal == null -> null
                         principal.role == "ROLE_CUSTOMER" &&
-                            principal.companyId == null &&
-                            principal.employmentId == null -> userDetailsService.loadUserByUsername(principal.username)
+                            principal.companyId != null &&
+                            principal.employmentId == null ->
+                            userDetailsService.loadCustomer(principal.username, principal.companyId, principal.id)
                         principal.role in setOf("ROLE_OWNER", "ROLE_EMPLOYEE") && principal.employmentId != null ->
                             userDetailsService.loadStaffByEmployment(principal.username, principal.employmentId)
                         else -> null

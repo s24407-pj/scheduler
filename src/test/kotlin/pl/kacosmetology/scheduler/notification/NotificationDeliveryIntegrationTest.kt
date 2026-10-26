@@ -84,7 +84,7 @@ class NotificationDeliveryIntegrationTest {
         awaitWorkers()
         clock.set(nine)
         transactions = TransactionTemplate(manager)
-        jdbc.execute("TRUNCATE companies,customer_accounts RESTART IDENTITY CASCADE")
+        jdbc.execute("TRUNCATE companies,company_customers RESTART IDENTITY CASCADE")
         redis.connectionFactory!!.connection.use { it.serverCommands().flushAll() }
         service.recoverAfterRestart()
         clearMocks(sender)
@@ -92,7 +92,8 @@ class NotificationDeliveryIntegrationTest {
         companyId = jdbc.queryForObject<UUID>("INSERT INTO companies(name) VALUES ('Local Salon') RETURNING id")!!
         customerId =
             jdbc.queryForObject<UUID>(
-                "INSERT INTO customer_accounts(phone_number) VALUES ('+48880000001') RETURNING id",
+                "INSERT INTO company_customers(company_id,phone_number) VALUES (?,'+48880000001') RETURNING id",
+                companyId,
             )!!
         offeringId =
             jdbc.queryForObject<UUID>(
@@ -435,12 +436,12 @@ class NotificationDeliveryIntegrationTest {
     @Test
     fun `OTP and notifications share one atomic global daily SMS budget`() {
         val capped = OtpStore(redis, 1, org.springframework.mock.env.MockEnvironment())
-        capped.issueCode("+48881111111")
+        capped.issueCode(companyId, "+48881111111")
         val budget = DailySmsBudget(redis, 1)
         assertFalse(budget.reserve().allowed)
         redis.connectionFactory!!.connection.use { it.serverCommands().flushAll() }
         assertTrue(budget.reserve().allowed)
-        assertThrows<RateLimitExceededException> { capped.issueCode("+48882222222") }
+        assertThrows<RateLimitExceededException> { capped.issueCode(companyId, "+48882222222") }
     }
 
     @Test
@@ -463,7 +464,8 @@ class NotificationDeliveryIntegrationTest {
             (1..5).map { index ->
                 val customer =
                     jdbc.queryForObject<UUID>(
-                        "INSERT INTO customer_accounts(phone_number) VALUES (?) RETURNING id",
+                        "INSERT INTO company_customers(company_id,phone_number) VALUES (?,?) RETURNING id",
+                        companyId,
                         "+4888010000$index",
                     )!!
                 booking(nine.plusSeconds(index * 3600L), customer = customer)
@@ -478,7 +480,7 @@ class NotificationDeliveryIntegrationTest {
                     events.publishEvent(ReservationChangedEvent(ids.last(), "CREATE", true))
                 }
                 service.startReminderRun()
-                auth.requestCode(RequestCodeRequest("+48889999999"), "isolated-otp")
+                auth.requestCode(RequestCodeRequest(companyId, "+48889999999"), "isolated-otp")
             }
             assertTrue(otpSent.await(5, TimeUnit.SECONDS))
             assertEquals(
@@ -516,7 +518,8 @@ class NotificationDeliveryIntegrationTest {
         repeat(5) { index ->
             val customer =
                 jdbc.queryForObject<UUID>(
-                    "INSERT INTO customer_accounts(phone_number) VALUES (?) RETURNING id",
+                    "INSERT INTO company_customers(company_id,phone_number) VALUES (?,?) RETURNING id",
+                    companyId,
                     "+4888020000$index",
                 )!!
             booking(nine.plusSeconds(86400 + index * 3600L), customer = customer)

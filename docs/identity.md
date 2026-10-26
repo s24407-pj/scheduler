@@ -1,8 +1,12 @@
 # Identity and staff administration
 
-Customer authentication accounts are global and contain only the canonical phone (`+digits`). OTP verification needs no name and creates no salon profile. The first successful booking creates `company_customers` atomically with the booking; that salon's first and last names are mandatory. Contact email and private notes belong to this local profile. Names and contact email are staff-editable only. Staff cannot read a global customer's information or create a relationship by setting notes.
+Customers are independent company-owned identities in `company_customers`, uniquely identified by `(company_id, canonical phone)` with a UUID primary key. The same phone in different salons never joins identities, profiles, history, blocks or sessions. There is no `customer_accounts` table or global customer lookup. Staff credentials remain independent from customers even when contact phones match. See [ADR-0017](./adr/0017-company-local-customers.md).
 
-Both staff roles can list/read their company's customer profiles, notes, contact data, and visit history. `GET /api/customers/{id}/visits` scopes its database query to the company/customer relationship. Other-company and absent relationships return the same 404. Customer account reads return only ID and canonical phone. There is no customer self-edit endpoint for names or contact email.
+Both OTP endpoints require `companyId` and an explicit international phone (`+` plus 9–15 digits, first digit nonzero). No country is inferred; syntax alone does not validate country allocation or unify legacy national forms. Requesting a code creates only a company-scoped delivery intent; successful verification atomically upserts a local customer with phone and no names. Codes belong to `(companyId, phone)` and cannot authenticate another salon. An absent company returns 404 before issuing/consuming a code. Phone cooldown/issuance limits and the daily SMS budget remain shared across salons.
+
+The first successful customer or staff booking requires first/last name and sets `first_booking_at` atomically with the booking. Failed bookings leave the identity pending. Before this marker, the identity is invisible to staff customer lists, details, visits, notes, profile changes and block operations (opaque 404). Cancelling or archiving every visit never removes established visibility. Names, optional contact email and private notes are company-owned; only staff may edit established profiles. Phone is immutable through profile APIs. Profile list/detail includes `revision`; staff profile and notes PUT require `If-Match` and increments the same row version as first establishment. Pending rows are not proof of OTP verification: staff may establish them without OTP.
+
+Both staff roles can list/read their company's established customers, notes, contact data and visit history. `/api/customers/{id}` and reservation `customerId` identify `company_customers.id`. Other-company and absent/invisible resources return the same 404. `/api/users/me` returns `{id,phoneNumber,companyId,profileState}` with advisory `PENDING|ESTABLISHED` readiness and no salon-owned names for the current local customer; `/api/auth/me` also returns that customer's `companyId`, with `employmentId:null`.
 
 Staff accounts belong to one company. The compatibility endpoint `POST /api/auth/login-staff` requires `companyId`, `email`, and `password`; email is trimmed and lowercased inside that company's namespace. Phone is optional contact information and never participates in authentication. The same email or contact phone in another salon, or in the customer realm, grants no shared identity or access. Profiles, photos, role, enabled state, credentials, and qualification mode belong to `company_employees`. Public employee IDs are allocated independently from customer accounts.
 
@@ -17,7 +21,7 @@ Authenticated staff use `POST /api/staff/password` with `currentPassword` and `n
 Employee photo bytes are decoded and validated before upload. Each company writes its own photo reference. Existing objects are deleted only after commit and only when no other staff profile still references them, including legacy shared photos. Rollback compensates a newly uploaded object. Cleanup failures may leave an unreferenced object for operator cleanup; they cannot leave a committed database reference pointing to a deliberately deleted object.
 
 
-The consolidated pre-production V1 baseline creates only the independent current realms. It does not retain a legacy users table or infer staff/customer identity relationships from matching phone/email.
+The consolidated pre-production V1 baseline creates only the independent current realms. It does not retain global customer or legacy users tables, or infer staff/customer identity relationships from matching phone/email.
 
 ## Email-first staff sign-in
 
@@ -28,3 +32,20 @@ The consolidated pre-production V1 baseline creates only the independent current
 Every email-first attempt consumes one IP and one normalized-email SHA-256 limiter allowance, regardless of candidate count. Completion consumes an IP allowance. Limits fail closed through Redis and return 429 with Retry-After. Discovery reads at most six IDs and performs exactly five BCrypt checks, including dummy padding, to bound CPU and reduce membership timing differences. **More than five company accounts for an email require company-scoped login**, even if fewer passwords match. The response remains the generic credentials error, never a count or company hint. A user can obtain their salon's company ID privately from its administrator and expand “Logowanie do wskazanej firmy” in the dashboard to use the existing `/api/auth/login-staff` contract; this verifies one account without truncating membership or weakening authorization. Normal dashboard login needs no company UUID. Operators should provide this fallback to high-membership users; do not raise the work cap without capacity review.
 
 Deploy the backend first: old dashboard clients continue using `/api/auth/login-staff`. The authorized pre-production V1 baseline includes `(login_email,id)` lookup indexing; existing applied databases must be rebuilt under the baseline convention before deployment, never bypass Flyway checksum validation.
+
+Explicit booking intent, phone audit and unresolved shared/recycled-phone limits are defined in [ADR-0018](./adr/0018-explicit-booking-customer-intent.md).
+
+## Phone-key audit before enabling native booking
+
+New OTP and staff-new input requires an explicit international number; existing keys are never rewritten during login or booking. On an existing development dataset, this read-only query lists keys that need review:
+
+```sql
+SELECT company_id, id, phone_number, first_booking_at
+FROM company_customers
+WHERE phone_number !~ '^\+[1-9][0-9]{8,14}$'
+ORDER BY company_id, id;
+```
+
+For each flagged row, authorized salon staff must confirm the intended full number and inspect any existing same-company international row. Similar digit suffixes or matching names are only review hints, never proof that two accounts represent the same person. The uniqueness constraint protects exact keys; syntax does not establish equivalence, country allocation or current phone ownership. Keep this report private and do not export customer phones to logs or public endpoints.
+
+There is no phone correction, merge or reassignment API in this change. If review finds an ambiguous national/international pair, shared phone, recycled number or mistaken staff number, resolve it with the salon before allowing a new native booking for that number. Any future corrective migration must explicitly preserve reservation/submission links, audit history and tenant scope, handle exact-key collisions, and revoke affected sessions. Do not automatically add `+48`, merge by name, delete identities or reset a database. A fresh isolated test dataset requires no legacy remediation.

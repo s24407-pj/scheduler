@@ -55,7 +55,7 @@ class ErrorContractIntegrationTest {
             .post("/api/auth/request-code") {
                 with(csrf())
                 contentType = MediaType.APPLICATION_JSON
-                content = """{"phoneNumber":"abc"}"""
+                content = """{"companyId":"00000000-0000-7000-8000-000000000001","phoneNumber":"abc"}"""
             }
             .andExpect {
                 status { isBadRequest() }

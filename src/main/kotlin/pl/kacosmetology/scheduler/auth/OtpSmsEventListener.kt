@@ -8,17 +8,19 @@ import org.springframework.transaction.event.TransactionalEventListener
 import pl.kacosmetology.scheduler.config.EntityIds
 
 /** Secret-bearing internal event; deliberately avoids a generated toString that could expose the code. */
-class OtpIssuedEvent(val phoneNumber: String, val code: String, val id: UUID = EntityIds.next())
+class OtpIssuedEvent(val companyId: UUID, val phoneNumber: String, val code: String, val id: UUID = EntityIds.next())
 
 /** Successful consumption invalidates pending delivery without exposing the consumed secret in diagnostic strings. */
-class OtpConsumedEvent(val phoneNumber: String, val code: String)
+class OtpConsumedEvent(val companyId: UUID, val phoneNumber: String, val code: String)
 
 /** Persists intent before commit, then wakes a durable worker after commit; provider failure cannot undo login work. */
 @Component
 class OtpSmsEventListener(private val deliveries: OtpDeliveryService) {
     private val log = LoggerFactory.getLogger(OtpSmsEventListener::class.java)
 
-    /** Atomically records phone-only intent with the OTP request transaction, without creating an account/profile. */
+    /**
+     * Atomically records company/phone intent with the OTP request transaction, without creating an account/profile.
+     */
     @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
     fun persist(event: OtpIssuedEvent) = deliveries.stage(event)
 
