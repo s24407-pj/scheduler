@@ -20,7 +20,9 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 └── workschedule/      # Weekly working hours per employee
 ```
 
-**Layering:** Controller → Service → Repository. Services do not call services of other modules; modules share data only through IDs and repositories. Exception: `EmployeeAvailabilityPolicy` (in `availability/`) is shared by `AvailabilityService` and `ReservationService` so slot listing and booking use the same conflict rules.
+**Layering:** Controller → Service → Repository. Application classes must not depend on `*Service` types from other modules, except the explicitly shared infrastructure types `security.SessionAuthenticationService` and `security.CustomUserDetailsService`. This does not exempt other services in `security` or `config`. Modules may share IDs, repositories, domain events and shared policies (`EmployeeAvailabilityPolicy`, `BookableSlotPolicy`, `QuotePolicy`, `CustomerBlockingPolicy`). Cross-module repository dependencies and the package cycles they create are permitted.
+
+`ArchitectureTest` uses ArchUnit to inspect compiled production dependencies, independently of import syntax. Controllers (identified by name or Spring controller annotations) cannot depend directly on application repositories, Spring Data repositories, JDBC operations or `EntityManager`, whether through constructors, properties, method signatures or calls. The service boundary follows the `*Service` naming contract rather than all Spring `@Service` beans, preserving shared policies. Architecture tests run without Spring Context or containers.
 
 ## Authentication
 

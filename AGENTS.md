@@ -53,7 +53,7 @@ Check the [ADR index](./docs/adr/README.md). ADR-0018 supersedes flat-field cust
 
 ## Project and architecture
 
-Kotlin/Spring Boot 4 MVC backend; PostgreSQL/Flyway, Redis (OTP, limits, cache, indexed Spring Session), Cloudflare R2. Tests: JUnit 5, MockK/SpringMockK, Testcontainers, Konsist. The staff frontend is separate; see [README](./README.md).
+Kotlin/Spring Boot 4 MVC backend; PostgreSQL/Flyway, Redis (OTP, limits, cache, indexed Spring Session), Cloudflare R2. Tests: JUnit 5, MockK/SpringMockK, Testcontainers, ArchUnit. The staff frontend is separate; see [README](./README.md).
 
 Modules under `src/main/kotlin/pl/kacosmetology/scheduler/`:
 
@@ -70,7 +70,7 @@ Modules under `src/main/kotlin/pl/kacosmetology/scheduler/`:
 - `user`: customer identity/local profiles/blocks, staff administration/passwords/photos.
 - `workschedule`: weekly shifts, date replacements, days off.
 
-Controller → Service → Repository; no repositories in controllers. No cross-module service dependencies except `security`/`config` infrastructure. Share IDs/repositories and domain events; reuse shared policies (`EmployeeAvailabilityPolicy`, `BookableSlotPolicy`, `QuotePolicy`, `CustomerBlockingPolicy`). [ArchitectureTest](./src/test/kotlin/pl/kacosmetology/scheduler/architecture/ArchitectureTest.kt) checks foreign `*Service` imports and controller repository injection; preserve the broader layering rule.
+Controller → Service → Repository; no repositories in controllers. No cross-module service dependencies except `security`/`config` infrastructure. Share IDs/repositories and domain events; reuse shared policies (`EmployeeAvailabilityPolicy`, `BookableSlotPolicy`, `QuotePolicy`, `CustomerBlockingPolicy`). [ArchitectureTest](./src/test/kotlin/pl/kacosmetology/scheduler/architecture/ArchitectureTest.kt) checks compiled dependencies on foreign `*Service` types and controller access to repositories, JDBC and EntityManager. Only `security.SessionAuthenticationService` and `security.CustomUserDetailsService` are shared service exceptions; entire infrastructure packages are not exempt. Cross-module repositories and package cycles remain permitted; preserve the broader layering rule.
 
 ## Critical invariants
 
