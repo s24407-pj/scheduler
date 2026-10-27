@@ -5,6 +5,7 @@
 | [flows.md](./flows.md) | want the end-to-end journeys per actor (owner, employee, customer, background jobs) and the order of API calls |
 | [development.md](./development.md) | set up the project, configure it, use seed data, or write tests |
 | [deployment.md](./deployment.md) | deploy to the VPS (Dokploy + Cloudflare): client IP, origin lockdown, production compose |
+| [security.md](./security.md) | review vulnerability scans, security gates, exceptions, reports and remediation |
 | [architecture.md](./architecture.md) | need the module map, auth, authorization, notifications, caching, storage, or schema overview |
 | [reservations.md](./reservations.md) | touch booking, cancellation, status changes, pricing, or concurrency |
 | [notifications.md](./notifications.md) | touch after-commit SMS, durable delivery, provider outcomes or reminder runs |

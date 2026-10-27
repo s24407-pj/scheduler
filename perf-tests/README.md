@@ -22,7 +22,7 @@ docker run --rm -i --network host grafana/k6 run - <scripts/smoke-test.js
 
 ## Uruchomienie
 
-Upewnij się, że aplikacja działa (np. `docker compose up -d`), a następnie:
+Upewnij się, że aplikacja działa (np. `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build`), a następnie:
 
 ```bash
 # Smoke test — szybka walidacja (1-2 VU, 30s)

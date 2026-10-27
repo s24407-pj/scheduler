@@ -23,7 +23,7 @@ curl -sf http://localhost:8080/actuator/health
 
 The override selects `dev` and binds API `8080`, debugger `5005`, PostgreSQL `5432`, Redis `6379` to loopback. R2 placeholders permit startup; uploads need real settings. [Development](./docs/development.md) covers accounts, host-side running and seed data; availability is empty until schedules are set.
 
-**Production:** `docker compose -f docker-compose.yml up --build` defaults to `prod`, requires deployment settings (including JustSend credentials and a positive SMS budget), and publishes no host ports. Follow [deployment](./docs/deployment.md); never use the dev override or example credentials in production.
+**Production:** `docker compose -f docker-compose.yml up -d --no-build` defaults to `prod`, pulls the approved GHCR digest via required `SCHEDULER_IMAGE`, requires deployment settings (including JustSend credentials and a positive SMS budget), and publishes no host ports. Follow [deployment](./docs/deployment.md); never use the dev override or example credentials in production.
 
 ### Optional workstation setup
 

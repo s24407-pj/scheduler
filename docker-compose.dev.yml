@@ -2,6 +2,11 @@
 # Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 services:
   app:
+    image: scheduler:dev
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile
     environment:
       SPRING_PROFILES_ACTIVE: dev
       JAVA_TOOL_OPTIONS: -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005

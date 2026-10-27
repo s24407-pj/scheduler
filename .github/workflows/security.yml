@@ -1,0 +1,270 @@
+name: Security
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  TZ: UTC
+  # Update intentionally with scanner release notes; Actions pins are maintained by Dependabot.
+  TRIVY_VERSION: v0.76.1
+
+jobs:
+  # Reuse the CI test job for this exact main commit, rather than querying another run.
+  build-test:
+    name: Release checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+
+  secrets:
+    name: Secret security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+      - name: Verify security policy gates
+        run: python3 -m unittest discover -s .github/security -v
+      - name: Validate exceptions
+        run: python3 .github/security/security.py prepare .github/security/trivy-exceptions.json "$RUNNER_TEMP/trivy-ignore.yaml"
+      - name: Scan tracked repository snapshot
+        run: |
+          mkdir -p "$RUNNER_TEMP/secret-snapshot"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/secret-snapshot"
+          python3 .github/security/security.py scan secrets "$RUNNER_TEMP/secret-snapshot" security-reports "$RUNNER_TEMP/trivy-ignore.yaml"
+      - name: Retain sanitized secret report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: secret-security-reports
+          path: security-reports/secrets.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  application:
+    name: Application security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up JDK
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: '25.0.4+101.0.LTS'
+          distribution: temurin
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
+        with:
+          cache-read-only: true
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: java-kotlin
+          build-mode: manual
+          tools: linked
+          queries: security-extended
+      # A real, uncached compilation after init is essential for Kotlin extraction.
+      # This same bootJar is scanned below; no tests, database or Redis are needed.
+      - name: Compile production Kotlin and package dependencies
+        id: build
+        run: >-
+          ./gradlew clean bootJar --no-daemon --no-build-cache --no-configuration-cache
+          "-Dorg.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=1g" --max-workers=2
+          -Pkotlin.incremental=false -Pkotlin.compiler.execution.strategy=in-process --console=plain
+      - name: Analyze Java and Kotlin
+        id: codeql
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:java-kotlin
+          output: security-reports/codeql
+      - name: Enforce CodeQL HIGH/CRITICAL gate
+        if: ${{ !cancelled() && steps.codeql.outcome == 'success' }}
+        run: python3 .github/security/security.py codeql security-reports/codeql
+      - name: Install Trivy
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+      - name: Scan production JAR, including nested dependencies
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          python3 .github/security/security.py prepare .github/security/trivy-exceptions.json "$RUNNER_TEMP/trivy-ignore.yaml"
+          python3 .github/security/security.py scan jar build/libs security-reports "$RUNNER_TEMP/trivy-ignore.yaml"
+      - name: Retain application security reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: application-security-reports
+          path: security-reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+  container:
+    name: Container security
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      image-id: ${{ steps.image.outputs.image-id }}
+      image-artifact-id: ${{ steps.archive.outputs.artifact-id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+      - name: Build production Dockerfile
+        id: image
+        env:
+          IMAGE: scheduler-security:${{ github.sha }}
+        run: |
+          mkdir -p security-reports
+          docker build --pull --platform linux/amd64 --tag "$IMAGE" \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" .
+          docker image inspect "$IMAGE" --format '{{.Id}}' > security-reports/image-id.txt
+          printf 'image-id=%s\n' "$(cat security-reports/image-id.txt)" >> "$GITHUB_OUTPUT"
+          printf 'Commit: %s\nPlatform: linux/amd64\n' "$GITHUB_SHA" > security-reports/image-source.txt
+      - name: Scan the built image by immutable local image ID
+        if: ${{ !cancelled() && steps.image.outcome == 'success' }}
+        run: |
+          python3 .github/security/security.py prepare .github/security/trivy-exceptions.json "$RUNNER_TEMP/trivy-ignore.yaml"
+          python3 .github/security/security.py scan image "$(cat security-reports/image-id.txt)" security-reports "$RUNNER_TEMP/trivy-ignore.yaml"
+      # Only a successful main push scan exports an image; never export PR images.
+      - name: Export scanned image for publication
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker image save "$(cat security-reports/image-id.txt)" --output "$RUNNER_TEMP/scanned-image.tar"
+      - name: Retain scanned image until publication
+        id: archive
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: scanned-release-image
+          path: ${{ runner.temp }}/scanned-image.tar
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - name: Retain container security reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: container-security-reports
+          path: security-reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+  dependency-submission:
+    name: Dependency submission
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up JDK
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: '25.0.4+101.0.LTS'
+          distribution: temurin
+      - name: Submit resolved Gradle dependency graph
+        uses: gradle/actions/dependency-submission@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
+        with:
+          cache-read-only: true
+          dependency-graph: generate-submit-and-upload
+          dependency-graph-continue-on-failure: false
+          artifact-retention-days: 14
+
+  publish:
+    name: Publish scanned image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-test, secrets, application, container, dependency-submission]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # No checkout or application execution in the job holding registry credentials.
+      - name: Download the scanned image from this run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.container.outputs.image-artifact-id }}
+          path: ${{ runner.temp }}/release-image
+      - name: Load and verify the scanned local image ID
+        env:
+          SCANNED_IMAGE_ID: ${{ needs.container.outputs.image-id }}
+        run: |
+          docker image load --input "$RUNNER_TEMP/release-image/scanned-image.tar"
+          test "$(docker image inspect "$SCANNED_IMAGE_ID" --format '{{.Id}}')" = "$SCANNED_IMAGE_ID"
+          test "$(docker image inspect "$SCANNED_IMAGE_ID" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+      - name: Publish the same image and record its registry digest
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          REGISTRY_USER: ${{ github.actor }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          SCANNED_IMAGE_ID: ${{ needs.container.outputs.image-id }}
+        run: |
+          trap 'docker logout ghcr.io' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$REGISTRY_USER" --password-stdin
+          repository="ghcr.io/${SOURCE_REPOSITORY,,}"
+          tag="$repository:sha-$GITHUB_SHA-run-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          docker image tag "$SCANNED_IMAGE_ID" "$tag"
+          docker image push "$tag"
+          reference="$(docker image inspect "$tag" --format '{{index .RepoDigests 0}}')"
+          [[ "$reference" =~ ^${repository}@sha256:[a-f0-9]{64}$ ]]
+          # Pull back the published digest and confirm it has the scanned config ID.
+          docker image pull --platform linux/amd64 "$reference"
+          test "$(docker image inspect "$reference" --format '{{.Id}}')" = "$SCANNED_IMAGE_ID"
+          mkdir -p release-reports
+          printf 'SCHEDULER_IMAGE=%s\n' "$reference" > release-reports/release.env
+          printf 'Commit: %s\nRun: %s/%s/actions/runs/%s\nLocal image ID: %s\nPlatform: linux/amd64\nRegistry image: %s\n' \
+            "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$SOURCE_REPOSITORY" "$GITHUB_RUN_ID" "$SCANNED_IMAGE_ID" "$reference" \
+            > release-reports/image-source.txt
+          {
+            printf '### Image ready for manual promotion\n\n'
+            printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
+            printf '```text\nSCHEDULER_IMAGE=%s\n```\n' "$reference"
+            printf '\nSet this exact digest in Dokploy; keep Git auto-deploy disabled.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain release identity
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-image
+          path: release-reports/
+          if-no-files-found: error
+          retention-days: 90
