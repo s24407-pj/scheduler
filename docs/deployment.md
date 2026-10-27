@@ -8,7 +8,7 @@ The `prod` profile registers the JustSend sender and requires nonblank `JUSTSEND
 
 ## Dokploy setup and networking
 
-1. Create a **Compose** service connected to `s24407-pj/scheduler`, select the deployment branch, and use `docker-compose.yml`. It builds the Java 25 `Dockerfile`. Do not include `docker-compose.dev.yml` or copy the local `.env.example` into production.
+1. Create a **Compose** service connected to `s24407-pj/scheduler`, select the deployment branch, and use `docker-compose.yml`. It pulls the approved GHCR image; the production service has no `build:` section. Disable **Auto Deploy** so a Git push cannot deploy before checks finish. Do not include `docker-compose.dev.yml` or copy the local `.env.example` into production.
 2. Set the required values below in Dokploy's protected **Environment** settings. They are referenced by Compose and forwarded to the appropriate containers; missing required values fail Compose interpolation.
 3. In **Domains**, route the API hostname to service `app`, container port `8080`, path `/`, with HTTPS. Use [Dokploy's native domain management](https://docs.dokploy.com/docs/core/docker-compose/domains); it generates Traefik routing labels. No manual labels or host ports are needed.
 4. On Dokploy versions with per-service network attachment settings (introduced in [v0.30.0](https://dokploy.com/blog/v0-30-0-networks-management-dns-and-vault-providers-concurrent-builds-and-env-encryption)), disable **Isolated Deployment** in Advanced. Keep all three services on the Compose `backend` network. Attach only `app` to `dokploy-network` (or a dedicated ingress network also attached to Traefik); detach `db` and `redis` from any Dokploy-added ingress/shared networks. Apply through service network settings and redeploy, rather than relying on a one-off container network change.
@@ -20,6 +20,7 @@ Request path: browser → Cloudflare → Traefik → `app:8080` on ingress; app 
 Required Dokploy variables:
 
 ```text
+SCHEDULER_IMAGE=ghcr.io/s24407-pj/scheduler@sha256:<digest from successful Security run>
 SPRING_PROFILE=prod
 DB_USERNAME=scheduler
 DB_PASSWORD=<strong secret>
@@ -66,11 +67,52 @@ Rejected alternative: making Traefik trust Cloudflare ranges and having Tomcat w
 
 ## Security before release
 
-Review the independent [security checks](./security.md), including the production-image
-Trivy report. CI scans a Dockerfile-built candidate by immutable local image ID. Dokploy
-currently rebuilds from source, so a successful candidate scan does not verify the exact
-deployed bytes. Scan the deployed image too, or promote a single scanned registry digest
-and configure Dokploy to use that digest. A failed container scan blocks release.
+The release path is: main commit → build once → scan → publish the same image →
+manual promotion of its registry digest. Pull requests also build and scan the production
+image, without registry credentials or publication. Scheduled security checks do not build
+or scan containers. See [security checks](./security.md) for policy and required PR checks.
+
+1. Merge the change to `main` and wait for the **Security** workflow to succeed. It calls
+   the reusable CI build/test/formatting/coverage job for the same commit. Publication
+   requires that job, secrets, CodeQL/JAR, container scanning and dependency submission
+   all succeed; failed, skipped or cancelled prerequisites cannot publish.
+2. Open **Publish scanned image** and copy `SCHEDULER_IMAGE` from its summary or the
+   `release-image` artifact (`release.env`). It contains a registry manifest digest,
+   not the local image ID recorded by Trivy. The artifact also records the commit,
+   workflow URL, local scanned image ID and platform. Tags identify a commit/run/attempt
+   for navigation only; deploy the digest, never `latest` or a commit tag.
+3. Set that exact `SCHEDULER_IMAGE` in Dokploy's Environment settings. Keep **Auto Deploy**
+   disabled and use only `docker-compose.yml`. Preview Compose: `app.image` must contain
+   the approved `ghcr.io/s24407-pj/scheduler@sha256:…`, with no `app.build`. The image is
+   `linux/amd64`; the VPS must use that architecture.
+4. Ensure the VPS can pull from GHCR before deployment. New packages may be private:
+   either intentionally make the application package public or configure protected
+   registry credentials with read-only package access in Dokploy. CI publishes using its
+   job-scoped `GITHUB_TOKEN` (`packages: write`); no registry PAT is needed in CI. If an
+   existing package rejects publication, grant this repository Actions access to it.
+5. Trigger **Deploy** manually and verify the running image and health. On the VPS,
+   in the same Compose project/environment used by Dokploy:
+
+   ```bash
+   docker compose -f docker-compose.yml ps -q app
+   docker inspect <app-container-id> --format '{{.Config.Image}} {{.Image}}'
+   ```
+
+   `Config.Image` must be the selected GHCR digest; `Image` must match the scanned local
+   image ID in `release-image/image-source.txt`. Check `/actuator/health` and routing as
+   described below. Record the promoted digest and release run in the deployment record.
+
+Missing `SCHEDULER_IMAGE` fails Compose interpolation. For a host-managed production
+stack, use `docker compose -f docker-compose.yml pull app` followed by
+`docker compose -f docker-compose.yml up -d --no-build`; never rebuild a release on the VPS.
+Existing deployments need the Dokploy settings changed explicitly; repository changes
+alone cannot disable an existing webhook or set registry credentials.
+
+Keep the previous approved digest for rollback, subject to database/client compatibility.
+Re-running a release pipeline may produce different bytes, so use the digest from the
+specific successful run. Manual **Security** dispatch scans a candidate but does not
+publish or deploy; publication occurs only on a push to `main`. There is no daily
+container rescan in this release process.
 
 ## Persistence and verification
 

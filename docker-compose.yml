@@ -1,8 +1,6 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${SCHEDULER_IMAGE:?Set SCHEDULER_IMAGE to the approved GHCR digest}
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-prod}
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/scheduler_db

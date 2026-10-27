@@ -2,15 +2,17 @@
 
 ## Coverage and gates
 
-[Security workflow](../.github/workflows/security.yml) runs independently of `Build & Test`.
-No security job needs PostgreSQL, Redis, production credentials, or integration tests.
+[Security workflow](../.github/workflows/security.yml) keeps PR scanners independent of `Build & Test`.
+Scanners need no PostgreSQL, Redis, production credentials or integration tests. On pushes
+to main, this workflow also calls the reusable CI test job and gates GHCR publication on
+all checks for that exact commit.
 
-| Check | Pull requests to main/develop | Push to main, daily, manual | Coverage |
-| --- | --- | --- | --- |
-| `Secret security` | Yes | Yes | Trivy secret rules on the tracked checkout, including Markdown |
-| `Application security` | Yes | Yes | CodeQL Java/Kotlin and Trivy on the compiled Spring Boot JAR |
-| `Container security` | Skipped | Yes | Production Dockerfile, final image OS/JRE packages and bundled Java dependencies |
-| `Dependency submission` | Skipped | Yes | Resolved Gradle dependency graph for Dependabot Alerts |
+| Check | Pull requests to main/develop | Push to main | Daily | Manual | Coverage |
+| --- | --- | --- | --- | --- | --- |
+| `Secret security` | Yes | Yes | Yes | Yes | Trivy secret rules on the tracked checkout, including Markdown |
+| `Application security` | Yes | Yes | Yes | Yes | CodeQL Java/Kotlin and Trivy on the compiled Spring Boot JAR |
+| `Container security` | Yes | Yes | Skipped | Yes | Production Dockerfile, final image OS/JRE packages and bundled Java dependencies |
+| `Dependency submission` | Skipped | Yes | Yes | Main only | Resolved Gradle dependency graph for Dependabot Alerts |
 
 Dependency submission is restricted to main, including manual runs.
 The daily run is at 05:23 UTC against the default branch. Trivy downloads current
@@ -19,8 +21,8 @@ vulnerability and Java identification databases; there is no frozen database or
 GitHub may delay schedules or disable them after prolonged repository inactivity;
 monitor scheduled runs and use workflow dispatch when necessary.
 
-PR checks avoid integration tests and image builds. One uncached production compilation
-serves both CodeQL extraction and JAR scanning. CodeQL uses `java-kotlin`, **manual** build
+PR scanners avoid integration tests; the container job builds the production image on PRs
+too. One uncached production compilation serves both CodeQL extraction and JAR scanning. CodeQL uses `java-kotlin`, **manual** build
 mode, initialization before compilation, disabled incremental/build/configuration caches,
 and in-process Kotlin compilation with sufficient Gradle heap. `build-mode: none` does
 not analyze Kotlin. Only production sources are compiled; test-source SAST is not included.
@@ -45,7 +47,10 @@ errors also fail. Every detected secret blocks regardless of severity.
 
 Each scanner writes a job summary. Actions artifacts retain JSON package inventories,
 vulnerability reports, CodeQL SARIF, sanitized secret locations, and the scanned image
-identity for 14 days, including on finding-related failures. CodeQL also uploads to
+identity for 14 days, including on finding-related failures. A successful main container
+scan also exports the exact image as `scanned-release-image` for the separate publication
+job (one-day retention, no PR exports). Successful publication retains `release-image`
+metadata and `release.env` for 90 days. CodeQL also uploads to
 **Security → Code scanning**. Trivy JSON is kept in Actions rather than uploading duplicate
 JAR and container alerts to code scanning. Dependency submission retains its graph artifact.
 
@@ -56,23 +61,30 @@ Trivy job provides a repository-controlled baseline. Administrators should enabl
 secret scanning and push protection (and non-provider patterns if available) in repository
 security settings. These settings cannot be established by a committed workflow.
 
-Set branch rules to require `Build & Test`, `Secret security`, and `Application security`.
-`Container security` and `Dependency submission` run on main/daily, so do not require them
-on PRs. Treat a failed main container scan as a release blocker. Enable notification/watch
+Set branch rules to require `Build & Test`, `Secret security`, `Application security`,
+and `Container security`. Dependency submission and publication are not PR checks.
+Treat a failed main check as a release blocker: the publication job depends on the reusable
+CI build/test/formatting/coverage job and all four scanner/dependency jobs in the same run.
+On 2026-10-27 the active `main` GitHub ruleset was updated and verified to require all
+four PR checks above, preserving the other rules. Enable notification/watch
 preferences for security workflow failures and Dependabot/code scanning alerts. Committing
 a workflow does not configure branch protection or a deployment gate.
 
 Actions use immutable commit SHAs, read-only contents by default, no persisted checkout
 credentials, and bounded job durations. Only CodeQL gets `security-events: write`; only
-the main-branch-only dependency submission job gets `contents: write`. Fork PRs use `pull_request`,
+the main-branch-only dependency submission job gets `contents: write`. The separate
+main-push-only publication job gets `packages: write`; it loads the scanned image from
+this run's immutable artifact ID, verifies the local image ID/platform, and never checks
+out or executes application code. Fork PRs use `pull_request`,
 never `pull_request_target`, and receive no repository secrets. No write-permission job
 executes PR code via a privileged follow-up workflow.
 
 Secret scanning inspects the current tracked tree, not Git history or deleted intermediate
 commits. GitHub's native scanning provides complementary historical/push-time coverage.
 Do not upload raw secret scanner output, matched values, `.env`, build contexts, or container
-exports as report artifacts. The wrapper discards scanner stdout/stderr, parses secret JSON
-in a temporary directory, emits only file/rule/severity/line, and deletes the raw report.
+exports as security report artifacts. The main-only image transfer artifact described
+above is separate from sanitized scanner reports and contains the production image only.
+The wrapper discards scanner stdout/stderr, parses secret JSON in a temporary directory, emits only file/rule/severity/line, and deletes the raw report.
 If scanning fails, reproduce locally; raw diagnostics are intentionally withheld. Never
 paste a suspected credential into an issue or exception statement. Revoke/rotate exposed
 credentials first; deleting the file is insufficient.
@@ -98,14 +110,21 @@ fresh advisory data by design. Dependabot updates base/action/Gradle references;
 explicit Trivy binary version and CodeQL/compiler compatibility when updating tooling.
 CodeQL tools are linked to the pinned Action release rather than nightly tools.
 
-CI builds the production Dockerfile and scans its immutable **local image ID**, recording
-that ID, source commit and linux/amd64 platform in the container artifact. It does not
-publish or deploy. Dokploy currently rebuilds from source; its resulting image can differ
-because of platform, repository updates and build metadata. The scanned image is therefore
-a production candidate, not proof about the running deployment. For exact-image promotion,
-build once, scan, push that same image, and deploy the registry digest; configure Dokploy
-to consume it instead of rebuilding. Until then, scan the actual deployed image ID with
-the same policy before release. Other CPU architectures and Compose's PostgreSQL/Redis
+CI builds the production Dockerfile once for linux/amd64 and scans its immutable **local
+image ID**. On main pushes, successful checks allow a separate job to load that same image
+without rebuilding, verify the local ID, and push it to GHCR under a commit/run/attempt tag.
+The job records the **registry manifest digest**, pulls that digest and verifies that its
+local config ID matches the scanned ID before producing promotion metadata. A local image
+ID and a registry manifest digest are different identifiers; neither a Git SHA nor a tag
+alone establishes image identity.
+
+Production Compose requires `SCHEDULER_IMAGE`; Dokploy pulls the selected registry digest
+instead of building from source. Git auto-deploy must be disabled explicitly and an operator
+manually promotes the digest from a successful run. See [deployment](./deployment.md#security-before-release)
+for registry access, image verification and rollout. PRs and manual runs do not publish;
+scheduled runs skip the container job. There is currently no periodic scan of deployed
+images, so new container vulnerabilities are detected on subsequent PR/push/manual scans.
+Other CPU architectures and Compose's PostgreSQL/Redis
 images are outside this backend-image scan. Database/provider coverage is imperfect;
 review upstream Java/Alpine advisories even when there are no scanner findings.
 
