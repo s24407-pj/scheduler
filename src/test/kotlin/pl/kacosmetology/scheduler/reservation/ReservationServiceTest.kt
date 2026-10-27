@@ -46,6 +46,7 @@ class ReservationServiceTest {
     private val quotes = mockk<QuotePolicy>()
     private val audit = mockk<ReservationAuditContext>(relaxed = true)
     private val jdbc = mockk<JdbcTemplate>()
+    private val blocking = mockk<CustomerBlockingPolicy>(relaxed = true)
     private val service =
         ReservationService(
             reservations,
@@ -62,6 +63,7 @@ class ReservationServiceTest {
             quotes,
             audit,
             jdbc,
+            blocking,
         )
     private val now = Instant.parse("2030-01-14T10:00:00Z")
     private val start = LocalDateTime.parse("2030-01-14T12:00:00")
@@ -401,6 +403,23 @@ class ReservationServiceTest {
         service.cancelReservationByStaff(testId(50), testId(1), 0, ReservationActionRequest(reason = "Private"), true)
         assertEquals(ReservationStatus.CANCELLED, existing.status)
         assertEquals("Private", existing.internalCancellationReason)
+    }
+
+    @Test
+    fun `automatic threshold uses shared blocking operations after company lock`() {
+        existing.startTime = start.minusDays(1)
+        existing.endTime = existing.startTime.plusMinutes(30)
+        company.maxNoShows = 1
+        every { blocking.currentCount(testId(1), testId(10)) } returns 1
+
+        service.markNoShow(testId(50), testId(1), 0, owner = true)
+
+        verifyOrder {
+            companies.findByIdForUpdate(testId(1))
+            blocking.currentCount(testId(1), testId(10))
+            blocking.cancelFuture(testId(1), testId(10))
+        }
+        verify(exactly = 1) { blocking.cancelFuture(testId(1), testId(10)) }
     }
 
     @Test

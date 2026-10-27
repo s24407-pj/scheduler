@@ -26,6 +26,7 @@ import pl.kacosmetology.scheduler.reservation.dto.*
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
+import pl.kacosmetology.scheduler.user.CustomerBlockingPolicy
 
 /** Employee outcome corrections use a 24 elapsed-hour deadline; owners have no late deadline. */
 const val NO_SHOW_CORRECTION_HOURS = 24L
@@ -47,6 +48,7 @@ class ReservationService(
     private val quotes: QuotePolicy,
     private val audit: ReservationAuditContext,
     private val jdbc: JdbcTemplate,
+    private val blocking: CustomerBlockingPolicy,
 ) {
     /**
      * Creates a customer booking under the salon lock; a successful submission is replayed by BookingSubmissionService.
@@ -802,7 +804,7 @@ class ReservationService(
             reservation.customerId,
             reservation.startTime.toLocalDate(),
         )
-        val count = noShowCount(reservation.companyId, reservation.customerId)
+        val count = blocking.currentCount(reservation.companyId, reservation.customerId)
         val threshold = companyRepository.findById(reservation.companyId).orElseThrow().maxNoShows
         val today = LocalDate.ofInstant(clock.instant(), BUSINESS_ZONE)
         val appointmentDate = reservation.startTime.toLocalDate()
@@ -816,12 +818,12 @@ class ReservationService(
             shouldBlock,
             shouldBlock,
         )
-        if (shouldBlock) cancelFutureForBlock(reservation.companyId, reservation.customerId)
+        if (shouldBlock) blocking.cancelFuture(reservation.companyId, reservation.customerId)
     }
 
     private fun removePenalty(reservation: Reservation) {
         jdbc.update("UPDATE no_show_penalties SET active=false WHERE reservation_id=?", reservation.id)
-        val count = noShowCount(reservation.companyId, reservation.customerId)
+        val count = blocking.currentCount(reservation.companyId, reservation.customerId)
         val threshold = companyRepository.findById(reservation.companyId).orElseThrow().maxNoShows
         jdbc.update(
             "UPDATE company_customer_blocks SET no_show_count=?,automatic_blocked=CASE WHEN ?=0 OR ?<? THEN false ELSE automatic_blocked END,blocked=manual_blocked OR (automatic_blocked AND ?>0 AND ?>=?) WHERE company_id=? AND customer_id=?",
@@ -835,40 +837,6 @@ class ReservationService(
             reservation.companyId,
             reservation.customerId,
         )
-    }
-
-    /** Current penalty count uses an inclusive rolling Warsaw calendar year. */
-    fun noShowCount(companyId: UUID, customerId: UUID): Int {
-        val today = LocalDate.ofInstant(clock.instant(), BUSINESS_ZONE)
-        return jdbc.queryForObject<Int>(
-            "SELECT count(*) FROM no_show_penalties WHERE company_id=? AND customer_id=? AND active AND appointment_date BETWEEN ? AND ?",
-            companyId,
-            customerId,
-            today.minusYears(1),
-            today,
-        )!!
-    }
-
-    /** Cancels only future booked visits; callers hold the company lock and preserve ongoing appointments. */
-    fun cancelFutureForBlock(companyId: UUID, customerId: UUID) {
-        val future =
-            reservationRepository
-                .findAllByCompanyIdAndCustomerIdAndArchivedFalseOrderByStartTimeDesc(companyId, customerId)
-                .filter {
-                    it.companyId == companyId &&
-                        it.status == ReservationStatus.BOOKED &&
-                        it.startTime.isAfter(LocalDateTime.ofInstant(clock.instant(), BUSINESS_ZONE))
-                }
-        for (reservation in future) {
-            audit.capture()
-            reservation.status = ReservationStatus.CANCELLED
-            reservation.internalCancellationReason = "Blokada klienta w salonie"
-            reservationRepository.saveAndFlush(reservation)
-        }
-        if (future.isNotEmpty())
-            applicationEventPublisher.publishEvent(
-                CustomerBlockedBookingsEvent(companyId, customerId, future.map { requireNotNull(it.id) }),
-            )
     }
 
     private fun notify(reservation: Reservation, kind: String, requested: Boolean) {

@@ -6,6 +6,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
+import org.springframework.jdbc.core.queryForList
 import org.springframework.jdbc.core.queryForObject
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -168,6 +171,70 @@ class ReservationNoShowIntegrationTest : ReservationContractTestSupport() {
         assertEquals(409, edit(ongoing, mapOf("startTime" to future.plusHours(2).toString())).response.status)
         assertEquals(204, ownerBlock("unblock").response.status)
         assertEquals("CANCELLED", state(futureId))
+    }
+
+    @ParameterizedTest
+    @CsvSource("false,-5", "false,0", "true,-5", "true,0")
+    fun `manual and automatic blocks retain cancellation audit versions and one summary`(
+        automatic: Boolean,
+        preservedStartMinutes: Long,
+    ) {
+        jdbc.update("UPDATE companies SET max_no_shows=1 WHERE id=?", salon.company)
+        val penalty = reservation(localNow.minusDays(1))
+        val preserved = reservation(localNow.plusMinutes(preservedStartMinutes))
+        val cancelled = listOf(reservation(), reservation(future.plusHours(1)))
+        val completed = reservation(future.plusHours(2), "COMPLETED")
+        val alreadyCancelled = reservation(future.plusHours(3), "CANCELLED")
+        val noShow = reservation(future.plusHours(4), "NO_SHOW")
+        val archived = reservation(future.plusHours(5), "CANCELLED")
+        jdbc.update("UPDATE reservations SET archived=true WHERE id=?", archived)
+        val otherCustomer = reservation(future.plusHours(6), customer = newCustomer())
+        val otherSalon = fixtures.reservation(fixtures.salon(), future)
+        val untouched = listOf(preserved, completed, alreadyCancelled, noShow, archived, otherCustomer, otherSalon)
+        val revisions = untouched.associateWith { version(it) }
+
+        fun blockAndCheck() {
+            val result = if (automatic) action(penalty, "no-show", 0) else ownerBlock("block")
+            assertEquals(204, result.response.status)
+            cancelled.forEach { id ->
+                val visit = repository.findById(id).orElseThrow()
+                assertEquals(ReservationStatus.CANCELLED, visit.status)
+                assertEquals(1L, visit.version)
+                assertEquals("Blokada klienta w salonie", visit.internalCancellationReason)
+                assertEquals(
+                    1,
+                    jdbc.queryForObject<Int>(
+                        "SELECT count(*) FROM reservation_audit WHERE reservation_id=? AND action='STATUS_CHANGE' AND actor_type='STAFF' AND before_state->>'status'='BOOKED' AND after_state->>'status'='CANCELLED'",
+                        id,
+                    ),
+                )
+            }
+            revisions.forEach { (id, revision) -> assertEquals(revision, version(id)) }
+            assertEquals("BOOKED", state(preserved))
+            assertEquals("BOOKED", state(otherCustomer))
+            assertEquals("BOOKED", state(otherSalon))
+            assertEquals(
+                1,
+                jdbc.queryForObject<Int>(
+                    "SELECT count(*) FROM notification_deliveries WHERE company_id=? AND customer_id=? AND kind='BLOCK_SUMMARY'",
+                    salon.company,
+                    salon.customer,
+                ),
+            )
+            assertEquals(
+                cancelled.toSet(),
+                jdbc
+                    .queryForList<UUID>(
+                        "SELECT r.reservation_id FROM notification_delivery_reservations r JOIN notification_deliveries d ON d.id=r.delivery_id WHERE d.company_id=? AND d.customer_id=? AND d.kind='BLOCK_SUMMARY'",
+                        salon.company,
+                        salon.customer,
+                    )
+                    .toSet(),
+            )
+        }
+
+        blockAndCheck()
+        blockAndCheck()
     }
 
     @Test

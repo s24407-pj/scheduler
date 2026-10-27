@@ -64,7 +64,10 @@ class CustomerBlockingPolicy(
         )!!
     }
 
-    /** Caller holds the company lock; every cancellation passes through audit and optimistic versioning. */
+    /**
+     * Caller holds the company lock in an active transaction. One Warsaw cutoff selects strictly future visits; every
+     * cancellation passes through audit and optimistic versioning, followed by one summary event.
+     */
     fun cancelFuture(companyId: UUID, customerId: UUID) {
         val now = LocalDateTime.ofInstant(clock.instant(), BUSINESS_ZONE)
         val future =
