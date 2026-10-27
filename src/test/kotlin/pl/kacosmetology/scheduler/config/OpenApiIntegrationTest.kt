@@ -54,7 +54,7 @@ class OpenApiIntegrationTest {
             jsonPath("$.paths['/api/auth/logout'].post.security[0].expectedSessionContext") { doesNotExist() }
             jsonPath("$.paths['/api/auth/logout-all'].post.security[0].sessionAuth") { exists() }
             jsonPath("$.paths['/api/auth/logout-all'].post.security[0].csrfToken") { exists() }
-            jsonPath("$.paths['/api/auth/logout-all'].post.security[0].expectedSessionContext") { doesNotExist() }
+            jsonPath("$.paths['/api/auth/logout-all'].post.security[0].expectedSessionContext") { exists() }
             jsonPath("$.paths['/api/reservations'].post.security[0].expectedSessionContext") { exists() }
             jsonPath("$.components.schemas.StaffEmailLoginRequest.properties.companyId") { doesNotExist() }
             jsonPath("$.components.schemas.StaffLoginCompany.properties.passwordHash") { doesNotExist() }
@@ -79,9 +79,10 @@ class OpenApiIntegrationTest {
                 it["name"].asString() == "X-Expected-Session-Context"
             }
         assertEquals("header", logoutAllContextHeader["in"].asString())
-        assertFalse(logoutAllContextHeader["required"].asBoolean())
+        assertTrue(logoutAllContextHeader["required"].asBoolean())
         assertTrue(logoutAllContextHeader["description"].asString().contains("ROLE_OWNER"))
         assertTrue(logoutAllContextHeader["description"].asString().contains("ROLE_EMPLOYEE"))
+        assertTrue(logoutAllContextHeader["description"].asString().contains("v1:userId:companyId:null:ROLE_CUSTOMER"))
         for (path in listOf("/api/reservations", "/api/reservations/staff")) {
             val header =
                 api["paths"][path]["post"]["parameters"].values().single { it["name"].asString() == "Idempotency-Key" }

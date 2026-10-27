@@ -336,6 +336,34 @@ class SessionSecurityIntegrationTest {
     }
 
     @Test
+    fun `staff logout all without captured context rejects the request and preserves all sessions`() {
+        for (employment in listOf(owner, employee)) {
+            val first = login(employment.id!!)
+            val second = login(employment.id!!)
+            assertLogoutAllRequiresContext(first, second)
+        }
+    }
+
+    @Test
+    fun `customer logout all without captured context rejects the request and preserves all sessions`() {
+        val first = customer(staff.phoneNumber)
+        val second =
+            csrf(testSessions.customer(users.findByCompanyIdAndPhoneNumber(owner.companyId, staff.phoneNumber)!!))
+        assertLogoutAllRequiresContext(first, second)
+    }
+
+    private fun assertLogoutAllRequiresContext(first: Browser, second: Browser) {
+        val result = post(first.copy(expectedContext = null), "/api/auth/logout-all")
+        assertEquals(400, result.response.status, result.response.contentAsString)
+        assertEquals("SESSION_CONTEXT_REQUIRED", mapper.readTree(result.response.contentAsString)["code"].asString())
+        assertEquals(200, meStatus(first))
+        assertEquals(200, meStatus(second))
+        assertEquals(204, post(first, "/api/auth/logout-all").response.status)
+        assertRevoked(first)
+        assertRevoked(second)
+    }
+
+    @Test
     fun `staff logout all isolates its company account from customer and other employment sessions`() {
         val first = login(owner.id!!)
         val secondDevice = login(owner.id!!)
