@@ -114,6 +114,21 @@ specific successful run. Manual **Security** dispatch scans a candidate but does
 publish or deploy; publication occurs only on a push to `main`. There is no scheduled
 container rescan in this release process.
 
+### Consumer compatibility before promotion
+
+Before merging backend changes beyond documentation/tests, reviewers must verify the
+[paired PR evidence](./development.md#paired-pr-evidence). Passing backend CI and image
+scans does not establish dashboard compatibility. Keep Auto Deploy disabled while the
+paired changes are merged and validated.
+
+After a squash merge, update the dashboard's `.github/scheduler-api-revision` to the
+resulting backend commit, regenerate both artifacts and rerun Dashboard CI. Require
+successful final Dashboard CI against the backend commit selected for deployment
+before promoting either application. Record the backend digest, dashboard revision
+and CI run with the agreed deployment order and compatible rollback pair. For an
+incompatible transition, specify write maintenance and client refresh requirements;
+verify database compatibility before rolling back.
+
 ## Persistence and verification
 
 Keep the Compose project identity and named volumes `postgres_data` (PostgreSQL 18, `/var/lib/postgresql`) and `redis_data` (`/data`) across redeployments. Redis uses AOF (`--appendonly yes`). Health checks and `unless-stopped` restart policies apply to both dependencies. Do not run `down -v` or enable fresh-volume replacement on production data. Back up PostgreSQL and Redis and verify restoration.
