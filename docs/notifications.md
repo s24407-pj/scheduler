@@ -2,6 +2,8 @@
 
 Customer booking has page/API confirmation only: no confirmation SMS or email. Actual staff create, edit, restore or cancel operations may opt into SMS; the default is off. Cancellation messages are eligible only while the visit is future or ongoing. An actual edit opting out still invalidates obsolete pending staff confirmations. Internal cancellation reasons are never rendered into customer messages.
 
+The notification module owns durable delivery writes, with one explicit exception: a notes-only edit in `ReservationService` advances matching queued deliveries from the previous reservation revision to the new one, atomically with the edit. Only `PENDING`, `TEMPORARY_FAILURE` and `PAUSED` rows are affected; their delivery state is unchanged. Private notes do not obsolete the queued message or request another SMS. See [write ownership](./architecture.md#reads-and-write-ownership).
+
 `ReservationChangedEvent` and `CustomerBlockedBookingsEvent` produce outbox rows before the booking transaction commits. A rollback therefore sends nothing and leaves no eligible delivery. Provider calls run only after commit, outside the claiming transaction, and provider failures cannot roll back the booking. Each provider attempt first commits `SENDING`, then records the provider result in a separate transaction:
 
 | Result | Durable outcome | Automatic retry |
