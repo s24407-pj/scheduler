@@ -7,7 +7,7 @@ Scanners need no PostgreSQL, Redis, production credentials or integration tests.
 to main, this workflow also calls the reusable CI test job and gates GHCR publication on
 all checks for that exact commit.
 
-| Check | Pull requests to main/develop | Push to main | Daily | Manual | Coverage |
+| Check | Pull requests to main/develop | Push to main | Weekly | Manual | Coverage |
 | --- | --- | --- | --- | --- | --- |
 | `Secret security` | Yes | Yes | Yes | Yes | Trivy secret rules on the tracked checkout, including Markdown |
 | `Application security` | Yes | Yes | Yes | Yes | CodeQL Java/Kotlin and Trivy on the compiled Spring Boot JAR |
@@ -15,7 +15,7 @@ all checks for that exact commit.
 | `Dependency submission` | Skipped | Yes | Yes | Main only | Resolved Gradle dependency graph for Dependabot Alerts |
 
 Dependency submission is restricted to main, including manual runs.
-The daily run is at 05:23 UTC against the default branch. Trivy downloads current
+The weekly run is on Monday at 05:23 UTC against the default branch. Trivy downloads current
 vulnerability and Java identification databases; there is no frozen database or
 `skip-db-update` option. Thus new disclosures can fail without application changes.
 GitHub may delay schedules or disable them after prolonged repository inactivity;

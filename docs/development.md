@@ -211,8 +211,8 @@ PR security scanners run in a separate workflow, without integration tests. On p
 to `main`, Security calls this CI workflow via `workflow_call` and publishes the scanned
 image only after tests and all security checks succeed for the same commit. CI still runs
 directly for PRs, pushes to `develop`, and manual dispatch; it does not duplicate the main
-push build. Container scans run on PR/main/manual events, not the daily schedule. See
-[security scanning](./security.md) for PR/main/daily coverage, report artifacts,
+push build. Container scans run on PR/main/manual events, not the weekly schedule. See
+[security scanning](./security.md) for PR/main/weekly coverage, report artifacts,
 required-check configuration and vulnerability exceptions.
 
 

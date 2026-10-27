@@ -111,7 +111,7 @@ alone cannot disable an existing webhook or set registry credentials.
 Keep the previous approved digest for rollback, subject to database/client compatibility.
 Re-running a release pipeline may produce different bytes, so use the digest from the
 specific successful run. Manual **Security** dispatch scans a candidate but does not
-publish or deploy; publication occurs only on a push to `main`. There is no daily
+publish or deploy; publication occurs only on a push to `main`. There is no scheduled
 container rescan in this release process.
 
 ## Persistence and verification
