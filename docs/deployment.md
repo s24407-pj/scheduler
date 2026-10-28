@@ -116,7 +116,7 @@ container rescan in this release process.
 
 ### Consumer compatibility before promotion
 
-Before merging backend changes beyond documentation/tests, reviewers must verify the
+For breaking API changes and consumer-visible semantic changes, reviewers must verify the
 [paired PR evidence](./development.md#paired-pr-evidence). Passing backend CI and image
 scans does not establish dashboard compatibility. Keep Auto Deploy disabled while the
 paired changes are merged and validated.

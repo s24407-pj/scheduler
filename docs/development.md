@@ -218,11 +218,12 @@ required-check configuration and vulnerability exceptions.
 
 ## Paired PR evidence
 
-Before merging any backend PR beyond documentation/tests, require a paired
-[scheduler-dashboard PR](https://github.com/s24407-pj/scheduler-dashboard/pulls).
-Only documentation/test-only PRs may omit the pair, with a rationale covering the
-entire diff. Production source, resources, build and configuration changes require
-paired evidence even if the dashboard needs no implementation changes.
+Breaking API changes and consumer-visible semantic changes require a paired
+[scheduler-dashboard PR](https://github.com/s24407-pj/scheduler-dashboard/pulls) before merge.
+Other relevant changes require explicit compatibility evidence proportionate to their
+consumer impact; purely internal changes do not require a dashboard PR. Documentation
+and test-only changes may omit paired verification with a rationale covering the entire
+diff. Record the classification and rationale in the existing PR template.
 
 Use the PR templates in both repositories to record:
 

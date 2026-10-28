@@ -38,7 +38,7 @@ class JdbcController(val jdbc: JdbcTemplate)
 
 class JdbcInterfaceController(val jdbc: JdbcOperations)
 
-@RestController class NamedJdbcEndpoint(val jdbc: NamedParameterJdbcTemplate)
+@RestController @Profile("architecture-fixtures") class NamedJdbcEndpoint(val jdbc: NamedParameterJdbcTemplate)
 
 class NamedJdbcInterfaceController(val jdbc: NamedParameterJdbcOperations)
 

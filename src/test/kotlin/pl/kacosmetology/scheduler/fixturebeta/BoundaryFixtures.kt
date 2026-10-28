@@ -1,6 +1,7 @@
 package pl.kacosmetology.scheduler.fixturebeta
 
 import java.util.UUID
+import org.springframework.context.annotation.Profile
 import org.springframework.data.repository.NoRepositoryBean
 import org.springframework.data.repository.Repository
 import org.springframework.stereotype.Service
@@ -18,8 +19,8 @@ class ForeignRepository {
 
 @NoRepositoryBean interface DataStore : Repository<Any, UUID>
 
-@org.springframework.stereotype.Repository class AnnotatedStore
+@org.springframework.stereotype.Repository @Profile("architecture-fixtures") class AnnotatedStore
 
-@Service class SharedPolicy
+@Service @Profile("architecture-fixtures") class SharedPolicy
 
 class BetaRepository(val alpha: AlphaRepository)
