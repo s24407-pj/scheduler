@@ -20,7 +20,24 @@ src/main/kotlin/pl/kacosmetology/scheduler/
 └── workschedule/      # Weekly working hours per employee
 ```
 
-**Layering:** Controller → Service → Repository. Services do not call services of other modules; modules share data only through IDs and repositories. Exception: `EmployeeAvailabilityPolicy` (in `availability/`) is shared by `AvailabilityService` and `ReservationService` so slot listing and booking use the same conflict rules.
+**Layering:** Controller → Service → Repository. Application classes must not depend on `*Service` types from other modules, except the explicitly shared infrastructure types `security.SessionAuthenticationService` and `security.CustomUserDetailsService`. This does not exempt other services in `security` or `config`. Modules may share IDs, repositories, domain events and shared policies (`EmployeeAvailabilityPolicy`, `BookableSlotPolicy`, `QuotePolicy`, `CustomerBlockingPolicy`). Cross-module repository dependencies and the package cycles they create are permitted.
+
+`ArchitectureTest` uses ArchUnit to inspect compiled production dependencies, independently of import syntax. Controllers (identified by name or Spring controller annotations) cannot depend directly on application repositories, Spring Data repositories, JDBC operations or `EntityManager`, whether through constructors, properties, method signatures or calls. The service boundary follows the `*Service` naming contract rather than all Spring `@Service` beans, preserving shared policies. Architecture tests run without Spring Context or containers.
+
+### Reads and write ownership
+
+Permitted cross-module repository dependencies are not blanket permission to mutate another domain. Scoped reads may support a journey or projection; writes must follow the owning workflow or an explicitly authorized shared policy. These responsibilities are a review contract, not additional rules enforced by `ArchitectureTest`.
+
+| Data or operation | Write responsibility and authorized crossings |
+| ----------------- | --------------------------------------------- |
+| Reservation lifecycle and no-show outcomes | `ReservationService` coordinates lifecycle transitions, durable penalty creation/correction and resulting automatic block updates in the reservation transaction. |
+| Customer blocks and shared blocking operations | `CustomerBlockingPolicy` owns manual block/unblock and shared current counting and future-booking cancellation. It may write reservation cancellations while the caller holds the company lock, retaining per-row audit, optimistic versions and the mandatory summary event. Automatic blocking delegates these shared operations to the policy; penalty and automatic-provenance SQL remain in `ReservationService`. |
+| Notification delivery | The notification module owns outbox creation, eligibility and delivery transitions. One narrow cross-module write is retained: a notes-only reservation edit advances `reservation_revision` on matching `PENDING`, `TEMPORARY_FAILURE` and `PAUSED` deliveries in the same transaction. It preserves queued messages across a private-note revision without changing their delivery state or sending a new message. |
+| Company-local customer profiles and history | Customer profile writes follow company-local identity/profile workflows, including atomic establishment by booking. `CompanyCustomerRepository.findVisitHistory` intentionally reads unarchived reservation history scoped by company and customer, after the caller verifies established customer visibility; it grants no reservation mutation authority. |
+
+See [reservation atomicity and blocking](./reservations.md#blocking-and-no-show-history) and [notification delivery](./notifications.md). Preserve company-before-employment locking where both locks are required, transaction boundaries, audit and tenant checks across every authorized write.
+
+Dashboard effective-shift calculations, conflict previews and permission controls are advisory presentation logic. They may project backend data and hide unavailable actions, but never authorize a write or establish bookability. Spring remains authoritative for validation, authorization and tenant isolation, including when client projections are stale or bypassed.
 
 ## Authentication
 

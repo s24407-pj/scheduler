@@ -1,48 +1,31 @@
 package pl.kacosmetology.scheduler.architecture
 
-import com.lemonappdev.konsist.api.Konsist
-import com.lemonappdev.konsist.api.ext.list.withNameEndingWith
-import com.lemonappdev.konsist.api.verify.assertFalse
-import com.lemonappdev.konsist.api.verify.assertTrue
+import com.tngtech.archunit.core.importer.ClassFileImporter
+import com.tngtech.archunit.core.importer.ImportOption
+import kotlin.test.assertTrue
 import org.junit.jupiter.api.Test
 
-/**
- * Enforces the layering rules from AGENTS.md on production sources: Controller → Service → Repository, and no
- * cross-module service calls.
- */
 class ArchitectureTest {
-
-    private val scope = Konsist.scopeFromProduction()
+    private val classes =
+        ClassFileImporter()
+            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_JARS)
+            .importPackages(ArchitectureRules.ROOT_PACKAGE)
 
     @Test
     fun `modules should not depend on services from other modules`() {
-        scope.files.assertTrue { file ->
-            val module = moduleOf(file.packagee?.name ?: return@assertTrue true)
-            file.imports.none { import ->
-                val importedModule = moduleOf(import.name.substringBeforeLast('.'))
-                importedModule != null &&
-                    importedModule != module &&
-                    importedModule !in SHARED_MODULES &&
-                    import.name.substringAfterLast('.').endsWith("Service")
-            }
-        }
+        ArchitectureRules.foreignServices.check(classes)
     }
 
     @Test
-    fun `controllers should not inject repositories`() {
-        scope.classes().withNameEndingWith("Controller").assertFalse { controller ->
-            controller.primaryConstructor?.parameters.orEmpty().any { it.type.name.endsWith("Repository") }
-        }
+    fun `controllers should not access persistence directly`() {
+        ArchitectureRules.controllerPersistence.check(classes)
     }
 
-    /** Returns the top-level module of [packageName] (e.g. `company` for `...scheduler.company.dto`). */
-    private fun moduleOf(packageName: String): String? =
-        packageName.removePrefix("$ROOT_PACKAGE.").takeIf { it != packageName }?.substringBefore('.')
-
-    private companion object {
-        const val ROOT_PACKAGE = "pl.kacosmetology.scheduler"
-
-        /** Infrastructure modules whose services (e.g. `SessionAuthenticationService`) any module may use. */
-        val SHARED_MODULES = setOf("security", "config")
+    @Test
+    fun `production scan should include application classes but exclude test fixtures`() {
+        assertTrue(classes.any { it.name == "pl.kacosmetology.scheduler.auth.AuthController" })
+        assertTrue(classes.none { it.name.contains(".fixturealpha.") || it.name.contains(".fixturebeta.") })
+        assertTrue(classes.none { it.name.endsWith("ArchitectureTest") || it.simpleName == "UnexpectedService" })
     }
 }

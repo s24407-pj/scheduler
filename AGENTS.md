@@ -53,7 +53,7 @@ Check the [ADR index](./docs/adr/README.md). ADR-0018 supersedes flat-field cust
 
 ## Project and architecture
 
-Kotlin/Spring Boot 4 MVC backend; PostgreSQL/Flyway, Redis (OTP, limits, cache, indexed Spring Session), Cloudflare R2. Tests: JUnit 5, MockK/SpringMockK, Testcontainers, Konsist. The staff frontend is separate; see [README](./README.md).
+Kotlin/Spring Boot 4 MVC backend; PostgreSQL/Flyway, Redis (OTP, limits, cache, indexed Spring Session), Cloudflare R2. Tests: JUnit 5, MockK/SpringMockK, Testcontainers, ArchUnit. The staff frontend is separate; see [README](./README.md).
 
 Modules under `src/main/kotlin/pl/kacosmetology/scheduler/`:
 
@@ -70,7 +70,7 @@ Modules under `src/main/kotlin/pl/kacosmetology/scheduler/`:
 - `user`: customer identity/local profiles/blocks, staff administration/passwords/photos.
 - `workschedule`: weekly shifts, date replacements, days off.
 
-Controller → Service → Repository; no repositories in controllers. No cross-module service dependencies except `security`/`config` infrastructure. Share IDs/repositories and domain events; reuse shared policies (`EmployeeAvailabilityPolicy`, `BookableSlotPolicy`, `QuotePolicy`, `CustomerBlockingPolicy`). [ArchitectureTest](./src/test/kotlin/pl/kacosmetology/scheduler/architecture/ArchitectureTest.kt) checks foreign `*Service` imports and controller repository injection; preserve the broader layering rule.
+Controller → Service → Repository; no repositories in controllers. No cross-module service dependencies except `security`/`config` infrastructure. Share IDs/repositories and domain events; reuse shared policies (`EmployeeAvailabilityPolicy`, `BookableSlotPolicy`, `QuotePolicy`, `CustomerBlockingPolicy`). [ArchitectureTest](./src/test/kotlin/pl/kacosmetology/scheduler/architecture/ArchitectureTest.kt) checks compiled dependencies on foreign `*Service` types and controller access to repositories, JDBC and EntityManager. Only `security.SessionAuthenticationService` and `security.CustomUserDetailsService` are shared service exceptions; entire infrastructure packages are not exempt. Cross-module repositories and package cycles remain permitted; preserve the broader layering rule.
 
 ## Critical invariants
 
@@ -90,6 +90,7 @@ Controller → Service → Repository; no repositories in controllers. No cross-
 
 ## Change and verification checklist
 
+- **Consumer compatibility:** breaking API changes and consumer-visible semantic changes require a paired dashboard PR and successful Dashboard CI against the exact backend PR head recorded in its API pin. Other relevant changes require explicit compatibility evidence; purely internal changes do not require a dashboard PR. Describe and verify consumer-visible semantics even when OpenAPI is unchanged. Reviewers must check the evidence and merge/deployment/rollback plan; documentation/test-only PRs must explain their exemption. See [paired PR evidence](./docs/development.md#paired-pr-evidence).
 - **Tests:** add/extend coverage by risk: unit tests for business branches; integration/repository tests for HTTP/security, tenant isolation, persistence, Redis and concurrency; regressions for defects. Avoid redundant coverage at every layer. Feature fixtures use real Redis sessions (`TestSessions`) and explicit `csrf()`; session-boundary tests use actual login/cookies/CSRF.
 - **Checks:** for code changes run `./gradlew test` or a relevant subset; broaden for shared behavior. CI runs `./gradlew build` including `spotlessCheck`; format Kotlin/Gradle scripts with Spotless. For docs-only changes validate paths, commands and consistency; application tests are optional. Report checks and unavailable verification.
 - **Flyway:** the user-authorized 2026-10-24 fresh baseline consolidates former V1–V4 and company-local customers into V1; existing databases must be recreated explicitly. Subsequent schema changes need a new migration in [db/migration](./src/main/resources/db/migration/). Check the highest existing version and use the next sequential version (`V<n>__description.sql`). Never edit existing migrations, bypass checksum validation, or rebaseline without explicit authorization.

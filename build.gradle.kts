@@ -76,7 +76,7 @@ dependencies {
     testImplementation(libs.springmockk)
 
     // Test - Architecture
-    testImplementation(libs.konsist)
+    testImplementation(libs.archunit)
 }
 
 spotless {

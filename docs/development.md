@@ -216,6 +216,44 @@ push build. Container scans run on PR/main/manual events, not the weekly schedul
 required-check configuration and vulnerability exceptions.
 
 
+## Paired PR evidence
+
+Breaking API changes and consumer-visible semantic changes require a paired
+[scheduler-dashboard PR](https://github.com/s24407-pj/scheduler-dashboard/pulls) before merge.
+Other relevant changes require explicit compatibility evidence proportionate to their
+consumer impact; purely internal changes do not require a dashboard PR. Documentation
+and test-only changes may omit paired verification with a rationale covering the entire
+diff. Record the classification and rationale in the existing PR template.
+
+Use the PR templates in both repositories to record:
+
+- Reciprocal backend/dashboard PR links, the full backend PR head SHA and dashboard SHA.
+- A successful Dashboard CI run for that dashboard revision, with
+  `.github/scheduler-api-revision` equal to the exact backend PR head.
+- Consumer-visible changes and verification: name tests/scenarios and results,
+  including semantics OpenAPI cannot express, such as session/authorization scope,
+  errors and retry behavior, booking rules, time/pricing calculations or data visibility.
+- Merge/deployment order and a compatible rollback approach, including write
+  maintenance and client refresh requirements for incompatible changes.
+
+The dashboard must regenerate `openapi/openapi.json` and `src/api/schema.d.ts` using
+`SCHEDULER_API_ROOT=/path/to/matching/scheduler bun run api:generate` from its repository
+root, and commit them with the pin. If semantic-only adoption leaves generated files
+unchanged, explain that result and why existing tests suffice or add regression coverage.
+A paired dashboard PR can consist of a pin update and regeneration when existing
+consumer code already supports the change.
+
+Reviewers must verify the reciprocal links, exact pin, successful CI and semantic
+coverage before merge. Refresh evidence after either PR changes. Passing backend CI
+does not establish dashboard compatibility; the dashboard's OpenAPI drift check alone
+cannot verify semantic changes. This is a reviewer-enforced merge requirement;
+existing CI does not enforce the presence or adequacy of paired evidence.
+
+After a squash merge, update the dashboard pin to the resulting backend commit,
+regenerate and rerun CI before deployment. Require successful final Dashboard CI
+against the backend commit selected for deployment. Record the final revisions and
+run in the PRs; see [consumer compatibility before promotion](./deployment.md#consumer-compatibility-before-promotion).
+
 ## Company-local customer baseline (2026-10-24)
 
 The authorized fresh schema consolidates former V1–V4 into `V1__init_schema.sql` and removes global customer accounts. Existing databases are incompatible: stop the old application, explicitly recreate only the intended development database, and clear that environment's Redis session/OTP/cache data before applying V1. Startup does not reset databases. Do not bypass Flyway checksums or mark the old schema as migrated. This baseline provides no data-preserving upgrade.

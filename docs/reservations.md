@@ -49,6 +49,8 @@ Owner-only `/archive` and `/unarchive` retain the database record, audit and sub
 
 ## Blocking and no-show history
 
+`ReservationService` coordinates no-show penalty creation/correction and automatic block provenance. `CustomerBlockingPolicy` supplies the shared current count and block-driven cancellation operation for both manual and automatic blocking; manual block/unblock also enter through this policy. Cancellation joins the caller's transaction under the company lock and preserves per-row audit/versioning and the summary event. See [write ownership](./architecture.md#reads-and-write-ownership).
+
 Owner manual block/unblock is company-local and does not affect authentication. Blocking cancels future BOOKED visits, preserves ongoing visits, and prevents both customer and staff future bookings. Unblocking never restores visits and never resets penalties. Manual and automatic block provenance are separate.
 
 Durable no-show penalties count by Warsaw appointment date over the inclusive interval from today's date minus one calendar year through today. Default threshold is three; zero disables new automatic blocks. Aging decreases the displayed current count without removing an existing block. Correcting a mistaken no-show removes its penalty and may remove an automatic block below threshold, preserving manual blocks. An owner unblock grants reprieve; the next counted no-show may block again. Threshold changes do not retroactively add/remove blocks.

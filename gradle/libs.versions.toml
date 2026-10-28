@@ -8,7 +8,7 @@ mockk = "1.14.11"
 springmockk = "5.0.1"
 testcontainers = "2.0.5"
 testcontainersRedis = "3.0.0"
-konsist = "0.18.1"
+archunit = "1.5.1"
 spotless = "8.10.4"
 ktfmt = "0.65"
 kover = "0.9.11"
@@ -20,7 +20,7 @@ mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 springmockk = { module = "com.ninja-squad:springmockk", version.ref = "springmockk" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql", version.ref = "testcontainers" }
 testcontainers-redis = { module = "com.redis:testcontainers-redis", version.ref = "testcontainersRedis" }
-konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
+archunit = { module = "com.tngtech.archunit:archunit", version.ref = "archunit" }
 # Not a dependency: declared so Dependabot tracks the ktfmt version used by Spotless.
 ktfmt = { module = "org.jetbrains.kotlinx:ktfmt", version.ref = "ktfmt" }
 

@@ -63,7 +63,7 @@ class OpenApiConfig {
                             "Required equality precondition for protected writes, not an authentication credential: " +
                                 "v1:userId:companyId:employmentId:ROLE_OWNER (or ROLE_EMPLOYEE), captured from auth/me " +
                                 "when opening the form; customers use v1:userId:companyId:null:ROLE_CUSTOMER. Missing/malformed: 400 SESSION_CONTEXT_REQUIRED; " +
-                                "changed cookie scope: 409 SESSION_CONTEXT_CHANGED. Not required for customer logout-all.",
+                                "changed cookie scope: 409 SESSION_CONTEXT_CHANGED. Required for customer and staff logout-all.",
                         ),
                 )
                 api.components.addSecuritySchemes(
@@ -148,19 +148,19 @@ class OpenApiConfig {
                 if (!public) requirement.addList(SESSION_AUTH)
                 if (unsafe) requirement.addList("csrfToken")
                 val logoutAll = path == "/api/auth/logout-all" && method == PathItem.HttpMethod.POST
-                if (!public && unsafe && !logoutAll) requirement.addList("expectedSessionContext")
+                if (!public && unsafe) requirement.addList("expectedSessionContext")
                 if (
                     logoutAll && operation.parameters?.none { it.name == ExpectedSessionContextFilter.HEADER } != false
                 ) {
                     operation.addParametersItem(
                         HeaderParameter()
                             .name(ExpectedSessionContextFilter.HEADER)
-                            .required(false)
+                            .required(true)
                             .schema(StringSchema())
                             .description(
-                                "Conditionally required for ROLE_OWNER and ROLE_EMPLOYEE sessions " +
-                                    "(v1:userId:companyId:employmentId:ROLE_OWNER or ROLE_EMPLOYEE); " +
-                                    "not required for ROLE_CUSTOMER.",
+                                "Required captured context for customer and staff sessions: " +
+                                    "v1:userId:companyId:employmentId:ROLE_OWNER (or ROLE_EMPLOYEE); " +
+                                    "customers use v1:userId:companyId:null:ROLE_CUSTOMER.",
                             ),
                     )
                 }

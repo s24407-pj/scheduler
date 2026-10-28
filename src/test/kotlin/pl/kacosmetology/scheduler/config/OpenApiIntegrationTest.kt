@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Import
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
@@ -21,10 +22,24 @@ class OpenApiIntegrationTest {
 
     @Autowired private lateinit var mockMvc: MockMvc
     @Autowired private lateinit var mapper: ObjectMapper
+    @Autowired private lateinit var context: ApplicationContext
 
     @MockkBean private lateinit var smsSender: SmsSender
 
     @MockkBean private lateinit var s3Client: S3Client
+
+    @Test
+    fun `normal application context excludes annotated architecture fixtures`() {
+        for (fixture in
+            listOf(
+                pl.kacosmetology.scheduler.fixturealpha.NamedJdbcEndpoint::class.java,
+                pl.kacosmetology.scheduler.fixturealpha.JpaEndpoint::class.java,
+                pl.kacosmetology.scheduler.fixturebeta.AnnotatedStore::class.java,
+                pl.kacosmetology.scheduler.fixturebeta.SharedPolicy::class.java,
+            )) {
+            assertTrue(context.getBeansOfType(fixture).isEmpty(), fixture.name)
+        }
+    }
 
     @Test
     fun `api docs should describe endpoints and the session cookie security scheme`() {
@@ -54,7 +69,7 @@ class OpenApiIntegrationTest {
             jsonPath("$.paths['/api/auth/logout'].post.security[0].expectedSessionContext") { doesNotExist() }
             jsonPath("$.paths['/api/auth/logout-all'].post.security[0].sessionAuth") { exists() }
             jsonPath("$.paths['/api/auth/logout-all'].post.security[0].csrfToken") { exists() }
-            jsonPath("$.paths['/api/auth/logout-all'].post.security[0].expectedSessionContext") { doesNotExist() }
+            jsonPath("$.paths['/api/auth/logout-all'].post.security[0].expectedSessionContext") { exists() }
             jsonPath("$.paths['/api/reservations'].post.security[0].expectedSessionContext") { exists() }
             jsonPath("$.components.schemas.StaffEmailLoginRequest.properties.companyId") { doesNotExist() }
             jsonPath("$.components.schemas.StaffLoginCompany.properties.passwordHash") { doesNotExist() }
@@ -79,9 +94,10 @@ class OpenApiIntegrationTest {
                 it["name"].asString() == "X-Expected-Session-Context"
             }
         assertEquals("header", logoutAllContextHeader["in"].asString())
-        assertFalse(logoutAllContextHeader["required"].asBoolean())
+        assertTrue(logoutAllContextHeader["required"].asBoolean())
         assertTrue(logoutAllContextHeader["description"].asString().contains("ROLE_OWNER"))
         assertTrue(logoutAllContextHeader["description"].asString().contains("ROLE_EMPLOYEE"))
+        assertTrue(logoutAllContextHeader["description"].asString().contains("v1:userId:companyId:null:ROLE_CUSTOMER"))
         for (path in listOf("/api/reservations", "/api/reservations/staff")) {
             val header =
                 api["paths"][path]["post"]["parameters"].values().single { it["name"].asString() == "Idempotency-Key" }
