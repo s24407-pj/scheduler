@@ -235,6 +235,18 @@ class JustSendSmsSenderTest {
         runner.withPropertyValues("justsend.sender= ").run { context ->
             assertTrue(context.startupFailure != null)
         }
+        runner.withPropertyValues("justsend.sender=ABCDEFGHIJK").run { context ->
+            assertNull(context.startupFailure)
+        }
+        for (sender in listOf("ABCDEFGHIJKL", "ABCDEFGHIJKLMN")) {
+            runner.withPropertyValues("justsend.sender=$sender").run { context ->
+                val failure = requireNotNull(context.startupFailure)
+                assertEquals(
+                    "JUSTSEND_SENDER must contain at most 11 characters",
+                    generateSequence(failure) { it.cause }.last().message,
+                )
+            }
+        }
         ApplicationContextRunner()
             .withUserConfiguration(JustSendSmsConfig::class.java)
             .withPropertyValues("spring.profiles.active=dev")

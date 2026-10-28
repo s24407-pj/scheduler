@@ -29,6 +29,7 @@ class JustSendSmsSender(
     init {
         require(appKey.isNotBlank()) { "JUSTSEND_APP_KEY must be configured" }
         require(sender.isNotBlank()) { "JUSTSEND_SENDER must be configured" }
+        require(sender.length <= 11) { "JUSTSEND_SENDER must contain at most 11 characters" }
     }
 
     /** Sends an OTP through the classified provider path. */
