@@ -36,9 +36,9 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 curl -sf http://localhost:8080/actuator/health
 ```
 
-The base Compose file defaults to `prod` and publishes no host ports. The development override builds the Dockerfile locally as `scheduler:dev`, selects `dev` and binds the API (`8080`), debugger (`5005`), PostgreSQL (`5432`), and Redis (`6379`) to `127.0.0.1` only. It enables JDWP through `JAVA_TOOL_OPTIONS`, preserving the Dockerfile's Java entrypoint. `CORS_ORIGINS` remains configurable in `.env`.
+The base Compose file defaults to `prod` and publishes no host ports. The development override builds the Dockerfile locally as `scheduler:local`, selects `dev` and binds the API (`8080`), debugger (`5005`), PostgreSQL (`5432`), and Redis (`6379`) to `127.0.0.1` only. It enables JDWP through `JAVA_TOOL_OPTIONS`, preserving the Dockerfile's Java entrypoint. `CORS_ORIGINS` remains configurable in `.env`.
 
-The example supplies `SCHEDULER_IMAGE=scheduler:dev` for base-file interpolation (also add it to an existing local `.env`), local database credentials and R2 placeholders so Compose interpolation succeeds; image uploads require real R2 settings. Do not use this file or the development override in production.
+The example supplies `SCHEDULER_IMAGE=scheduler:local` for base-file interpolation (also add it to an existing local `.env`), local database credentials and R2 placeholders so Compose interpolation succeeds; image uploads require real R2 settings. Do not use this file or the development override in production.
 
 ### App on the host
 
@@ -96,7 +96,7 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 
 | Variable | Default | Purpose |
 | -------- | ------- | ------- |
-| `SCHEDULER_IMAGE` | required by base Compose | Approved GHCR digest in production; `scheduler:dev` in local `.env`, overridden by the development Compose local build |
+| `SCHEDULER_IMAGE` | required by base Compose | Approved GHCR digest in production; `scheduler:local` in local `.env`, overridden by the development Compose local build |
 | `SPRING_PROFILE` | `prod` | Compose only: maps to `SPRING_PROFILES_ACTIVE` |
 | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/scheduler_db` | Compose overrides this with `jdbc:postgresql://db:5432/scheduler_db` |
 | `DB_USERNAME`, `DB_PASSWORD` | required by Compose | Database credentials; Compose passes these as `SPRING_DATASOURCE_USERNAME/PASSWORD` and initializes PostgreSQL with the same values |
