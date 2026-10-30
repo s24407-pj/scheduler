@@ -17,6 +17,7 @@ import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.Offering
 import pl.kacosmetology.scheduler.offering.OfferingRepository
+import pl.kacosmetology.scheduler.reservation.CustomerOccupiedInterval
 import pl.kacosmetology.scheduler.reservation.ReservationRepository
 import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.workschedule.EmployeeScheduleOverrideRepository
@@ -127,24 +128,44 @@ class AvailabilityContractTest {
     fun `personal conflicts mark otherwise free slots without hiding them from salon availability`() {
         every { reservations.findCustomerOverlapping(testId(1), testId(12), any(), any()) } returns
             listOf(
-                pl.kacosmetology.scheduler.reservation.Reservation(
-                    companyId = testId(1),
-                    customerId = testId(12),
-                    employeeId = testId(7),
-                    serviceId = testId(3),
-                    price = 100,
-                    startTime = date.atTime(9, 30),
-                    endTime = date.atTime(10, 0),
-                    creationSource = "CUSTOMER",
-                ),
+                CustomerOccupiedInterval(date.atTime(10, 0), date.atTime(10, 30)),
             )
         val personal = service.getAvailableSlots(testId(7), testId(3), date, testId(12))
         val public = service.getAvailableSlots(testId(7), testId(3), date)
-        assertEquals(public.map { it.time }, personal.map { it.time })
-        assertTrue(personal.first().personalConflict)
+        assertEquals(public, personal.map { it.copy(personalConflict = false) })
+        assertEquals(listOf(false, true, false), personal.map { it.personalConflict })
         assertFalse(public.any { it.personalConflict })
-        verify(exactly = 1) { reservations.findCustomerOverlapping(testId(1), testId(12), any(), any()) }
+        verify(exactly = 1) {
+            reservations.findCustomerOverlapping(testId(1), testId(12), date.atTime(9, 0), date.atTime(11, 0))
+        }
+        verify(exactly = 0) { reservations.existsCustomerOverlapping(any(), any(), any(), any(), any()) }
         verify(exactly = 0) { reservations.findCustomerOverlapping(testId(2), any(), any(), any()) }
+    }
+
+    @Test
+    fun `personal intervals detect partial overlap and containment`() {
+        for ((start, end) in
+            listOf(
+                date.atTime(9, 45) to date.atTime(10, 15),
+                date.atTime(9, 40) to date.atTime(10, 20),
+                date.atTime(9, 0) to date.atTime(10, 30),
+            )) {
+            every { reservations.findCustomerOverlapping(any(), any(), any(), any()) } returns
+                listOf(CustomerOccupiedInterval(start, end))
+            assertEquals(
+                listOf(true, true, false),
+                service.getAvailableSlots(testId(7), testId(3), date, testId(12)).map { it.personalConflict },
+            )
+        }
+    }
+
+    @Test
+    fun `anonymous and empty schedule requests do not read customer reservations`() {
+        assertEquals(3, service.getAvailableSlots(testId(7), testId(3), date).size)
+        every { weekly.findByCompanyIdAndEmployeeIdAndDayOfWeek(any(), any(), any()) } returns null
+        assertTrue(service.getAvailableSlots(testId(7), testId(3), date, testId(12)).isEmpty())
+        verify(exactly = 0) { reservations.findCustomerOverlapping(any(), any(), any(), any()) }
+        verify(exactly = 0) { reservations.existsCustomerOverlapping(any(), any(), any(), any(), any()) }
     }
 
     @Test

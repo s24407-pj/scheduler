@@ -81,7 +81,6 @@ class AvailabilityServiceTest {
             {
                 CompanyEmployee(companyId = firstArg(), userId = secondArg(), role = "EMPLOYEE")
             }
-        every { reservationRepository.existsCustomerOverlapping(any(), any(), any(), any(), any()) } returns false
         every { employeeAvailabilityPolicy.findConflicts(any(), employeeId, any(), any()) } returns emptyList()
         every { employeeAvailabilityPolicy.overlapsAny(any(), any(), any()) } answers
             {

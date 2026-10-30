@@ -9,6 +9,9 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Transactional
+
+data class CustomerOccupiedInterval(val startTime: LocalDateTime, val endTime: LocalDateTime)
 
 @Repository
 interface ReservationRepository : JpaRepository<Reservation, UUID> {
@@ -29,16 +32,19 @@ interface ReservationRepository : JpaRepository<Reservation, UUID> {
         excludeId: UUID = UUID(0, 0),
     ): Boolean
 
-    /** Loads all personal conflicts for a bounded availability range in one query. */
+    /** Reads only occupied intervals across employees within one salon for [start, end). */
+    @Transactional(readOnly = true)
     @Query(
-        "SELECT r FROM Reservation r WHERE r.companyId=:companyId AND r.customerId=:customerId AND r.status NOT IN ('CANCELLED','NO_SHOW') AND r.startTime<:end AND r.endTime>:start",
+        """SELECT new pl.kacosmetology.scheduler.reservation.CustomerOccupiedInterval(r.startTime, r.endTime)
+        FROM Reservation r WHERE r.companyId=:companyId AND r.customerId=:customerId
+        AND r.status NOT IN ('CANCELLED','NO_SHOW') AND r.startTime<:end AND r.endTime>:start""",
     )
     fun findCustomerOverlapping(
         companyId: UUID,
         customerId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
-    ): List<Reservation>
+    ): List<CustomerOccupiedInterval>
 
     fun findAllByCompanyIdAndCustomerIdAndArchivedFalseOrderByStartTimeDescIdDesc(
         companyId: UUID,

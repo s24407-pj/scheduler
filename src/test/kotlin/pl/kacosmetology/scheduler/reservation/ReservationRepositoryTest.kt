@@ -47,6 +47,43 @@ class ReservationRepositoryTest : ReservationContractTestSupport() {
     }
 
     @Test
+    fun `customer interval projection filters status tenant customer and half open range across employees`() {
+        val otherEmployee = newEmployee().first
+        reservation(future.minusMinutes(30), employee = otherEmployee) // Adjacent before range.
+        reservation(future, employee = otherEmployee)
+        val completed = reservation(future.plusHours(1), "COMPLETED", employee = otherEmployee)
+        jdbc.update("UPDATE reservations SET archived=true WHERE id=?", completed)
+        reservation(future.plusHours(2), "CANCELLED", employee = otherEmployee)
+        reservation(future.plusHours(3), "NO_SHOW", employee = otherEmployee)
+        reservation(future.plusHours(4), employee = otherEmployee) // Adjacent after range.
+        reservation(future.plusHours(2), customer = newCustomer())
+        val foreign = fixtures.salon()
+        fixtures.reservation(foreign, future)
+
+        fun intervals(company: java.util.UUID, customer: java.util.UUID) =
+            repository.findCustomerOverlapping(company, customer, future, future.plusHours(4)).toSet()
+
+        assertEquals(
+            setOf(
+                CustomerOccupiedInterval(future, future.plusMinutes(30)),
+                CustomerOccupiedInterval(future.plusHours(1), future.plusMinutes(90)),
+            ),
+            intervals(salon.company, salon.customer),
+        )
+        assertTrue(intervals(foreign.company, salon.customer).isEmpty())
+        assertTrue(intervals(salon.company, foreign.customer).isEmpty())
+        assertEquals(
+            listOf(CustomerOccupiedInterval(future, future.plusMinutes(30))),
+            repository.findCustomerOverlapping(
+                salon.company,
+                salon.customer,
+                future.plusMinutes(10),
+                future.plusMinutes(20),
+            ),
+        )
+    }
+
+    @Test
     fun `database rejects employee overlap even when optimistic service checks are bypassed`() {
         reservation()
         val otherCustomer = newCustomer()
