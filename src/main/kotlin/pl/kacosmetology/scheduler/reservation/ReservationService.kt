@@ -66,8 +66,8 @@ class ReservationService(
         requesterCompanyId: UUID,
     ): BookingResult {
         val companyId = requesterCompanyId
-        if (offeringRepository.findByIdAndCompanyId(offeringId, companyId) == null) missingReservation()
         val company = lockCompany(companyId)
+        if (offeringRepository.findByIdAndCompanyId(offeringId, companyId) == null) missingReservation()
         val profile = companyCustomers.findByCompanyIdAndId(companyId, customerId) ?: missingCustomer()
         if (profile.firstBookingAt != null && firstVisitDetails != null)
             conflict(

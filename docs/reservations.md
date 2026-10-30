@@ -57,7 +57,7 @@ Durable no-show penalties count by Warsaw appointment date over the inclusive in
 
 ## Atomicity, audit and notifications
 
-Booking obtains the company row lock and the company/employee row lock before authoritative clock checks. Company policy mutations use the same lock order. PostgreSQL exclusion constraints independently protect `(company, employee)` and `(company, customer)` occupied intervals. Optimistic revisions protect record changes. Every actual creation, edit, outcome, restoration, archive and unarchive is durably audited with actor, account, time and before/after state.
+Booking obtains the company row lock before loading mutable catalog entities, then the company/employee row lock before authoritative clock checks. A lock wait cannot reuse pre-lock catalog state for price, duration, activity or expired-quote reconfirmation. Company policy mutations use the same lock order. PostgreSQL exclusion constraints independently protect `(company, employee)` and `(company, customer)` occupied intervals. Optimistic revisions protect record changes. Every actual creation, edit, outcome, restoration, archive and unarchive is durably audited with actor, account, time and before/after state.
 
 Customer-created bookings have page/API confirmation only. Staff create/edit/restore/cancel SMS is opt-in, default off, and only actual changes generate it. All sends occur after commit through durable delivery state. Block cancellations generate one filtered mandatory summary. Reminder timing/retry and ambiguous-provider rules are described in [notifications](./notifications.md).
 
