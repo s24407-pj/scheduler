@@ -29,6 +29,21 @@ class OpenApiIntegrationTest {
     @MockkBean private lateinit var s3Client: S3Client
 
     @Test
+    fun `bounded reads and booking admission are described`() {
+        val api = mapper.readTree(mockMvc.get("/v3/api-docs").andReturn().response.contentAsString)
+        for (path in listOf("/api/customers", "/api/customers/{id}/visits", "/api/reservations/me")) {
+            val operation = api["paths"][path]["get"]
+            assertNotNull(operation["responses"]["200"]["headers"]["X-Next-Page"])
+            assertNotNull(operation["responses"]["200"]["headers"]["X-Page-Context"])
+            val size = operation["parameters"].values().single { it["name"].asString() == "size" }
+            assertEquals(100, size["schema"]["default"].asInt())
+            assertEquals(200, size["schema"]["maximum"].asInt())
+        }
+        assertNotNull(api["paths"]["/api/reservations"]["post"]["responses"]["413"])
+        assertNotNull(api["paths"]["/api/reservations/staff"]["post"]["responses"]["413"])
+    }
+
+    @Test
     fun `normal application context excludes annotated architecture fixtures`() {
         for (fixture in
             listOf(

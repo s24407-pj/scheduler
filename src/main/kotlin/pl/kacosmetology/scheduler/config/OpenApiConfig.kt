@@ -164,6 +164,25 @@ class OpenApiConfig {
                             ),
                     )
                 }
+                if (
+                    method == PathItem.HttpMethod.GET &&
+                        path in setOf("/api/customers", "/api/customers/{id}/visits", "/api/reservations/me")
+                ) {
+                    operation.responses["200"]?.addHeaderObject(
+                        "X-Next-Page",
+                        io.swagger.v3.oas.models.headers
+                            .Header()
+                            .description("Next zero-based page; absent on the last page")
+                            .schema(IntegerSchema()),
+                    )
+                    operation.responses["200"]?.addHeaderObject(
+                        "X-Page-Context",
+                        io.swagger.v3.oas.models.headers
+                            .Header()
+                            .description("Captured session scope; never combine pages from different scopes")
+                            .schema(StringSchema()),
+                    )
+                }
                 operation.security = if (requirement.isEmpty()) emptyList() else listOf(requirement)
                 (listOf("400", "401", "403", "404", "409", "429") +
                         if (

@@ -64,6 +64,19 @@ class CustomerBlockingPolicy(
         )!!
     }
 
+    /** Current penalty counts for one bounded customer page, including only this company's active annual penalties. */
+    fun currentCounts(companyId: UUID, customerIds: Collection<UUID>): Map<UUID, Int> {
+        if (customerIds.isEmpty()) return emptyMap()
+        val today = LocalDate.ofInstant(clock.instant(), BUSINESS_ZONE)
+        return jdbc
+            .query(
+                "SELECT customer_id,count(*) FROM no_show_penalties WHERE company_id=? AND customer_id IN (${customerIds.joinToString { "?" }}) AND active AND appointment_date BETWEEN ? AND ? GROUP BY customer_id",
+                { rs, _ -> rs.getObject(1, UUID::class.java) to rs.getInt(2) },
+                *(listOf<Any>(companyId) + customerIds + listOf(today.minusYears(1), today)).toTypedArray(),
+            )
+            .toMap()
+    }
+
     /**
      * Caller holds the company lock in an active transaction. One Warsaw cutoff selects strictly future visits; every
      * cancellation passes through audit and optimistic versioning, followed by one summary event.
@@ -71,11 +84,12 @@ class CustomerBlockingPolicy(
     fun cancelFuture(companyId: UUID, customerId: UUID) {
         val now = LocalDateTime.ofInstant(clock.instant(), BUSINESS_ZONE)
         val future =
-            reservations
-                .findAllByCompanyIdAndCustomerIdAndArchivedFalseOrderByStartTimeDesc(companyId, customerId)
-                .filter {
-                    it.companyId == companyId && it.status == ReservationStatus.BOOKED && it.startTime.isAfter(now)
-                }
+            reservations.findAllByCompanyIdAndCustomerIdAndArchivedFalseAndStatusAndStartTimeAfter(
+                companyId,
+                customerId,
+                ReservationStatus.BOOKED,
+                now,
+            )
         future.forEach {
             audit.capture()
             it.status = ReservationStatus.CANCELLED

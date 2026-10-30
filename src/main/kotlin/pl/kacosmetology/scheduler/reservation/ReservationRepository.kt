@@ -3,6 +3,8 @@ package pl.kacosmetology.scheduler.reservation
 import jakarta.persistence.LockModeType
 import java.time.LocalDateTime
 import java.util.*
+import org.springframework.data.domain.Pageable
+import org.springframework.data.domain.Slice
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
@@ -26,6 +28,30 @@ interface ReservationRepository : JpaRepository<Reservation, UUID> {
         end: LocalDateTime,
         excludeId: UUID = UUID(0, 0),
     ): Boolean
+
+    /** Loads all personal conflicts for a bounded availability range in one query. */
+    @Query(
+        "SELECT r FROM Reservation r WHERE r.companyId=:companyId AND r.customerId=:customerId AND r.status NOT IN ('CANCELLED','NO_SHOW') AND r.startTime<:end AND r.endTime>:start",
+    )
+    fun findCustomerOverlapping(
+        companyId: UUID,
+        customerId: UUID,
+        start: LocalDateTime,
+        end: LocalDateTime,
+    ): List<Reservation>
+
+    fun findAllByCompanyIdAndCustomerIdAndArchivedFalseOrderByStartTimeDescIdDesc(
+        companyId: UUID,
+        customerId: UUID,
+        pageable: Pageable,
+    ): Slice<Reservation>
+
+    fun findAllByCompanyIdAndCustomerIdAndArchivedFalseAndStatusAndStartTimeAfter(
+        companyId: UUID,
+        customerId: UUID,
+        status: ReservationStatus,
+        startTime: LocalDateTime,
+    ): List<Reservation>
 
     /** Customer-created future bookings count toward the salon's configurable cap. */
     @Query(

@@ -64,8 +64,15 @@ class AvailabilityContractTest {
                 )
             }
         every { conflicts.findConflicts(any(), any(), any(), any()) } returns emptyList()
-        every { conflicts.overlapsAny(any(), any(), any()) } returns false
-        every { reservations.existsCustomerOverlapping(any(), any(), any(), any(), any()) } returns false
+        every { conflicts.overlapsAny(any(), any(), any()) } answers
+            {
+                val start = firstArg<LocalDateTime>()
+                val end = secondArg<LocalDateTime>()
+                thirdArg<List<EmployeeAvailabilityConflict>>().any {
+                    start.isBefore(it.endTime) && end.isAfter(it.startTime)
+                }
+            }
+        every { reservations.findCustomerOverlapping(any(), any(), any(), any()) } returns emptyList()
     }
 
     @AfterEach
@@ -118,21 +125,26 @@ class AvailabilityContractTest {
 
     @Test
     fun `personal conflicts mark otherwise free slots without hiding them from salon availability`() {
-        every {
-            reservations.existsCustomerOverlapping(
-                testId(1),
-                testId(12),
-                date.atTime(9, 30),
-                date.atTime(10, 0),
-                UUID(0, 0),
+        every { reservations.findCustomerOverlapping(testId(1), testId(12), any(), any()) } returns
+            listOf(
+                pl.kacosmetology.scheduler.reservation.Reservation(
+                    companyId = testId(1),
+                    customerId = testId(12),
+                    employeeId = testId(7),
+                    serviceId = testId(3),
+                    price = 100,
+                    startTime = date.atTime(9, 30),
+                    endTime = date.atTime(10, 0),
+                    creationSource = "CUSTOMER",
+                ),
             )
-        } returns true
         val personal = service.getAvailableSlots(testId(7), testId(3), date, testId(12))
         val public = service.getAvailableSlots(testId(7), testId(3), date)
         assertEquals(public.map { it.time }, personal.map { it.time })
         assertTrue(personal.first().personalConflict)
         assertFalse(public.any { it.personalConflict })
-        verify(exactly = 0) { reservations.existsCustomerOverlapping(testId(2), any(), any(), any(), any()) }
+        verify(exactly = 1) { reservations.findCustomerOverlapping(testId(1), testId(12), any(), any()) }
+        verify(exactly = 0) { reservations.findCustomerOverlapping(testId(2), any(), any(), any()) }
     }
 
     @Test

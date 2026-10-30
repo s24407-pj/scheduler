@@ -1,8 +1,11 @@
 package pl.kacosmetology.scheduler.user
 
 import java.util.*
+import org.springframework.data.domain.Slice
+import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import pl.kacosmetology.scheduler.config.pageRequest
 import pl.kacosmetology.scheduler.user.dto.CustomerStatusResponse
 
 /** Business logic for owner-scoped manual customer block/unblock operations and customer notes. */
@@ -14,29 +17,37 @@ class CustomerService(
 ) {
 
     /**
-     * Returns all customers who have at least one reservation at the given company, enriched with their company-scoped
-     * block status and notes. Sorted by last name, then first name.
+     * Returns a bounded page of customers who have at least one reservation at the given company, enriched with their
+     * company-scoped block status and notes. Sorted by last name, then first name.
      */
     @Transactional(readOnly = true)
-    fun listCustomers(companyId: UUID): List<CustomerStatusResponse> {
-        val profiles = companyCustomerRepository.findByCompanyIdAndFirstBookingAtIsNotNull(companyId)
-        val blocks = companyCustomerBlockRepository.findByCompanyId(companyId).associateBy { it.customerId }
-        return profiles
-            .map { profile ->
-                val block = blocks[requireNotNull(profile.id)]
-                CustomerStatusResponse(
-                    requireNotNull(profile.id),
-                    requireNotNull(profile.firstName),
-                    requireNotNull(profile.lastName),
-                    profile.phoneNumber,
-                    blocking.currentCount(companyId, requireNotNull(profile.id)),
-                    block?.blocked ?: false,
-                    profile.notes,
-                    profile.contactEmail,
-                    profile.version,
-                )
-            }
-            .sortedWith(compareBy({ it.lastName }, { it.firstName }))
+    fun listCustomers(companyId: UUID, page: Int = 0, size: Int = 100): Slice<CustomerStatusResponse> {
+        val profiles =
+            companyCustomerRepository.findByCompanyIdAndFirstBookingAtIsNotNull(
+                companyId,
+                pageRequest(page, size, Sort.by("lastName", "firstName", "id")),
+            )
+        val ids = profiles.content.map { requireNotNull(it.id) }
+        val blocks =
+            if (ids.isEmpty()) emptyMap()
+            else
+                companyCustomerBlockRepository.findByCompanyIdAndCustomerIdIn(companyId, ids).associateBy {
+                    it.customerId
+                }
+        val counts = blocking.currentCounts(companyId, ids)
+        return profiles.map { profile ->
+            CustomerStatusResponse(
+                requireNotNull(profile.id),
+                requireNotNull(profile.firstName),
+                requireNotNull(profile.lastName),
+                profile.phoneNumber,
+                counts[profile.id] ?: 0,
+                blocks[profile.id]?.blocked ?: false,
+                profile.notes,
+                profile.contactEmail,
+                profile.version,
+            )
+        }
     }
 
     /**
@@ -82,10 +93,12 @@ class CustomerService(
     fun getVisitHistory(
         customerId: UUID,
         companyId: UUID,
-    ): List<pl.kacosmetology.scheduler.user.dto.CustomerVisitResponse> {
+        page: Int = 0,
+        size: Int = 100,
+    ): Slice<pl.kacosmetology.scheduler.user.dto.CustomerVisitResponse> {
         companyCustomerRepository.findByCompanyIdAndIdAndFirstBookingAtIsNotNull(companyId, customerId)
             ?: throw NoSuchElementException("Klient nie istnieje")
-        return companyCustomerRepository.findVisitHistory(companyId, customerId).map {
+        return companyCustomerRepository.findVisitHistory(companyId, customerId, pageRequest(page, size)).map {
             pl.kacosmetology.scheduler.user.dto.CustomerVisitResponse(
                 requireNotNull(it.id),
                 it.employeeId,

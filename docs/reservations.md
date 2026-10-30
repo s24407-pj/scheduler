@@ -66,3 +66,7 @@ Customer-created bookings have page/API confirmation only. Staff create/edit/res
 Flat staff/customer booking fields are removed and rejected as unknown input; OTP accepts no profile names. This pre-production contract uses only the nested intent DTOs. See [ADR-0018](./adr/0018-explicit-booking-customer-intent.md).
 
 Retain an unresolved exact request after transport failure even when a later retry receives 401, 403, 429 or changed context before outcome lookup. Recover only in the original account/company. Corrected known failures use a new key; unknown outcomes never do automatically. Browser payload loss requires manual salon resolution; filtered history cannot prove failure. Permanent server binding does not imply unlimited browser recovery.
+
+## Bounded history and calendar reads
+
+Customer GET /api/reservations/me returns an array page: page defaults to 0, size to 100 (1–200). Histories order by start descending and ID descending, exclude archives and hide internal notes/customer identifiers. Follow X-Next-Page until absent and require an unchanged X-Page-Context; cancel pending requests when identity changes. Employee/company calendar intervals must be positive and at most 93 local days. Profiles are batched per calendar response; history presentation is fetched once per page. See [ADR-0021](./adr/0021-bounded-customer-reads.md) for rollout and offset consistency limits.

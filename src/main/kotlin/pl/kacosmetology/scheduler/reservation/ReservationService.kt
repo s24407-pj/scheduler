@@ -6,6 +6,7 @@ import java.time.LocalDateTime
 import java.util.*
 import java.util.concurrent.ThreadLocalRandom
 import org.springframework.context.ApplicationEventPublisher
+import org.springframework.data.domain.Slice
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.core.queryForList
 import org.springframework.jdbc.core.queryForObject
@@ -18,6 +19,7 @@ import pl.kacosmetology.scheduler.company.*
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.config.ErrorCode
+import pl.kacosmetology.scheduler.config.pageRequest
 import pl.kacosmetology.scheduler.config.validateBusinessInterval
 import pl.kacosmetology.scheduler.employeeoffering.EmployeeOfferingAssignmentRepository
 import pl.kacosmetology.scheduler.offering.OfferingRepository
@@ -417,8 +419,23 @@ class ReservationService(
 
     /** Returns normal customer history, excluding archived appointments. */
     @Transactional(readOnly = true)
-    fun getCustomerReservations(customerId: UUID, companyId: UUID): List<Reservation> =
-        reservationRepository.findAllByCompanyIdAndCustomerIdAndArchivedFalseOrderByStartTimeDesc(companyId, customerId)
+    fun getCustomerReservations(
+        customerId: UUID,
+        companyId: UUID,
+        page: Int = 0,
+        size: Int = 100,
+    ): Slice<ReservationResponse> {
+        val rows =
+            reservationRepository.findAllByCompanyIdAndCustomerIdAndArchivedFalseOrderByStartTimeDescIdDesc(
+                companyId,
+                customerId,
+                pageRequest(page, size),
+            )
+        if (rows.isEmpty) return org.springframework.data.domain.SliceImpl(emptyList(), rows.pageable, false)
+        val company = companyRepository.findById(companyId).orElseThrow()
+        val employees = companyEmployeeRepository.findAllByCompanyId(companyId).associateBy { it.userId }
+        return rows.map { presentation(it, company, employees.getValue(it.employeeId), false) }
+    }
 
     /** Both staff roles can read company visit history with local customer names. */
     @Transactional(readOnly = true)
@@ -429,9 +446,13 @@ class ReservationService(
         end: LocalDateTime,
     ): List<DashboardReservationResponse> {
         if (!companyEmployeeRepository.existsByCompanyIdAndUserId(companyId, employeeId)) missingReservation()
-        return reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end).map {
-            reservation ->
-            val profile = companyCustomers.findByCompanyIdAndId(companyId, reservation.customerId)
+        validateCalendarRange(start, end)
+        val rows = reservationRepository.findByCompanyIdAndEmployeeIdAndDateRange(companyId, employeeId, start, end)
+        if (rows.isEmpty()) return emptyList()
+        val profiles =
+            companyCustomers.findByCompanyIdAndIdIn(companyId, rows.map { it.customerId }.toSet()).associateBy { it.id }
+        return rows.map { reservation ->
+            val profile = profiles[reservation.customerId]
             reservation.toDashboardResponse(profile?.firstName ?: "", profile?.lastName ?: "")
         }
     }
@@ -443,7 +464,10 @@ class ReservationService(
         employeeId: UUID,
         start: LocalDateTime,
         end: LocalDateTime,
-    ): List<Reservation> = reservationRepository.findEmployeeSchedule(companyId, employeeId, start, end)
+    ): List<Reservation> {
+        validateCalendarRange(start, end)
+        return reservationRepository.findEmployeeSchedule(companyId, employeeId, start, end)
+    }
 
     /** Response combines historical commercial values with current company and employee presentation. */
     @Transactional(readOnly = true)
@@ -453,6 +477,15 @@ class ReservationService(
             companyEmployeeRepository.findAllByCompanyId(reservation.companyId).first {
                 it.userId == reservation.employeeId
             }
+        return presentation(reservation, company, employee, includeInternal)
+    }
+
+    private fun presentation(
+        reservation: Reservation,
+        company: Company,
+        employee: CompanyEmployee,
+        includeInternal: Boolean,
+    ): ReservationResponse {
         return reservation
             .toResponse()
             .copy(
@@ -463,6 +496,14 @@ class ReservationService(
                 employeeName = "${employee.firstName} ${employee.lastName}",
                 internalNotes = if (includeInternal) reservation.internalNotes else null,
                 customerId = if (includeInternal) reservation.customerId else null,
+            )
+    }
+
+    private fun validateCalendarRange(start: LocalDateTime, end: LocalDateTime) {
+        if (!end.isAfter(start) || java.time.Duration.between(start, end) > java.time.Duration.ofDays(93))
+            throw ApiException(
+                ErrorCode.INVALID_PARAMETER,
+                "Zakres kalendarza musi być dodatni i nie dłuższy niż 93 dni",
             )
     }
 

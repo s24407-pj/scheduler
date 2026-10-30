@@ -177,3 +177,5 @@ for the paired consumer change and migration/rollback requirements.
 Catalog category create/delete/assignment mutations acquire the company row lock before
 loading catalog entities, matching offering writes and booking. Category assignment cannot
 flush an older offering snapshot over a concurrent price, duration or activation change.
+
+Customer directory/history reads use bounded slices without total counts. Page-scoped batches replace per-row penalty, block and profile queries; availability loads personal conflicts once per effective day. V5 adds partial company/customer history and established-profile ordering indexes. The array/continuation and calendar range contract is recorded in [ADR-0021](./adr/0021-bounded-customer-reads.md).

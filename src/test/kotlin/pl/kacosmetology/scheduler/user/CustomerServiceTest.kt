@@ -30,9 +30,10 @@ class CustomerServiceTest {
                 contactEmail = "local@example.test",
                 notes = "private",
             )
-        every { profiles.findByCompanyIdAndFirstBookingAtIsNotNull(testId(1)) } returns listOf(profile)
-        every { blocks.findByCompanyId(testId(1)) } returns emptyList()
-        every { blocking.currentCount(testId(1), testId(2)) } returns 2
+        every { profiles.findByCompanyIdAndFirstBookingAtIsNotNull(testId(1), any()) } returns
+            org.springframework.data.domain.SliceImpl(listOf(profile))
+        every { blocks.findByCompanyIdAndCustomerIdIn(testId(1), any()) } returns emptyList()
+        every { blocking.currentCounts(testId(1), any()) } returns mapOf(testId(2) to 2)
         val result = service.listCustomers(testId(1)).single()
         assertEquals(2, result.noShowCount)
         assertEquals("Local", result.firstName)

@@ -90,6 +90,23 @@ class AvailabilityService(
                 slotStarts.first(),
                 slotStarts.last().plusMinutes(requiredDuration),
             )
+        val personalConflicts =
+            if (customerId == null) emptyList()
+            else
+                reservationRepository
+                    .findCustomerOverlapping(
+                        offering.companyId,
+                        customerId,
+                        slotStarts.first(),
+                        slotStarts.last().plusMinutes(requiredDuration),
+                    )
+                    .map {
+                        EmployeeAvailabilityConflict(
+                            EmployeeAvailabilityConflictSource.RESERVATION,
+                            it.startTime,
+                            it.endTime,
+                        )
+                    }
         val earliestBookableInstant = nowInstant.plusSeconds(company.minBookingAdvanceMinutes.toLong() * 60)
 
         return slotStarts
@@ -103,13 +120,11 @@ class AvailabilityService(
                     start.toLocalTime(),
                     company.effectivePrice(offering.price, start, nowInstant),
                     offering.price,
-                    customerId != null &&
-                        reservationRepository.existsCustomerOverlapping(
-                            offering.companyId,
-                            customerId,
-                            start,
-                            start.plusMinutes(requiredDuration),
-                        ),
+                    employeeAvailabilityPolicy.overlapsAny(
+                        start,
+                        start.plusMinutes(requiredDuration),
+                        personalConflicts,
+                    ),
                 )
             }
     }
