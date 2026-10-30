@@ -139,6 +139,7 @@ class AvailabilityIntegrationTest {
         // Wstawiamy rezerwację od 10:00 do 12:00
         reservationRepository.save(
             Reservation(
+                creationSource = "CUSTOMER",
                 companyId = company.id!!,
                 customerId = customer.id!!,
                 employeeId = employee.id!!,

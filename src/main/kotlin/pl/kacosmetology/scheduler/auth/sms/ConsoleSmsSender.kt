@@ -14,12 +14,14 @@ class ConsoleSmsSender : SmsSender {
     private val logger = LoggerFactory.getLogger(ConsoleSmsSender::class.java)
 
     /** Records a development dispatch without logging the secret OTP. */
-    override fun sendOtp(phoneNumber: String, code: String) {
+    override fun deliverOtp(phoneNumber: String, code: String): SmsDeliveryResult {
         logger.info("MOCK OTP SMS dispatch to {}", phoneNumber)
+        return SmsDeliveryResult.ACCEPTED
     }
 
     /** Logs the message to the console instead of sending a real SMS. */
-    override fun sendMessage(phoneNumber: String, message: String) {
+    override fun deliverMessage(phoneNumber: String, message: String): SmsDeliveryResult {
         logger.info("MOCK SMS to $phoneNumber | $message")
+        return SmsDeliveryResult.ACCEPTED
     }
 }

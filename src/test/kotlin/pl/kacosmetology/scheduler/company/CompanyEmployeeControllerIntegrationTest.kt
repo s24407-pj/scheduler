@@ -124,6 +124,19 @@ class CompanyEmployeeControllerIntegrationTest {
     }
 
     @Test
+    fun `removed company directory alias cannot expose staff data to customers or staff`() {
+        for (session in listOf(customerSession, employeeSession)) {
+            mockMvc
+                .get("/api/company/employees") { cookie(session) }
+                .andExpect {
+                    status { isNotFound() }
+                    jsonPath("$.loginEmail") { doesNotExist() }
+                    jsonPath("$.contactPhone") { doesNotExist() }
+                }
+        }
+    }
+
+    @Test
     fun `GET api-employees should return 401 without session`() {
         mockMvc.get("/api/employees").andExpect {
             status { isUnauthorized() }

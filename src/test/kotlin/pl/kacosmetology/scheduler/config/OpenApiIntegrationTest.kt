@@ -78,6 +78,9 @@ class OpenApiIntegrationTest {
             jsonPath("$.paths['/api/staff/password'].post.security[0].sessionAuth") { exists() }
             jsonPath("$.paths['/api/staff/password'].post.security[0].csrfToken") { exists() }
             jsonPath("$.paths['/api/customers/{id}/visits'].get") { exists() }
+            jsonPath("$.paths['/api/company/employees']") { doesNotExist() }
+            jsonPath("$.paths['/api/employees'].get") { exists() }
+            jsonPath("$.components.schemas.ReservationResponse.properties.serviceNameSource") { doesNotExist() }
             jsonPath("$.paths['/api/users/me'].put") { doesNotExist() }
             jsonPath("$.components.schemas.StaffLoginRequest.properties.companyId") { exists() }
             jsonPath("$.components.schemas.StaffLoginRequest.properties.employmentId") { doesNotExist() }

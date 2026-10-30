@@ -462,9 +462,8 @@ class RecordingOtpProvider : SmsSender {
         beforeSend = {}
     }
 
-    override fun sendOtp(phoneNumber: String, code: String) = Unit
-
-    override fun sendMessage(phoneNumber: String, message: String) = Unit
+    override fun deliverMessage(phoneNumber: String, message: String): SmsDeliveryResult =
+        error("OTP provider cannot deliver appointment messages")
 
     override fun deliverOtp(phoneNumber: String, code: String): SmsDeliveryResult {
         calls.incrementAndGet()

@@ -23,11 +23,6 @@ class CompanyController(
     fun getPublicProfile(@PathVariable companyId: UUID): CompanyPublicProfileResponse =
         companyService.getPublicProfile(companyId)
 
-    /** Returns all employees (OWNER + EMPLOYEE) of the authenticated user's company. */
-    @GetMapping("/employees")
-    fun getEmployees(@AuthenticationPrincipal userDetails: CustomUserDetails): List<CompanyEmployeeResponse> =
-        companyService.getEmployees(userDetails.requireCompanyId())
-
     /** Returns the current company settings for the authenticated user's company. */
     @GetMapping("/settings")
     fun getSettings(@AuthenticationPrincipal userDetails: CustomUserDetails): CompanySettingsResponse =

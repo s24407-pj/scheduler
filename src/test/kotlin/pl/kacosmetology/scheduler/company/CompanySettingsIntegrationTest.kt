@@ -159,39 +159,6 @@ class CompanySettingsIntegrationTest {
     }
 
     @Test
-    fun `GET api-company-employees should return all employees for owner`() {
-        mockMvc
-            .get("/api/company/employees") {
-                cookie(ownerSession)
-            }
-            .andExpect {
-                status { isOk() }
-                jsonPath("$.length()") { value(2) }
-                jsonPath("$[*].firstName") { value(org.hamcrest.Matchers.containsInAnyOrder("Owner", "Employee")) }
-                jsonPath("$[*].role") { value(org.hamcrest.Matchers.containsInAnyOrder("OWNER", "EMPLOYEE")) }
-            }
-    }
-
-    @Test
-    fun `GET api-company-employees should return 200 for employee too`() {
-        mockMvc
-            .get("/api/company/employees") {
-                cookie(employeeSession)
-            }
-            .andExpect {
-                status { isOk() }
-                jsonPath("$.length()") { value(2) }
-            }
-    }
-
-    @Test
-    fun `GET api-company-employees should return 401 without session`() {
-        mockMvc.get("/api/company/employees").andExpect {
-            status { isUnauthorized() }
-        }
-    }
-
-    @Test
     fun `PUT api-company-settings should return 400 when slotInterval is not divisible by 5`() {
         val body =
             mapOf(

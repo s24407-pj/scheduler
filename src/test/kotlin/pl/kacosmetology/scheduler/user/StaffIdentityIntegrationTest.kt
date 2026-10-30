@@ -313,6 +313,7 @@ class StaffIdentityIntegrationTest {
         val future =
             bookings.save(
                 pl.kacosmetology.scheduler.reservation.Reservation(
+                    creationSource = "CUSTOMER",
                     companyId = company.id!!,
                     customerId = customer.id!!,
                     employeeId = employee.userId,
@@ -324,6 +325,7 @@ class StaffIdentityIntegrationTest {
             )
         bookings.save(
             pl.kacosmetology.scheduler.reservation.Reservation(
+                creationSource = "CUSTOMER",
                 companyId = company.id!!,
                 customerId = customer.id!!,
                 employeeId = employee.userId,

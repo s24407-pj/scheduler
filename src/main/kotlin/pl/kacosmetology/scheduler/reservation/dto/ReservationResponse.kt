@@ -19,7 +19,6 @@ data class ReservationResponse(
     val revision: Long = 0,
     val durationMinutes: Int = 0,
     val serviceName: String = "",
-    val serviceNameSource: String = "ACCEPTED",
     val companyId: UUID,
     val companyName: String = "",
     val companyAddress: String? = null,
@@ -76,7 +75,6 @@ fun Reservation.toResponse() =
         revision = version,
         durationMinutes = agreedDurationMinutes,
         serviceName = acceptedServiceName,
-        serviceNameSource = serviceNameSource,
         companyId = companyId,
         archived = archived,
     )

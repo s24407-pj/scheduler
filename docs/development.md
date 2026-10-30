@@ -100,7 +100,7 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 | `SPRING_PROFILE` | `prod` | Compose only: maps to `SPRING_PROFILES_ACTIVE` |
 | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/scheduler_db` | Compose overrides this with `jdbc:postgresql://db:5432/scheduler_db` |
 | `DB_USERNAME`, `DB_PASSWORD` | required by Compose | Database credentials; Compose passes these as `SPRING_DATASOURCE_USERNAME/PASSWORD` and initializes PostgreSQL with the same values |
-| `SPRING_DATA_REDIS_HOST`, `SPRING_DATA_REDIS_PORT` | `redis`, `6379` in Compose | Compose connects to the `redis` service; `REDIS_HOST`/`REDIS_PORT` are legacy application property aliases and are not used by Compose |
+| `SPRING_DATA_REDIS_HOST`, `SPRING_DATA_REDIS_PORT` | `redis`, `6379` in Compose | Compose connects to the `redis` service; host-side runs use these same standard Spring Boot variables |
 | `SPRING_SESSION_TIMEOUT` | `24h` | Anonymous session default; authenticated customers have absolute 24h expiry and staff have 24h inactivity expiry |
 | `SPRING_SESSION_DATA_REDIS_NAMESPACE` | `scheduler:sessions` | Application-specific session namespace; share between API instances |
 | `SERVER_SERVLET_SESSION_COOKIE_SECURE` | request HTTPS detection; true in prod | Keep true in production; no cookie Domain; SameSite=Lax |

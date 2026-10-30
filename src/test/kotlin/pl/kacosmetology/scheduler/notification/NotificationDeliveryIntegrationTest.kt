@@ -121,6 +121,7 @@ class NotificationDeliveryIntegrationTest {
             events.publishEvent(
                 ReservationCreatedEvent(
                     Reservation(
+                        creationSource = "CUSTOMER",
                         id = id,
                         companyId = companyId,
                         customerId = customerId,

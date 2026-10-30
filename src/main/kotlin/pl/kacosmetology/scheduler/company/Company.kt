@@ -65,11 +65,3 @@ fun Company.effectivePrice(basePrice: Int, slotStart: LocalDateTime, now: Instan
         .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_EVEN)
         .intValueExact()
 }
-
-/** Compatibility overload for callers already holding an unambiguous Warsaw local business time. */
-fun Company.effectivePrice(basePrice: Int, slotStart: LocalDateTime, now: LocalDateTime): Int {
-    val offsets = BUSINESS_ZONE.rules.getValidOffsets(now)
-    if (offsets.size != 1)
-        throw ApiException(ErrorCode.INVALID_LOCAL_TIME, "Czas jest niejednoznaczny lub nie istnieje")
-    return effectivePrice(basePrice, slotStart, now.toInstant(offsets.single()))
-}

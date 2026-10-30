@@ -150,3 +150,19 @@ An environment already using the authorized company-local V1 baseline upgrades i
 The customer website needs a fixed private upstream `SCHEDULER_API_ORIGIN` and build-time `VITE_SCHEDULER_COMPANY_ID` plus `VITE_SCHEDULER_SERVICE_MAP` (marketing service ID to Scheduler offering UUID). Keep the upstream private and route same-origin `/api` traffic to Spring. The relay forwards each browser's own cookies and approved response cookies; it must never use a shared login or cookie jar. Responses with sessions, readiness, quotes or reservations must be `Cache-Control: no-store` at the relay and any CDN. Verify HttpOnly/host-only/Secure/SameSite cookie behavior, CSRF refresh after authentication and the customer context header through the actual proxy chain. Preserve the explicit trusted-proxy/IP policy described above.
 
 Before enabling booking links, confirm mapped offerings belong to the configured salon and are active, establish employee schedules/qualification, and perform the [read-only phone-key audit](./identity.md#phone-key-audit-before-enabling-native-booking) when an existing dataset is used. Exercise first-time and returning OTP booking, profile-establishment conflict, revision conflict and lost-response replay using test SMS infrastructure. Do not send production SMS as a test. A successful booking retry returns the current state, including cancellation; it must not allocate again or emit a second confirmation/conversion.
+
+## Obsolete compatibility cleanup (ADR-0019)
+
+V3 removes reservation `reminder_sent` and `service_name_source` and the default creation
+source. Stop the old backend before startup applies this migration; rolling old/new binaries
+against these removed columns is unsupported. Reservation IDs, accepted terms, existing
+creation sources and historical audit JSON remain unchanged. Use `/api/employees` for the
+staff directory; `/api/company/employees` and response `serviceNameSource` are removed.
+Deploy the paired dashboard pinned to the exact reviewed backend revision. Older clients
+must tolerate the missing optional provenance property. Backend rollback requires restoring
+the old schema shape first through a reviewed forward migration; see
+[ADR-0019](./adr/0019-remove-obsolete-compatibility-code.md).
+
+Host-side environments must replace `REDIS_HOST`/`REDIS_PORT` with
+`SPRING_DATA_REDIS_HOST`/`SPRING_DATA_REDIS_PORT`; Compose already uses these standard
+Spring Boot variables. Preserve custom values when updating an existing local `.env`.
