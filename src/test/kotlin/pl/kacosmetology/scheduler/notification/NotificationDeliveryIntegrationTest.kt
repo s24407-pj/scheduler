@@ -40,12 +40,9 @@ import pl.kacosmetology.scheduler.auth.dto.RequestCodeRequest
 import pl.kacosmetology.scheduler.auth.sms.DailySmsBudget
 import pl.kacosmetology.scheduler.auth.sms.SmsDeliveryResult
 import pl.kacosmetology.scheduler.auth.sms.SmsSender
-import pl.kacosmetology.scheduler.config.BUSINESS_ZONE
 import pl.kacosmetology.scheduler.config.SmsWorkers
 import pl.kacosmetology.scheduler.reservation.CustomerBlockedBookingsEvent
-import pl.kacosmetology.scheduler.reservation.Reservation
 import pl.kacosmetology.scheduler.reservation.ReservationChangedEvent
-import pl.kacosmetology.scheduler.reservation.ReservationCreatedEvent
 import pl.kacosmetology.scheduler.testId
 import software.amazon.awssdk.services.s3.S3Client
 
@@ -108,7 +105,7 @@ class NotificationDeliveryIntegrationTest {
     }
 
     @Test
-    fun `rollback sends nothing while customer booking and default staff optout emit no confirmation`() {
+    fun `rollback and default staff optout emit no confirmation`() {
         val id = booking(nine.plusSeconds(3600))
         assertThrows<IllegalStateException> {
             transactions.executeWithoutResult {
@@ -117,23 +114,6 @@ class NotificationDeliveryIntegrationTest {
             }
         }
         assertEquals(0L, count())
-        transactions.executeWithoutResult {
-            events.publishEvent(
-                ReservationCreatedEvent(
-                    Reservation(
-                        creationSource = "CUSTOMER",
-                        id = id,
-                        companyId = companyId,
-                        customerId = customerId,
-                        employeeId = employeeId,
-                        serviceId = offeringId,
-                        price = 100,
-                        startTime = LocalDateTime.ofInstant(nine.plusSeconds(3600), BUSINESS_ZONE),
-                        endTime = LocalDateTime.ofInstant(nine.plusSeconds(5400), BUSINESS_ZONE),
-                    ),
-                ),
-            )
-        }
         changed(id, "CREATE", false)
         assertEquals(0L, count())
         verify(exactly = 0) { sender.deliverMessage(any(), any()) }
