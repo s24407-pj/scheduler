@@ -28,7 +28,7 @@ class BookingSubmissionService(
             propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
         }
 
-    /** Binds even malformed/invalid DTO submissions before MVC validation can reject them. */
+    /** Binds the fingerprint of an admitted body before MVC validation, including malformed/invalid DTO input. */
     fun bindPayload(accountKey: String, key: String, payload: String) {
         if (key.isBlank() || key.length > 200)
             throw ApiException(ErrorCode.BAD_REQUEST, "Nieprawidłowy Idempotency-Key")
@@ -37,11 +37,10 @@ class BookingSubmissionService(
             independent.executeWithoutResult {
                 jdbc.execute("SET LOCAL lock_timeout = '5s'")
                 jdbc.update(
-                    "INSERT INTO booking_submissions(account_key,submission_key,request_hash,request_payload) VALUES(?,?,?,?) ON CONFLICT DO NOTHING",
+                    "INSERT INTO booking_submissions(account_key,submission_key,request_hash) VALUES(?,?,?) ON CONFLICT DO NOTHING",
                     accountKey,
                     key,
                     hash,
-                    payload,
                 )
                 val original =
                     jdbc.queryForObject<String>(
@@ -82,11 +81,10 @@ class BookingSubmissionService(
             independent.executeWithoutResult {
                 jdbc.execute("SET LOCAL lock_timeout = '5s'")
                 jdbc.update(
-                    "INSERT INTO booking_submissions(account_key, submission_key, request_hash, request_payload) VALUES (?,?,?,?) ON CONFLICT DO NOTHING",
+                    "INSERT INTO booking_submissions(account_key, submission_key, request_hash) VALUES (?,?,?) ON CONFLICT DO NOTHING",
                     accountKey,
                     key,
                     hash,
-                    payload,
                 )
             }
             return checkNotNull(

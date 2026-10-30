@@ -15,6 +15,8 @@ import org.springframework.web.filter.OncePerRequestFilter
 import org.springframework.web.servlet.HandlerExceptionResolver
 import pl.kacosmetology.scheduler.auth.RateLimitExceededException
 import pl.kacosmetology.scheduler.auth.RedisRollingRateLimiter
+import pl.kacosmetology.scheduler.config.ApiException
+import pl.kacosmetology.scheduler.config.ErrorCode
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 import tools.jackson.databind.DeserializationFeature
 import tools.jackson.databind.ObjectMapper
@@ -22,7 +24,10 @@ import tools.jackson.databind.ObjectMapper
 /** Request attribute binds raw JSON semantics before MVC validation while retaining the body for deserialization. */
 const val BOOKING_PAYLOAD_ATTRIBUTE = "scheduler.bookingPayload"
 
-/** Counts every booking submission and durably binds the key before JSON/DTO validation. */
+/** Bounds both advertised and chunked booking bodies before buffering or durable fingerprinting. */
+const val MAX_BOOKING_BODY_BYTES = 64 * 1024
+
+/** Counts every booking attempt; only admitted, size-bounded requests bind a key before JSON/DTO validation. */
 @Component
 class BookingRateLimitFilter(
     private val limits: RedisRollingRateLimiter,
@@ -45,14 +50,15 @@ class BookingRateLimitFilter(
             val user = account?.let {
                 limits.check("rate:booking:account:${it.accountKey()}", 10, Duration.ofMinutes(1))
             }
-            val limitExceeded = !ip.allowed || user?.allowed == false
-            val limitFailure =
-                RateLimitExceededException(
+            if (!ip.allowed || user?.allowed == false)
+                throw RateLimitExceededException(
                     retryAfterSeconds = maxOf(ip.retryAfterSeconds, user?.retryAfterSeconds ?: 0),
                 )
+            if (request.contentLengthLong > MAX_BOOKING_BODY_BYTES) oversized()
+            val bytes = request.inputStream.readNBytes(MAX_BOOKING_BODY_BYTES + 1)
+            if (bytes.size > MAX_BOOKING_BODY_BYTES) oversized()
             val key = request.getHeader("Idempotency-Key")
             if (account != null && key != null) {
-                val bytes = request.inputStream.readBytes()
                 val payload =
                     try {
                         val value =
@@ -67,16 +73,15 @@ class BookingRateLimitFilter(
                     }
                 submissions.bindPayload(account.accountKey(), key, payload)
                 request.setAttribute(BOOKING_PAYLOAD_ATTRIBUTE, payload)
-                if (limitExceeded) throw limitFailure
-                chain.doFilter(CachedBookingRequest(request, bytes), response)
-            } else {
-                if (limitExceeded) throw limitFailure
-                chain.doFilter(request, response)
             }
+            chain.doFilter(CachedBookingRequest(request, bytes), response)
         } catch (failure: Exception) {
             errors.resolveException(request, response, null, failure)
         }
     }
+
+    private fun oversized(): Nothing =
+        throw ApiException(ErrorCode.PAYLOAD_TOO_LARGE, "Żądanie rezerwacji może mieć maksymalnie 64 KiB")
 
     private fun canonical(value: Any?): Any? =
         when (value) {

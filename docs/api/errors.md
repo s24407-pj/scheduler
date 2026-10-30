@@ -9,6 +9,7 @@ Every error is RFC 9457 Problem Details (`application/problem+json`) with stable
 | 403 | Authenticated role lacks permission or CSRF is invalid |
 | 404 | Opaque nonexistent/foreign resource, including absent local customer relationship |
 | 409 | Booking/current-rule, revision, lifecycle, idempotency or expected session-context conflict |
+| 413 | Booking body exceeds the 64 KiB admission limit; no new key binding |
 | 429 | Atomic request/SMS allowance exceeded; includes Retry-After seconds |
 
 | Code | HTTP |
@@ -17,6 +18,7 @@ Every error is RFC 9457 Problem Details (`application/problem+json`) with stable
 | `MALFORMED_REQUEST` | 400 |
 | `INVALID_PARAMETER` | 400 |
 | `BAD_REQUEST` | 400 |
+| `PAYLOAD_TOO_LARGE` | 413 |
 | `INVALID_LOCAL_TIME` | 400 |
 | `OFFERING_UNAVAILABLE` | 409 |
 | `EMPLOYEE_NOT_IN_COMPANY` | 400 |
@@ -49,7 +51,7 @@ Every error is RFC 9457 Problem Details (`application/problem+json`) with stable
 | `RATE_LIMITED` | 429 |
 | `INTERNAL_ERROR` | 500 |
 
-Booking keys remain bound after failed input/business validation. `IDEMPOTENCY_CONFLICT` means a changed payload; `IDEMPOTENCY_IN_PROGRESS` means another execution held the key beyond five seconds. `REVISION_REQUIRED` identifies a missing or invalid `If-Match` header on reservation, schedule-block, and customer profile/notes updates. `CONCURRENT_MODIFICATION` identifies a stale revision. A replayed lifecycle command after reversal conflicts with `INVALID_STATUS_TRANSITION`.
+Admitted booking keys remain bound after failed input/business validation. Rate (429) and size (413) admission gates reject before creating a new key; they never erase an existing binding or settle an earlier uncertain outcome. `IDEMPOTENCY_CONFLICT` means a changed payload; `IDEMPOTENCY_IN_PROGRESS` means another execution held the key beyond five seconds. `REVISION_REQUIRED` identifies a missing or invalid `If-Match` header on reservation, schedule-block, and customer profile/notes updates. `CONCURRENT_MODIFICATION` identifies a stale revision. A replayed lifecycle command after reversal conflicts with `INVALID_STATUS_TRANSITION`.
 
 Foreign staff/customer/company resources return the same opaque missing error as nonexistent ones. A completed visit may be cancelled by staff with a private reason; elapsed or corrected outcomes follow the current [reservation contract](../reservations.md).
 

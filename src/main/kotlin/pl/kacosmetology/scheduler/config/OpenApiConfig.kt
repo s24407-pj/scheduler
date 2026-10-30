@@ -165,21 +165,28 @@ class OpenApiConfig {
                     )
                 }
                 operation.security = if (requirement.isEmpty()) emptyList() else listOf(requirement)
-                listOf("400", "401", "403", "404", "409", "429").forEach { code ->
-                    operation.responses.putIfAbsent(
-                        code,
-                        ApiResponse()
-                            .description("Problem Details; inspect stable code and Polish detail/errors")
-                            .content(
-                                Content()
-                                    .addMediaType(
-                                        "application/problem+json",
-                                        MediaType()
-                                            .schema(Schema<Any>().`$ref`("#/components/schemas/ApiProblemDetail")),
-                                    ),
-                            ),
-                    )
-                }
+                (listOf("400", "401", "403", "404", "409", "429") +
+                        if (
+                            path in setOf("/api/reservations", "/api/reservations/staff") &&
+                                method == PathItem.HttpMethod.POST
+                        )
+                            listOf("413")
+                        else emptyList())
+                    .forEach { code ->
+                        operation.responses.putIfAbsent(
+                            code,
+                            ApiResponse()
+                                .description("Problem Details; inspect stable code and Polish detail/errors")
+                                .content(
+                                    Content()
+                                        .addMediaType(
+                                            "application/problem+json",
+                                            MediaType()
+                                                .schema(Schema<Any>().`$ref`("#/components/schemas/ApiProblemDetail")),
+                                        ),
+                                ),
+                        )
+                    }
             }
         }
     }

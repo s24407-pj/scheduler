@@ -29,3 +29,4 @@ To add one, copy the structure of an existing ADR, use the next number, and add 
 | [0017](./0017-company-local-customers.md) | Company-local customer identity and OTP | Accepted |
 | [0018](./0018-explicit-booking-customer-intent.md) | Explicit customer selection and profile establishment intent | Accepted |
 | [0019](./0019-remove-obsolete-compatibility-code.md) | Remove obsolete compatibility code | Accepted |
+| [0020](./0020-bounded-booking-admission.md) | Bounded booking admission and fingerprint storage | Accepted |

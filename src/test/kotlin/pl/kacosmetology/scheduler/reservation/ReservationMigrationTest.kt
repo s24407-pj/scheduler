@@ -12,6 +12,31 @@ import org.testcontainers.postgresql.PostgreSQLContainer
 /** Upgrade coverage preserves reservation history while removing obsolete persistence fields. */
 class ReservationMigrationTest {
     @Test
+    fun `V4 preserves permanent submission fingerprints and reservation outcomes`() {
+        PostgreSQLContainer("postgres:18-alpine").use { postgres ->
+            postgres.start()
+            val source = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+            Flyway.configure().dataSource(source).target("3").load().migrate()
+            val jdbc = JdbcTemplate(source)
+            val fixtures = ContractFixtures(jdbc)
+            val salon = fixtures.salon()
+            val id = fixtures.reservation(salon, LocalDateTime.parse("2030-06-03T12:00:00"))
+            jdbc.update(
+                "INSERT INTO booking_submissions(account_key,submission_key,request_hash,request_payload,reservation_id) VALUES('account','key',?, 'old payload', ?)",
+                "a".repeat(64),
+                id,
+            )
+            val original =
+                jdbc.queryForMap(
+                    "SELECT account_key,submission_key,request_hash,reservation_id,created_at FROM booking_submissions",
+                )
+            Flyway.configure().dataSource(source).target("4").load().migrate()
+            assertEquals(original, jdbc.queryForMap("SELECT * FROM booking_submissions"))
+            assertEquals(1L, jdbc.queryForObject("SELECT count(*) FROM reservations WHERE id=?", Long::class.java, id))
+        }
+    }
+
+    @Test
     fun `V3 upgrades populated V2 without changing reservations or historical audit`() {
         PostgreSQLContainer("postgres:18-alpine").use { postgres ->
             postgres.start()
@@ -30,7 +55,7 @@ class ReservationMigrationTest {
             row.remove("reminder_sent")
             row.remove("service_name_source")
 
-            Flyway.configure().dataSource(source).load().migrate()
+            Flyway.configure().dataSource(source).target("3").load().migrate()
 
             assertEquals(row, jdbc.queryForMap("SELECT * FROM reservations WHERE id=?", id))
             assertEquals(
