@@ -114,6 +114,7 @@ class CustomerListIntegrationTest {
 
         reservationRepository.save(
             Reservation(
+                creationSource = "CUSTOMER",
                 companyId = companyId,
                 customerId = customer.id!!,
                 employeeId = employee.id!!,
@@ -167,6 +168,7 @@ class CustomerListIntegrationTest {
             val missed =
                 reservationRepository.save(
                     Reservation(
+                        creationSource = "CUSTOMER",
                         companyId = companyId,
                         customerId = customer.id!!,
                         employeeId = employee.id!!,
@@ -272,6 +274,7 @@ class CustomerListIntegrationTest {
             )
         reservationRepository.save(
             Reservation(
+                creationSource = "CUSTOMER",
                 companyId = otherCompany.id!!,
                 customerId = otherCustomer.id!!,
                 employeeId = employee.id!!,

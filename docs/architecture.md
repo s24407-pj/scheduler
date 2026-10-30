@@ -168,3 +168,8 @@ Jackson rejects unknown JSON properties and fractional values for every integral
 The baseline was consolidated with explicit pre-production authorization on 2026-10-15. Existing developer databases must be recreated before using this baseline; the application never resets a database automatically. No global customer or legacy user/profile table is part of the new schema.
 
 The 2026-10-24 authorized baseline consolidates former V1–V4 and company-local customers into V1. See [ADR-0017](./adr/0017-company-local-customers.md). Recreate development databases and clear existing Redis sessions, OTP state and caches before using it; principal serialization version 3 deliberately rejects old sessions. The application never resets an existing environment automatically.
+
+V3 removes obsolete reservation reminder/provenance fields and requires an explicit creation
+source for new writes; existing provenance and audit JSON remain intact. The staff directory
+is `/api/employees` only. See [ADR-0019](./adr/0019-remove-obsolete-compatibility-code.md)
+for the paired consumer change and migration/rollback requirements.

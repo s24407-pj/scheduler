@@ -2,10 +2,8 @@ package pl.kacosmetology.scheduler.auth
 
 import com.ninjasquad.springmockk.MockkBean
 import com.ninjasquad.springmockk.MockkSpyBean
-import io.mockk.Runs
 import io.mockk.clearMocks
 import io.mockk.every
-import io.mockk.just
 import jakarta.servlet.http.Cookie
 import java.io.ByteArrayOutputStream
 import java.io.ObjectOutputStream
@@ -106,7 +104,8 @@ class SessionSecurityIntegrationTest {
         employments.deleteAll()
         users.deleteAll()
         companies.deleteAll()
-        every { smsSender.sendOtp(any(), any()) } just Runs
+        every { smsSender.deliverOtp(any(), any()) } returns
+            pl.kacosmetology.scheduler.auth.sms.SmsDeliveryResult.ACCEPTED
         staff =
             StaffFixture(
                 phoneNumber = "+48500123456",

@@ -21,7 +21,7 @@ class CustomerReservationFlowIntegrationTest : ReservationContractTestSupport() 
         assertEquals(1L, count("company_customers"))
         assertEquals(1L, count("reservation_audit"))
         assertEquals(0L, count("notification_deliveries"))
-        verify(exactly = 0) { sms.sendMessage(any(), any()) }
+        verify(exactly = 0) { sms.deliverMessage(any(), any()) }
     }
 
     @Test

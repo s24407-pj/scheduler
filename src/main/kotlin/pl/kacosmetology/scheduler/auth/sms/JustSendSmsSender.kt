@@ -32,16 +32,6 @@ class JustSendSmsSender(
         require(sender.length <= 11) { "JUSTSEND_SENDER must contain at most 11 characters" }
     }
 
-    /** Sends an OTP through the classified provider path. */
-    override fun sendOtp(phoneNumber: String, code: String) {
-        require(deliverOtp(phoneNumber, code) == SmsDeliveryResult.ACCEPTED) { "SMS was not accepted" }
-    }
-
-    /** Sends an appointment message through the classified provider path. */
-    override fun sendMessage(phoneNumber: String, message: String) {
-        require(deliverMessage(phoneNumber, message) == SmsDeliveryResult.ACCEPTED) { "SMS was not accepted" }
-    }
-
     /** Classifies provider acceptance without inspecting or logging response bodies. */
     override fun deliverOtp(phoneNumber: String, code: String): SmsDeliveryResult =
         deliver(phoneNumber, "Kod weryfikacyjny: $code")

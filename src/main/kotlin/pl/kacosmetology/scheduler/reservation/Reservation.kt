@@ -29,16 +29,14 @@ class Reservation(
     @Enumerated(EnumType.STRING) @Column(nullable = false) var status: ReservationStatus = ReservationStatus.BOOKED,
     @Version val version: Long = 0,
     @Column(name = "accepted_service_name", nullable = false) var acceptedServiceName: String = "",
-    @Column(name = "service_name_source", nullable = false) var serviceNameSource: String = "ACCEPTED",
     @Column(name = "agreed_duration_minutes", nullable = false)
     var agreedDurationMinutes: Int = java.time.Duration.between(startTime, endTime).toMinutes().toInt(),
-    @Column(name = "creation_source", nullable = false) val creationSource: String = "LEGACY",
+    @Column(name = "creation_source", nullable = false) val creationSource: String,
     @Column(nullable = false) var archived: Boolean = false,
     @Column(name = "internal_cancellation_reason") var internalCancellationReason: String? = null,
     @Column(name = "internal_notes") var internalNotes: String? = null,
     @Column(name = "customer_explanation") var customerExplanation: String? = null,
     @Column(name = "outcome_explanation") var outcomeExplanation: String? = null,
-    @Column(name = "reminder_sent", nullable = false) var reminderSent: Boolean = false,
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     @org.hibernate.annotations.Generated(event = [org.hibernate.generator.EventType.INSERT])
     val createdAt: LocalDateTime? = null,

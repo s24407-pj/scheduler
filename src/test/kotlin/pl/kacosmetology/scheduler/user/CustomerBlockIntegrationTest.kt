@@ -133,6 +133,7 @@ class CustomerBlockIntegrationTest {
         // Give customer a reservation in this company so block/unblock is valid
         reservationRepository.save(
             Reservation(
+                creationSource = "CUSTOMER",
                 companyId = companyId,
                 customerId = customer.id!!,
                 employeeId = employee.id!!,
@@ -295,6 +296,7 @@ class CustomerBlockIntegrationTest {
         val future =
             reservationRepository.save(
                 Reservation(
+                    creationSource = "CUSTOMER",
                     companyId = companyId,
                     customerId = customer.id!!,
                     employeeId = employee.id!!,
@@ -307,6 +309,7 @@ class CustomerBlockIntegrationTest {
         val ongoing =
             reservationRepository.save(
                 Reservation(
+                    creationSource = "CUSTOMER",
                     companyId = companyId,
                     customerId = customer.id!!,
                     employeeId = employee.id!!,
@@ -341,6 +344,7 @@ class CustomerBlockIntegrationTest {
             val visit =
                 reservationRepository.save(
                     Reservation(
+                        creationSource = "CUSTOMER",
                         companyId = companyId,
                         customerId = customer.id!!,
                         employeeId = employee.id!!,

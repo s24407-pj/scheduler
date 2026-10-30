@@ -80,6 +80,7 @@ class ReservationServiceTest {
         offering = Offering(id = testId(30), companyId = testId(1), name = "Catalog", price = 101, durationMinutes = 30)
         existing =
             Reservation(
+                creationSource = "CUSTOMER",
                 id = testId(50),
                 companyId = testId(1),
                 customerId = testId(10),

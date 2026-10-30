@@ -51,12 +51,8 @@ class OtpRedisIntegrationTest {
         awaitWorkers()
         redis.connectionFactory!!.connection.use { it.serverCommands().flushAll() }
         clearMocks(smsSender)
-        every { smsSender.sendOtp(any(), any()) } just Runs
-        every { smsSender.deliverOtp(any(), any()) } answers
-            {
-                smsSender.sendOtp(firstArg(), secondArg())
-                SmsDeliveryResult.ACCEPTED
-            }
+        every { smsSender.deliverOtp(any(), any()) } returns
+            pl.kacosmetology.scheduler.auth.sms.SmsDeliveryResult.ACCEPTED
         deliveries.recoverAfterRestart()
     }
 
@@ -180,11 +176,11 @@ class OtpRedisIntegrationTest {
                 error("rollback")
             }
         }
-        verify(exactly = 0) { smsSender.sendOtp(any(), any()) }
-        every { smsSender.sendOtp(any(), any()) } throws IllegalStateException("provider rejected")
+        verify(exactly = 0) { smsSender.deliverOtp(any(), any()) }
+        every { smsSender.deliverOtp(any(), any()) } throws IllegalStateException("provider rejected")
         authService.requestCode(RequestCodeRequest(companyId, "+48444444444"), "other")
         awaitWorkers()
-        verify(exactly = 1) { smsSender.sendOtp("+48444444444", any()) }
+        verify(exactly = 1) { smsSender.deliverOtp("+48444444444", any()) }
     }
 
     @AfterEach

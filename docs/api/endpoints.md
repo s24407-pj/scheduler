@@ -42,7 +42,6 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | Method | Path | Access | Notes |
 | ------ | ---- | ------ | ----- |
 | GET | `/api/company/public/{companyId}` | Public | Public salon profile |
-| GET | `/api/company/employees` | Authenticated | Staff of the caller's company |
 | GET | `/api/company/settings` | Authenticated | Caller's company settings |
 | PUT | `/api/company/settings` | OWNER | Includes notice/horizon/customer booking cap |
 | PUT | `/api/company/profile` | OWNER | Company-local public name/address |

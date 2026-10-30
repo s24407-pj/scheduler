@@ -1,9 +1,7 @@
 package pl.kacosmetology.scheduler.auth
 
 import com.ninjasquad.springmockk.MockkBean
-import io.mockk.Runs
 import io.mockk.every
-import io.mockk.just
 import jakarta.servlet.http.Cookie
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -81,7 +79,8 @@ class AuthFlowIntegrationTest {
         companyRepository.deleteAll()
 
         companyId = companyRepository.save(Company(name = "OTP Salon")).id!!
-        every { smsSender.sendOtp(any(), any()) } just Runs
+        every { smsSender.deliverOtp(any(), any()) } returns
+            pl.kacosmetology.scheduler.auth.sms.SmsDeliveryResult.ACCEPTED
     }
 
     @Test

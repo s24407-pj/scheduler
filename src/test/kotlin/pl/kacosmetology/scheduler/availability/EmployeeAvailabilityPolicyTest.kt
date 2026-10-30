@@ -52,6 +52,7 @@ class EmployeeAvailabilityPolicyTest {
         every { reservationRepository.findOverlapping(companyId, employeeId, start, end) } returns
             listOf(
                 Reservation(
+                    creationSource = "CUSTOMER",
                     companyId = testId(1),
                     customerId = testId(2),
                     employeeId = employeeId,
@@ -117,6 +118,7 @@ class EmployeeAvailabilityPolicyTest {
         every { reservationRepository.findOverlapping(companyId, employeeId, start, end) } returns
             listOf(
                 Reservation(
+                    creationSource = "CUSTOMER",
                     companyId = testId(1),
                     customerId = testId(2),
                     employeeId = employeeId,

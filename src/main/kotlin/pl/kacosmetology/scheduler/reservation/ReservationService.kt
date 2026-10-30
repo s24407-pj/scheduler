@@ -305,7 +305,6 @@ class ReservationService(
             reservation.agreedDurationMinutes = duration
             reservation.acceptedServiceName = name
             reservation.internalNotes = internalNotes
-            if (changedService) reservation.serviceNameSource = "ACCEPTED"
             reservationRepository.saveAndFlush(reservation)
             if (detailsChanged) {
                 notify(reservation, "EDIT", request.notifyCustomer)

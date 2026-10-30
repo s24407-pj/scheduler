@@ -2,9 +2,6 @@ package pl.kacosmetology.scheduler.reservation
 
 import java.util.*
 
-/** Published after a new reservation is successfully committed to the database. */
-data class ReservationCreatedEvent(val reservation: Reservation)
-
 /** Actual staff create/edit/restore/cancel; disabled notifications still invalidate obsolete delivery state. */
 data class ReservationChangedEvent(val reservationId: UUID, val kind: String, val notifyCustomer: Boolean)
 

@@ -833,6 +833,7 @@ class ScheduleBlockIntegrationTest {
             serviceRepository.save(Offering(companyId = companyId, name = "Test", durationMinutes = 60, price = 100))
         reservationRepository.saveAndFlush(
             Reservation(
+                creationSource = "CUSTOMER",
                 companyId = companyId,
                 employeeId = employee.id!!,
                 customerId = customer.id!!,
