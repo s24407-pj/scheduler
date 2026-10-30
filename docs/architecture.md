@@ -173,3 +173,7 @@ V3 removes obsolete reservation reminder/provenance fields and requires an expli
 source for new writes; existing provenance and audit JSON remain intact. The staff directory
 is `/api/employees` only. See [ADR-0019](./adr/0019-remove-obsolete-compatibility-code.md)
 for the paired consumer change and migration/rollback requirements.
+
+Catalog category create/delete/assignment mutations acquire the company row lock before
+loading catalog entities, matching offering writes and booking. Category assignment cannot
+flush an older offering snapshot over a concurrent price, duration or activation change.

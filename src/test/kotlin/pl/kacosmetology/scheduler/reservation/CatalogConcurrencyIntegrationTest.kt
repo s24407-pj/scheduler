@@ -6,11 +6,58 @@ import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.MvcResult
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.transaction.support.TransactionTemplate
 
 /** A lock wait must not leave pre-lock catalog entities in the booking persistence context. */
 class CatalogConcurrencyIntegrationTest : ReservationContractTestSupport() {
+    @Test
+    fun `category assignment preserves catalog changes committed before its company lock`() {
+        val category =
+            jdbc.queryForObject(
+                "INSERT INTO offering_categories(company_id,name) VALUES(?,'Nowa') RETURNING id",
+                UUID::class.java,
+                salon.company,
+            )!!
+        val cookie = staffCookie()
+        val pool = Executors.newSingleThreadExecutor()
+        var attempt: Future<MvcResult>? = null
+        try {
+            TransactionTemplate(transactionManager).executeWithoutResult {
+                jdbc.queryForMap("SELECT id FROM companies WHERE id=? FOR UPDATE", salon.company)
+                jdbc.update("UPDATE offerings SET active=false,price=777,duration_minutes=45 WHERE id=?", salon.service)
+                attempt =
+                    pool.submit<MvcResult> {
+                        mvc.perform(
+                                patch("/api/offerings/${salon.service}/category")
+                                    .cookie(cookie)
+                                    .with(csrf())
+                                    .contentType("application/json")
+                                    .content(json.writeValueAsString(mapOf("categoryId" to category))),
+                            )
+                            .andReturn()
+                    }
+                awaitCompanyWait(checkNotNull(attempt))
+            }
+            val result = checkNotNull(attempt).get(15, TimeUnit.SECONDS)
+            assertEquals(204, result.response.status, result.response.contentAsString)
+            val offering =
+                jdbc.queryForMap(
+                    "SELECT active,price,duration_minutes,category_id FROM offerings WHERE id=?",
+                    salon.service,
+                )
+            assertEquals(false, offering["active"])
+            assertEquals(777, offering["price"])
+            assertEquals(45, offering["duration_minutes"])
+            assertEquals(category, offering["category_id"])
+        } finally {
+            pool.shutdown()
+            assertTrue(pool.awaitTermination(20, TimeUnit.SECONDS))
+        }
+    }
+
     @Test
     fun `booking observes catalog deactivation committed while waiting for company lock`() {
         val result = bookAfterCatalogCommit(active = false)
