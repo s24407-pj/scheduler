@@ -8,9 +8,12 @@ import io.mockk.verify
 import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
+import pl.kacosmetology.scheduler.company.Company
+import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingCategoryRequest
 import pl.kacosmetology.scheduler.testId
 
@@ -20,12 +23,18 @@ class OfferingCategoryServiceTest {
     @MockK private lateinit var categoryRepository: OfferingCategoryRepository
 
     @MockK private lateinit var offeringRepository: OfferingRepository
+    @MockK private lateinit var companies: CompanyRepository
 
     @InjectMockKs private lateinit var offeringCategoryService: OfferingCategoryService
 
     private val companyId = testId(1)
     private val categoryId = testId(50)
     private val offeringId = testId(100)
+
+    @BeforeEach
+    fun companyLock() {
+        every { companies.findByIdForUpdate(companyId) } returns Company(id = companyId, name = "Salon")
+    }
 
     @Test
     fun `createCategory should save and return category`() {

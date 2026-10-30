@@ -2,6 +2,8 @@ package pl.kacosmetology.scheduler.reservation
 
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
 import java.time.LocalDateTime
 import java.util.*
 import org.springframework.http.HttpStatus
@@ -9,6 +11,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
+import pl.kacosmetology.scheduler.config.pageResponse
 import pl.kacosmetology.scheduler.reservation.dto.*
 import pl.kacosmetology.scheduler.security.CustomUserDetails
 
@@ -221,10 +224,14 @@ class ReservationController(
     /** Lists own unarchived history without staff-only notes or reasons. */
     @GetMapping("/me")
     @PreAuthorize("hasRole('CUSTOMER')")
-    fun getMyReservations(@AuthenticationPrincipal userDetails: CustomUserDetails): List<ReservationResponse> =
+    fun getMyReservations(
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
+        @RequestParam(defaultValue = "0") @Min(0) page: Int,
+        @RequestParam(defaultValue = "100") @Min(1) @Max(200) size: Int,
+    ): ResponseEntity<List<ReservationResponse>> =
         reservationService
-            .getCustomerReservations(userDetails.id, userDetails.requireCompanyId())
-            .map(reservationService::response)
+            .getCustomerReservations(userDetails.id, userDetails.requireCompanyId(), page, size)
+            .pageResponse(userDetails)
 
     /** Reads the caller's calendar in the authenticated company. */
     @GetMapping("/employee")

@@ -4,6 +4,7 @@ import java.util.*
 import org.springframework.cache.annotation.CacheEvict
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import pl.kacosmetology.scheduler.company.CompanyRepository
 import pl.kacosmetology.scheduler.offering.dto.OfferingCategoryRequest
 
 /** Business logic for managing offering categories. */
@@ -11,6 +12,7 @@ import pl.kacosmetology.scheduler.offering.dto.OfferingCategoryRequest
 class OfferingCategoryService(
     private val categoryRepository: OfferingCategoryRepository,
     private val offeringRepository: OfferingRepository,
+    private val companies: CompanyRepository,
 ) {
 
     /** Returns all categories for the given company. */
@@ -23,6 +25,7 @@ class OfferingCategoryService(
      */
     @Transactional
     fun createCategory(companyId: UUID, request: OfferingCategoryRequest): OfferingCategory {
+        lockCompany(companyId)
         if (categoryRepository.existsByCompanyIdAndName(companyId, request.name)) {
             throw IllegalStateException("Kategoria o tej nazwie już istnieje")
         }
@@ -37,6 +40,7 @@ class OfferingCategoryService(
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun deleteCategory(categoryId: UUID, companyId: UUID) {
+        lockCompany(companyId)
         val category =
             categoryRepository.findById(categoryId).orElseThrow { NoSuchElementException("Kategoria nie istnieje") }
         if (category.companyId != companyId) {
@@ -52,6 +56,7 @@ class OfferingCategoryService(
     @Transactional
     @CacheEvict("companyServices", key = "#companyId")
     fun assignCategory(offeringId: UUID, companyId: UUID, categoryId: UUID?) {
+        lockCompany(companyId)
         val offering =
             offeringRepository.findById(offeringId).orElseThrow { NoSuchElementException("Usługa nie istnieje") }
         if (offering.companyId != companyId) {
@@ -65,5 +70,9 @@ class OfferingCategoryService(
             }
         }
         offering.categoryId = categoryId
+    }
+
+    private fun lockCompany(companyId: UUID) {
+        companies.findByIdForUpdate(companyId) ?: throw NoSuchElementException("Firma nie istnieje")
     }
 }

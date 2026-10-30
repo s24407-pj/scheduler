@@ -3,7 +3,6 @@ package pl.kacosmetology.scheduler.reservation
 import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
-import org.springframework.jdbc.core.queryForObject
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 
@@ -20,22 +19,50 @@ class BookingAbuseIntegrationTest : ReservationContractTestSupport() {
     }
 
     @Test
-    fun `rate limited first attempt still binds its original payload`() {
+    fun `rate limited fresh keys cannot grow permanent submission storage`() {
         val cookie = customerCookie()
         repeat(10) { assertEquals(409, request(cookie).response.status) }
-        val key = "first-attempt-limited"
-        assertEquals(429, request(cookie, key = key).response.status)
-        assertEquals(
-            1L,
-            jdbc.queryForObject<Long>(
-                "SELECT count(*) FROM booking_submissions WHERE submission_key=?",
-                key,
-            ),
-        )
-        val changed = request(cookie, body = customerBody(future.plusHours(1)), key = key)
-        assertEquals(409, changed.response.status)
-        assertEquals("IDEMPOTENCY_CONFLICT", tree(changed)["code"].stringValue())
+        val before = count("booking_submissions")
+        repeat(20) { assertEquals(429, request(cookie, key = "limited-$it").response.status) }
+        assertEquals(before, count("booking_submissions"))
         assertEquals(0L, count("reservations"))
+    }
+
+    @Test
+    fun `oversized booking body is rejected before binding with and without a key`() {
+        for (key in listOf("oversized", null)) {
+            val request =
+                post("/api/reservations")
+                    .cookie(customerCookie())
+                    .with(csrf())
+                    .contentType("application/json")
+                    .content("x".repeat(MAX_BOOKING_BODY_BYTES + 1))
+            key?.let { request.header("Idempotency-Key", it) }
+            val result = mvc.perform(request).andReturn()
+            assertEquals(413, result.response.status, result.response.contentAsString)
+            assertEquals("PAYLOAD_TOO_LARGE", tree(result)["code"].asString())
+        }
+        assertEquals(0L, count("booking_submissions"))
+    }
+
+    @Test
+    fun `admitted malformed input still binds a permanent fingerprint`() {
+        val cookie = customerCookie()
+        val malformed =
+            mvc.perform(
+                    post("/api/reservations")
+                        .cookie(cookie)
+                        .with(csrf())
+                        .header("Idempotency-Key", "malformed")
+                        .contentType("application/json")
+                        .content("{invalid"),
+                )
+                .andReturn()
+        assertEquals(400, malformed.response.status)
+        val changed = request(cookie, key = "malformed")
+        assertEquals(409, changed.response.status)
+        assertEquals("IDEMPOTENCY_CONFLICT", tree(changed)["code"].asString())
+        assertEquals(1L, count("booking_submissions"))
     }
 
     @Test

@@ -8,5 +8,7 @@ interface CompanyCustomerBlockRepository : JpaRepository<CompanyCustomerBlock, U
     /** Returns the block record for the given company/customer pair, or null if none exists. */
     fun findByCompanyIdAndCustomerId(companyId: UUID, customerId: UUID): CompanyCustomerBlock?
 
+    fun findByCompanyIdAndCustomerIdIn(companyId: UUID, customerIds: Collection<UUID>): List<CompanyCustomerBlock>
+
     fun findByCompanyId(companyId: UUID): List<CompanyCustomerBlock>
 }
