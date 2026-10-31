@@ -4,6 +4,8 @@
 
 Customer identity/scope and OTP/profile establishment rules are superseded where applicable by [ADR-0017](./0017-company-local-customers.md). Other decisions remain in force.
 
+Staff password-only session establishment is superseded by [ADR-0022](./0022-mandatory-staff-totp.md).
+
 ## Context
 
 JWTs already depended on a custom Redis registry and a database check on each request. They offered neither stateless operation nor protection from credential theft in localStorage. Maintaining signing, claims, revocation keys and indexes duplicated standard session infrastructure. Redis is already required by OTP, rate limits and cache. Clients are browser SPAs on localhost ports or intended same-site HTTPS deployment.

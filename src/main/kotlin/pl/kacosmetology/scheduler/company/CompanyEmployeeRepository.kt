@@ -25,6 +25,9 @@ interface CompanyEmployeeRepository : JpaRepository<CompanyEmployee, UUID> {
     /** Finds exactly one company-owned staff login namespace. */
     fun findByCompanyIdAndLoginEmail(companyId: UUID, loginEmail: String): CompanyEmployee?
 
+    @Query("SELECT e.id FROM CompanyEmployee e WHERE e.companyId = :companyId AND e.userId = :userId")
+    fun findAccountIdByCompanyIdAndUserId(companyId: UUID, userId: UUID): UUID?
+
     /** Reads a public employee identifier inside its company. */
     fun findByCompanyIdAndUserId(companyId: UUID, userId: UUID): CompanyEmployee?
 

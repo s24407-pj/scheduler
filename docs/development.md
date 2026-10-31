@@ -70,22 +70,11 @@ The `dev` profile runs `DataInitializer` on startup. It is idempotent.
 
 ### Signing in with cookies and CSRF
 
-```bash
-# A fresh development seed has one company for this staff email.
-# jq is used only to extract the CSRF token; the session identifier is never read.
-csrf=$(curl -fsS -c /tmp/scheduler-cookies http://localhost:8080/api/auth/csrf | jq -r .token)
-curl -fsS -b /tmp/scheduler-cookies -c /tmp/scheduler-cookies \
-  http://localhost:8080/api/auth/login-staff-email \
-  -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $csrf" \
-  -d '{"email":"gabinet@kacosmetology.pl","password":"admin123"}'
-# Authentication clears CSRF: refresh before any further mutation.
-csrf=$(curl -fsS -b /tmp/scheduler-cookies -c /tmp/scheduler-cookies \
-  http://localhost:8080/api/auth/csrf | jq -r .token)
-curl -fsS -b /tmp/scheduler-cookies http://localhost:8080/api/auth/me
-curl -fsS -b /tmp/scheduler-cookies -c /tmp/scheduler-cookies -X POST \
-  -H "X-XSRF-TOKEN: $csrf" http://localhost:8080/api/auth/logout
-rm -f /tmp/scheduler-cookies
-```
+Use the dashboard for interactive staff sign-in: password verification returns a TOTP_REQUIRED or TOTP_SETUP_REQUIRED challenge, never an authenticated staff session. For enrollment, scan its local QR (or enter the manual key), save owner recovery codes and confirm the current authenticator code. For subsequent logins, enter an unused current code. Refresh CSRF after final authentication.
+
+API clients follow the same steps with a private cookie jar: GET /api/auth/csrf, POST /api/auth/login-staff-email, optionally POST /api/auth/complete-staff-login, then POST /api/auth/totp/verify or setup followed by setup/confirm. Preserve the anonymous SESSION cookie between steps and send X-XSRF-TOKEN plus its cookie on every write. Challenge tokens, secrets and recovery codes must stay out of terminal logs and shell history. See [endpoint contracts](./api/endpoints.md) and [mandatory TOTP](./identity.md#mandatory-staff-totp).
+
+After authentication, GET /api/auth/me supplies the scope for protected writes; every protected staff mutation also sends its captured X-Expected-Session-Context. POST /api/auth/logout with CSRF ends this browser session. Delete temporary cookie jars after use.
 
 For customers, obtain CSRF first, call `request-code`, then `verify-code` with the same cookie jar/header. In development inspect the local Redis `otp:<companyId>:<canonical-phone>` key; codes are never logged. Both request and verification require `companyId`; verification otherwise needs only phone and six-digit code; names are collected atomically with the first successful salon booking. Refresh CSRF after verification. Authentication JSON identifies the authenticated account and contains no credential. Browser clients use `credentials: 'include'`; follow the [frontend contract](./architecture.md#csrf-cookies-and-frontend-contract).
 
@@ -104,6 +93,7 @@ Environment variables override `application.yaml`. Spring's relaxed binding mean
 | `SPRING_SESSION_TIMEOUT` | `24h` | Anonymous session default; authenticated customers have absolute 24h expiry and staff have 24h inactivity expiry |
 | `SPRING_SESSION_DATA_REDIS_NAMESPACE` | `scheduler:sessions` | Application-specific session namespace; share between API instances |
 | `SERVER_SERVLET_SESSION_COOKIE_SECURE` | request HTTPS detection; true in prod | Keep true in production; no cookie Domain; SameSite=Lax |
+| `TOTP_ENCRYPTION_KEY` | required outside dev/test | Private Base64-encoded 32-byte AES-GCM key; preserve and back up separately; dev uses a public disposable key |
 | `CORS_ORIGINS` | required by Compose | Comma-separated allowed origins; set to the exact dashboard origin(s) |
 | `OTP_GLOBAL_DAILY_SMS_CAP` | required by Compose | Positive operator-configured shared SMS attempt budget required in prod, UTC calendar day; OTP issuance reserves the first attempt and definite-temporary retries reserve again. Fixed OTP rules: 5-minute lifetime, 60-second cooldown, 3 failed attempts, 3 accepted phone issuances/rolling 5 minutes, 10 issuance requests/IP/rolling 15 minutes, 10 verification requests/IP/rolling 5 minutes. |
 | `JUSTSEND_APP_KEY`, `JUSTSEND_SENDER` | required in prod | JustSend API App-Key and permitted sender; passed through by Compose. Keep the key in a local ignored `.env` or deployment secrets. |
@@ -259,3 +249,7 @@ run in the PRs; see [consumer compatibility before promotion](./deployment.md#co
 The authorized fresh schema consolidates former V1–V4 into `V1__init_schema.sql` and removes global customer accounts. Existing databases are incompatible: stop the old application, explicitly recreate only the intended development database, and clear that environment's Redis session/OTP/cache data before applying V1. Startup does not reset databases. Do not bypass Flyway checksums or mark the old schema as migrated. This baseline provides no data-preserving upgrade.
 
 Deploy clients and API together. OTP bodies now require a salon `companyId`; customer `/api/auth/me` includes that company. Protected customer writes require `X-Expected-Session-Context: v1:<userId>:<companyId>:null:ROLE_CUSTOMER`. Names are required at the first successful booking, and pending OTP identities are not listed to staff. Staff login and its existing context format remain unchanged.
+
+## Development TOTP
+
+Dev accounts use the same mandatory enrollment as real staff: log in with the documented password, scan the QR in an authenticator and confirm its code. The owner saves the displayed backup codes; employees ask the owner for reset if needed. No seed or runtime switch bypasses 2FA. The dev profile has a public disposable encryption key; production needs a private TOTP_ENCRYPTION_KEY (see deployment). Changing databases or encryption keys requires coordinating test authenticator credentials too.

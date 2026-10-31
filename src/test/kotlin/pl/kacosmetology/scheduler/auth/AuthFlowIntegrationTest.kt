@@ -41,9 +41,10 @@ import tools.jackson.databind.ObjectMapper
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(TestcontainersConfiguration::class)
+@Import(TestcontainersConfiguration::class, pl.kacosmetology.scheduler.auth.TestTotpLogin::class)
 class AuthFlowIntegrationTest {
 
+    @Autowired private lateinit var mfaLogin: TestTotpLogin
     @Autowired private lateinit var mockMvc: MockMvc
 
     @Autowired private lateinit var objectMapper: ObjectMapper
@@ -516,7 +517,7 @@ class AuthFlowIntegrationTest {
                         }
                         .andExpect { status { isOk() } }
                         .andReturn()
-                requireNotNull(result.response.getCookie("SESSION"))
+                requireNotNull(mfaLogin.complete(result).response.getCookie("SESSION"))
             }
 
         mockMvc

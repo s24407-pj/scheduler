@@ -44,7 +44,8 @@ class AccountSessionRegistryTest {
     fun `staff and customer use different account indexes even with same legacy user`() {
         val registry = registry(login)
         val customerAttributes = registry.sessionAttributes(customer)
-        val staffAttributes = registry.sessionAttributes(staff)
+        val staffAttributes =
+            registry.sessionAttributes(staff) + (AccountSessionRegistry.MFA_ATTRIBUTE to staff.authVersion)
         assertEquals(
             "customer:${testId(1)}:${testId(12)}:0",
             customerAttributes[FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME],
@@ -61,14 +62,14 @@ class AccountSessionRegistryTest {
     @Test
     fun `revocation precedes cleanup and prevents old generation authorization`() {
         val registry = registry(login)
-        val old = registry.sessionAttributes(staff)
+        val old = registry.sessionAttributes(staff) + (AccountSessionRegistry.MFA_ATTRIBUTE to staff.authVersion)
         every { sessions.findByPrincipalName("staff:${testId(31)}:0") } answers
             {
                 assertFalse(registry.isAuthorized(staff, old::get))
                 emptyMap()
             }
         registry.revokeAccount(staff.accountKey())
-        val fresh = registry.sessionAttributes(staff)
+        val fresh = registry.sessionAttributes(staff) + (AccountSessionRegistry.MFA_ATTRIBUTE to staff.authVersion)
         assertTrue(registry.isAuthorized(staff, fresh::get))
         assertEquals("staff:${testId(31)}:1", fresh[FindByIndexNameSessionRepository.PRINCIPAL_NAME_INDEX_NAME])
         verify(exactly = 1) { sessions.findByPrincipalName("staff:${testId(31)}:0") }
@@ -77,10 +78,18 @@ class AccountSessionRegistryTest {
     @Test
     fun `cleanup failure cannot undo revocation`() {
         val registry = registry(login)
-        val old = registry.sessionAttributes(staff)
+        val old = registry.sessionAttributes(staff) + (AccountSessionRegistry.MFA_ATTRIBUTE to staff.authVersion)
         every { sessions.findByPrincipalName(any()) } throws IllegalStateException("cleanup unavailable")
         assertThrows(IllegalStateException::class.java) { registry.revokeAccount(staff.accountKey()) }
         assertFalse(registry.isAuthorized(staff, old::get))
+    }
+
+    @Test
+    fun `password verification attributes cannot authorize staff without second factor`() {
+        val registry = registry(login)
+        val attributes = registry.sessionAttributes(staff)
+        assertFalse(registry.isAuthorized(staff, attributes::get))
+        assertTrue(registry.isCurrent(staff, attributes::get))
     }
 
     @Test

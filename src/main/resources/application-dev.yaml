@@ -29,3 +29,7 @@ management:
     health:
       show-details: never
 
+
+# Development only; never use this key outside disposable local databases.
+totp:
+  encryption-key: ${TOTP_ENCRYPTION_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}

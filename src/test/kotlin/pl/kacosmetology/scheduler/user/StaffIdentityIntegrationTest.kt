@@ -41,8 +41,9 @@ import tools.jackson.databind.ObjectMapper
 /** HTTP tests exercise real account/session persistence and real transaction commit listeners. */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(TestcontainersConfiguration::class)
+@Import(TestcontainersConfiguration::class, pl.kacosmetology.scheduler.auth.TestTotpLogin::class)
 class StaffIdentityIntegrationTest {
+    @Autowired private lateinit var mfaLogin: pl.kacosmetology.scheduler.auth.TestTotpLogin
     @Autowired private lateinit var mvc: MockMvc
     @Autowired private lateinit var mapper: ObjectMapper
     @Autowired private lateinit var jdbc: JdbcTemplate
@@ -406,9 +407,12 @@ class StaffIdentityIntegrationTest {
 
     private fun login(companyId: UUID, email: String, password: String = "password123"): Cookie =
         requireNotNull(
-                postJson(
-                        "/api/auth/login-staff",
-                        mapOf("companyId" to companyId, "email" to email, "password" to password),
+                mfaLogin
+                    .complete(
+                        postJson(
+                            "/api/auth/login-staff",
+                            mapOf("companyId" to companyId, "email" to email, "password" to password),
+                        ),
                     )
                     .also { assertEquals(200, it.response.status, it.response.contentAsString) }
                     .response

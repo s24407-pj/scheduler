@@ -4,6 +4,8 @@
 
 Customer identity/scope and OTP/profile establishment rules are superseded where applicable by [ADR-0017](./0017-company-local-customers.md). Other decisions remain in force.
 
+Staff password-only session establishment is superseded by [ADR-0022](./0022-mandatory-staff-totp.md).
+
 ## Decision
 
 Global customer accounts contain canonical phone authentication identity only. Salon names, optional contact email, and notes belong to a company/customer profile established by a successful booking. Staff may edit that local profile; notes cannot create a relationship. Customer self-editing cannot alter salon presentation.

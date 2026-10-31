@@ -24,6 +24,7 @@ SCHEDULER_IMAGE=ghcr.io/s24407-pj/scheduler@sha256:<digest from successful Secur
 SPRING_PROFILE=prod
 DB_USERNAME=scheduler
 DB_PASSWORD=<strong secret>
+TOTP_ENCRYPTION_KEY=<private Base64-encoded 32-byte key>
 CORS_ORIGINS=https://<dashboard-domain>
 R2_ENDPOINT=<Cloudflare R2 S3 endpoint>
 R2_ACCESS_KEY=<secret>
@@ -166,3 +167,15 @@ the old schema shape first through a reviewed forward migration; see
 Host-side environments must replace `REDIS_HOST`/`REDIS_PORT` with
 `SPRING_DATA_REDIS_HOST`/`SPRING_DATA_REDIS_PORT`; Compose already uses these standard
 Spring Boot variables. Preserve custom values when updating an existing local `.env`.
+
+## TOTP encryption key
+
+Before starting the API, set TOTP_ENCRYPTION_KEY to a private Base64 encoding of 32 random bytes (`openssl rand -base64 32`). Preserve it across restarts and keep a separate protected backup: changing/losing it makes existing TOTP secrets and pending grants unreadable. Application startup rejects missing/malformed keys and rejects the public all-zero development example outside dev/test. The dev profile supplies a stable disposable key; never copy that key to production. Never put the real key in Git, logs or command output collected by support. Key rotation requires a separate coordinated re-encryption procedure; replacing the environment value alone is not rotation.
+
+Deploy Flyway V6 and the paired backend/dashboard under maintenance before opening the staff panel. Require all staff to sign in and enroll; old staff sessions are rejected automatically. Customer sessions retain their existing behavior. Application rollback must restore the paired frontend/backend together and explicitly acknowledge that password-only code removes mandatory 2FA; preserve the V6 schema and credential data.
+
+## Owner TOTP recovery
+
+When the owner has neither the authenticator nor an unused backup code, an authorized operator must independently verify the person's identity and company ownership outside the application. Do not accept an email/phone match or an existing session alone as proof. Record the approved recovery through the operator's existing restricted operational process.
+
+In one database transaction, lock the exact company_employees row identified by verified company ID and account ID, require role OWNER, delete its staff_recovery_codes, clear totp_secret/totp_last_step and increment auth_version. Commit before asking the owner to log in again. The durable version rejects every previous session and pending grant, even if Redis entries remain until expiry. Do not change the password as an implicit part of this operation or apply it to all accounts sharing an email. The next password login requires fresh enrollment and saving a new recovery set. There is deliberately no public/admin API that performs this owner reset.

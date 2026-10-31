@@ -62,8 +62,9 @@ import tools.jackson.databind.ObjectMapper
 /** Exercises real session cookies, Redis persistence and real SPA CSRF tokens without security post-processors. */
 @SpringBootTest(properties = ["spring.session.data.redis.namespace=scheduler:session-boundaries"])
 @AutoConfigureMockMvc
-@Import(TestcontainersConfiguration::class)
+@Import(TestcontainersConfiguration::class, pl.kacosmetology.scheduler.auth.TestTotpLogin::class)
 class SessionSecurityIntegrationTest {
+    @Autowired private lateinit var mfaLogin: TestTotpLogin
     @Autowired private lateinit var mvc: MockMvc
     @Autowired private lateinit var mapper: ObjectMapper
     @Autowired private lateinit var sessions: RedisIndexedSessionRepository
@@ -221,7 +222,7 @@ class SessionSecurityIntegrationTest {
             )
         }
         val before = csrf()
-        val result = post(before, "/api/auth/login-staff", credentials(owner.id!!))
+        val result = mfaLogin.complete(post(before, "/api/auth/login-staff", credentials(owner.id!!)), before.session)
         assertEquals(200, result.response.status)
         assertEquals(0, result.response.getCookie("XSRF-TOKEN")!!.maxAge)
         val after = csrf(result.response.getCookie("SESSION"))
@@ -949,10 +950,11 @@ class SessionSecurityIntegrationTest {
                 mapOf("selectionToken" to token, "companyId" to owner.companyId),
             )
         assertEquals(200, result.response.status)
-        val newCookie = requireNotNull(result.response.getCookie("SESSION"))
+        val completed = mfaLogin.complete(result, oldCookie)
+        val newCookie = requireNotNull(completed.response.getCookie("SESSION"))
         assertNotEquals(oldCookie.value, newCookie.value)
         assertNull(sessions.findById(anonymous.id))
-        assertEquals(0, result.response.getCookie("XSRF-TOKEN")!!.maxAge)
+        assertEquals(0, completed.response.getCookie("XSRF-TOKEN")!!.maxAge)
         val refreshed = csrf(newCookie)
         assertNotEquals(prelogin.token, refreshed.token)
         assertEquals(204, post(refreshed, "/api/auth/logout").response.status)
@@ -1107,7 +1109,7 @@ class SessionSecurityIntegrationTest {
                     browser.copy(session = result.response.getCookie("SESSION") ?: browser.session)
             }
         }
-        return result
+        return mfaLogin.complete(result, browser.session)
     }
 
     private fun selectionToken(): String {
@@ -1116,12 +1118,17 @@ class SessionSecurityIntegrationTest {
         return mapper.readTree(result.response.contentAsString)["selectionToken"].asString()
     }
 
-    private fun completeSelection(token: String, companyId: UUID) =
-        post(
-            grantBrowsers[token] ?: csrf(),
-            "/api/auth/complete-staff-login",
-            mapOf("selectionToken" to token, "companyId" to companyId),
+    private fun completeSelection(token: String, companyId: UUID): MvcResult {
+        val browser = grantBrowsers[token] ?: csrf()
+        return mfaLogin.complete(
+            post(
+                browser,
+                "/api/auth/complete-staff-login",
+                mapOf("selectionToken" to token, "companyId" to companyId),
+            ),
+            browser.session,
         )
+    }
 
     /** A formerly accepted signed credential and Redis entry; production no longer understands this protocol. */
     private fun legacyBearerFixture(): String {
@@ -1199,7 +1206,8 @@ class SessionSecurityIntegrationTest {
     }
 
     private fun login(employmentId: UUID, original: Cookie? = null): Browser {
-        val result = post(csrf(original), "/api/auth/login-staff", credentials(employmentId))
+        val result =
+            mfaLogin.complete(post(csrf(original), "/api/auth/login-staff", credentials(employmentId)), original)
         assertEquals(200, result.response.status)
         assertFalse(mapper.readTree(result.response.contentAsString).has("token"))
         return csrf(requireNotNull(result.response.getCookie("SESSION")))

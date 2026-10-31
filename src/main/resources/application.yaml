@@ -113,3 +113,6 @@ management:
         http.server.requests: 0.5, 0.75, 0.95, 0.99
       sla:
         http.server.requests: 100ms, 250ms, 500ms, 1s, 2s, 5s
+
+totp:
+  encryption-key: ${TOTP_ENCRYPTION_KEY}

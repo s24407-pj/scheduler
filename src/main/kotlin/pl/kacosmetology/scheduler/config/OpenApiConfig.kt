@@ -129,7 +129,8 @@ class OpenApiConfig {
         api.paths?.forEach { (path, item) ->
             item.readOperationsMap().forEach { (method, operation) ->
                 val public =
-                    path.contains("/public/") ||
+                    path.startsWith("/api/auth/totp/") ||
+                        path.contains("/public/") ||
                         path == "/api/availability" ||
                         path in
                             setOf(

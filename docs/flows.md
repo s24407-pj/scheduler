@@ -16,3 +16,7 @@ Both staff roles read company-local customers/notes/history and manage company b
 Owner blocking cancels future visits and creates one filtered summary delivery without affecting authentication or other salons. No-show correction removes the mistaken penalty; owner unblock preserves history.
 
 Automatic completion runs each minute and catches up after restart. Reminders run at 09:00 Warsaw on the previous calendar day, with a 10:00 deadline and no missed-run recovery. Durable delivery state distinguishes accepted, definite temporary failure and ambiguous provider results; see [notifications](./notifications.md).
+
+## Mandatory staff sign-in
+
+Email/password → optional verified company selection → TOTP_REQUIRED or TOTP_SETUP_REQUIRED → code verification or QR/manual-key enrollment → AUTHENTICATED → refresh CSRF and auth/me. Every intermediate step is anonymous and cannot read staff data. Owner backup use leads to replacement enrollment, never directly to the panel. After a lost recovery or setup response, the original challenge can resume enrollment in the same anonymous browser until its original deadline, without spending another backup code. Employee loss requires owner-verified reset. [Identity](./identity.md#mandatory-staff-totp) defines the full contract.

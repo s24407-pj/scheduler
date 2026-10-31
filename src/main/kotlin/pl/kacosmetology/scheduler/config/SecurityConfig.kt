@@ -103,6 +103,10 @@ class SecurityConfig(
                         "/api/auth/login-staff-email",
                         "/api/auth/complete-staff-login",
                         "/api/auth/staff-password",
+                        "/api/auth/totp/setup",
+                        "/api/auth/totp/setup/confirm",
+                        "/api/auth/totp/verify",
+                        "/api/auth/totp/recover",
                     )
                     .permitAll()
                     .requestMatchers("/api/availability")

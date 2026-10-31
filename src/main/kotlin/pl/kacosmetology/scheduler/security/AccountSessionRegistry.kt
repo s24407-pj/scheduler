@@ -27,8 +27,15 @@ class AccountSessionRegistry(
         }
     }
 
-    /** Checks the revocation generation and exact customer absolute deadline before every authorization. */
+    /** Requires a completed staff proof, current revocation generation and exact customer absolute deadline. */
     fun isAuthorized(principal: CustomUserDetails, attribute: (String) -> Any?): Boolean {
+        if (principal.role in setOf("ROLE_OWNER", "ROLE_EMPLOYEE") && attribute(MFA_ATTRIBUTE) != principal.authVersion)
+            return false
+        return isCurrent(principal, attribute)
+    }
+
+    /** Revocation checks for password-verified grants, which intentionally have no second-factor proof. */
+    fun isCurrent(principal: CustomUserDetails, attribute: (String) -> Any?): Boolean {
         val generation = attribute(GENERATION_ATTRIBUTE) as? Long ?: return false
         val accountKey = principal.accountKey()
         if (generation != currentGeneration(accountKey)) return false
@@ -68,6 +75,8 @@ class AccountSessionRegistry(
     companion object {
         /** Absolute customer lifetime and staff inactivity interval. */
         val SESSION_DURATION: Duration = Duration.ofHours(24)
+        /** Durable credential version for which the staff second factor was proved. */
+        const val MFA_ATTRIBUTE = "scheduler.mfaAuthVersion"
         /** Generation captured when authentication succeeds. */
         const val GENERATION_ATTRIBUTE = "scheduler.accountGeneration"
         /** Immutable customer login deadline, measured in elapsed time. */
