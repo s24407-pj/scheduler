@@ -1,6 +1,8 @@
 package pl.kacosmetology.scheduler.auth
 
 import com.ninjasquad.springmockk.MockkBean
+import com.ninjasquad.springmockk.MockkSpyBean
+import io.mockk.clearMocks
 import io.mockk.every
 import jakarta.servlet.http.Cookie
 import java.time.Clock
@@ -17,7 +19,9 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
+import org.springframework.data.redis.RedisConnectionFailureException
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.MvcResult
@@ -42,7 +46,9 @@ class TotpIntegrationTest {
     @Autowired private lateinit var codes: TotpCodes
     @Autowired private lateinit var cipher: TotpCipher
     @Autowired private lateinit var recovery: StaffRecoveryCodeRepository
-    @Autowired private lateinit var redis: StringRedisTemplate
+    @MockkSpyBean private lateinit var redis: StringRedisTemplate
+    @MockkSpyBean private lateinit var grants: TotpGrantStore
+    @Autowired private lateinit var recoveryAuthorizations: StaffRecoveryAuthorizationRepository
     @Autowired
     private lateinit var sessionRepository: org.springframework.session.data.redis.RedisIndexedSessionRepository
     @MockkBean private lateinit var clock: Clock
@@ -260,6 +266,111 @@ class TotpIntegrationTest {
                 .response
                 .status,
         )
+    }
+
+    @Test
+    fun `last recovery code can resume after lost recovery and failed setup responses using the original challenge`() {
+        val original = enroll(owner)
+        val code = original["recoveryCodes"][0].asString()
+        recovery.deleteAll(recovery.findAll().filter { it.codeHash != TotpTransactions.recoveryHash(code) })
+        val browser = Browser()
+        val token = login(browser, owner)["challengeToken"].asString()
+        val body = mapOf("challengeToken" to token)
+        // A password-only challenge cannot start replacement enrollment.
+        assertEquals(401, post(browser, "/api/auth/totp/setup", body).response.status)
+        val result = ok(post(browser, "/api/auth/totp/recover", body + ("recoveryCode" to code)))
+        assertEquals(token, result["challengeToken"].asString())
+        assertEquals(0, recovery.count())
+        assertEquals(1, recoveryAuthorizations.count())
+        // Discard the response: the old challenge now carries durable recovery authorization.
+        assertEquals(401, post(Browser(), "/api/auth/totp/setup", body).response.status)
+        val other = Browser()
+        val otherToken = login(other, owner)["challengeToken"].asString()
+        assertEquals(401, post(other, "/api/auth/totp/setup", mapOf("challengeToken" to otherToken)).response.status)
+        assertEquals(
+            401,
+            post(other, "/api/auth/totp/recover", mapOf("challengeToken" to otherToken, "recoveryCode" to code))
+                .response
+                .status,
+        )
+        // Resuming the same authorization does not inspect or spend a recovery code again.
+        ok(post(browser, "/api/auth/totp/recover", body + ("recoveryCode" to "no-longer-needed")))
+        every { grants.issue(any()) } throws RedisConnectionFailureException("simulated grant write failure")
+        try {
+            assertEquals(500, post(browser, "/api/auth/totp/setup", body).response.status)
+        } finally {
+            clearMocks(grants, answers = true)
+        }
+        val lostSetup = ok(post(browser, "/api/auth/totp/setup", body))
+        val setup = ok(post(browser, "/api/auth/totp/setup", body))
+        assertNotEquals(lostSetup["secret"].asString(), setup["secret"].asString())
+        assertEquals(0, recovery.count())
+        confirm(browser, setup)
+        assertEquals(200, me(browser).response.status)
+        assertEquals(10, recovery.count())
+        assertEquals(0, recoveryAuthorizations.count())
+        assertEquals(401, post(other, "/api/auth/totp/setup", body).response.status)
+    }
+
+    @Test
+    fun `Redis allowance release failure after commit preserves confirmation verification and reset success`() {
+        every { redis.execute(any<RedisScript<Long>>(), any<List<String>>()) } throws
+            RedisConnectionFailureException("simulated post-commit cleanup failure")
+        try {
+            val ownerBrowser = Browser()
+            val ownerSetup = enroll(owner, ownerBrowser)
+            val employeeSetup = enroll(employee)
+            val recoveryBrowser = Browser()
+            val recoveryToken = login(recoveryBrowser, owner)["challengeToken"].asString()
+            val recovered =
+                ok(
+                    post(
+                        recoveryBrowser,
+                        "/api/auth/totp/recover",
+                        mapOf(
+                            "challengeToken" to recoveryToken,
+                            "recoveryCode" to ownerSetup["recoveryCodes"][0].asString(),
+                        ),
+                    ),
+                )
+            assertEquals("TOTP_SETUP_REQUIRED", recovered["status"].asString())
+            assertEquals(9, recovery.count())
+            assertEquals(1, accounts.findById(employee.id!!).orElseThrow().authVersion)
+            val browser = Browser()
+            val challenge = login(browser, employee)
+            ok(
+                post(
+                    browser,
+                    "/api/auth/totp/verify",
+                    mapOf(
+                        "challengeToken" to challenge["challengeToken"].asString(),
+                        "code" to codes.at(employeeSetup["secret"].asString(), step),
+                    ),
+                ),
+            )
+            assertEquals(step, accounts.findById(employee.id!!).orElseThrow().totpLastStep)
+            assertEquals(200, me(browser).response.status)
+            assertEquals(
+                204,
+                post(
+                        ownerBrowser,
+                        "/api/employees/${employee.userId}/totp/reset",
+                        mapOf(
+                            "currentPassword" to "password123",
+                            "code" to codes.at(ownerSetup["secret"].asString(), step),
+                        ),
+                        true,
+                    )
+                    .response
+                    .status,
+            )
+            val reset = accounts.findById(employee.id!!).orElseThrow()
+            assertNull(reset.totpSecret)
+            assertEquals(2, reset.authVersion)
+            assertEquals(401, me(browser).response.status)
+        } finally {
+            clearMocks(redis, answers = true)
+        }
     }
 
     @Test

@@ -16,6 +16,7 @@ import pl.kacosmetology.scheduler.security.CustomUserDetails
 class TotpTransactions(
     private val accounts: CompanyEmployeeRepository,
     private val recovery: StaffRecoveryCodeRepository,
+    private val recoveryAuthorizations: StaffRecoveryAuthorizationRepository,
     private val codes: TotpCodes,
     private val cipher: TotpCipher,
     private val passwords: PasswordEncoder,
@@ -40,6 +41,7 @@ class TotpTransactions(
         account.totpSecret = cipher.encrypt(secret, account.id.toString())
         account.totpLastStep = step
         account.authVersion++
+        recoveryAuthorizations.deleteAllByAccountId(requireNotNull(account.id))
         recovery.deleteAllByAccountId(requireNotNull(account.id))
         recovery.flush()
         if (account.role == "OWNER") {
@@ -54,13 +56,28 @@ class TotpTransactions(
     }
 
     @Transactional
-    fun recover(grant: TotpGrant, code: String) {
+    fun recover(grant: TotpGrant, token: String, code: String) {
         val account = account(grant.account)
         if (account.role != "OWNER" || account.totpSecret == null) invalidCode()
+        val grantHash = StaffLoginSelectionStore.hash(token)
+        if (recoveryAuthorizations.existsByGrantHashAndAccountId(grantHash, requireNotNull(account.id))) return
         val stored =
             recovery.findById(RecoveryCodeId(requireNotNull(account.id), recoveryHash(code))).orElse(null)
                 ?: invalidCode()
         recovery.delete(stored)
+        recoveryAuthorizations.save(StaffRecoveryAuthorization(grantHash, requireNotNull(account.id)))
+    }
+
+    @Transactional
+    fun requireRecovery(grant: TotpGrant, token: String) {
+        val account = account(grant.account)
+        if (
+            !recoveryAuthorizations.existsByGrantHashAndAccountId(
+                StaffLoginSelectionStore.hash(token),
+                requireNotNull(account.id),
+            )
+        )
+            TotpGrantStore.expired()
     }
 
     /** Reauthenticates the owner and resets only an employee in the same company. Locks are taken in UUID order. */
@@ -90,6 +107,7 @@ class TotpTransactions(
         employee.totpSecret = null
         employee.totpLastStep = null
         employee.authVersion++
+        recoveryAuthorizations.deleteAllByAccountId(requireNotNull(employee.id))
         recovery.deleteAllByAccountId(requireNotNull(employee.id))
     }
 

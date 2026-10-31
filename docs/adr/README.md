@@ -32,3 +32,4 @@ To add one, copy the structure of an existing ADR, use the next number, and add 
 | [0020](./0020-bounded-booking-admission.md) | Bounded booking admission and fingerprint storage | Accepted |
 | [0021](./0021-bounded-customer-reads.md) | Bounded customer reads | Accepted |
 | [0022](./0022-mandatory-staff-totp.md) | Mandatory company-scoped staff TOTP | Accepted |
+| [0023](./0023-resumable-totp-recovery.md) | Resumable TOTP recovery and post-commit cleanup | Accepted |

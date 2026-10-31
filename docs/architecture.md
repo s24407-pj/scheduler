@@ -147,6 +147,8 @@ PostgreSQL 18, schema managed by Flyway (`src/main/resources/db/migration/`). `V
 | `companies` | Salons; settings: hours, `slot_interval_minutes`, `max_no_shows`, `last_minute_discount_percent`, `last_minute_discount_hours`, `min_booking_advance_minutes` |
 | `company_employees` | Company-owned staff credentials, local presentation/photo, role, enabled state, eligibility and auth version; booking lock target |
 | `staff_password_links` | One-use hash-only setup/recovery token per staff account, 24h expiry |
+| `staff_recovery_codes` | One-use owner TOTP recovery code hashes |
+| `staff_recovery_authorizations` | Account-bound challenge hashes committed with recovery code consumption, allowing resumption until the original Redis grant expires |
 | `company_customers` | Local phone identity, unique company/phone; optional pending names; first-booking visibility, email and notes |
 | `company_customer_blocks`, `no_show_penalties` | Manual/automatic block provenance and durable rolling-year penalty events |
 | `offerings`, `offering_categories`, `offering_images` | Catalog |
@@ -182,6 +184,6 @@ Customer directory/history reads use bounded slices without total counts. Page-s
 
 ## Staff second-factor boundary
 
-[ADR-0022](./adr/0022-mandatory-staff-totp.md) requires company-owned TOTP for every staff session. Password and selection results are unprivileged encrypted browser-bound grants in Redis; no staff SecurityContext exists until final TOTP confirmation. Existing scope/version/generation checks also require an MFA proof equal to the principal auth_version. Enrollment/recovery/reset advance the durable version; their original logout-all generation remains authoritative. Short account transactions persist replay counters and credential replacements; Redis grant handling and session creation run outside those locks.
+[ADR-0022](./adr/0022-mandatory-staff-totp.md) requires company-owned TOTP for every staff session. Password and selection results are unprivileged browser-bound grants in Redis. TOTP challenge payloads are encrypted; company-selection payloads retain scalar JSON without TOTP secrets ([ADR-0023](./adr/0023-resumable-totp-recovery.md)); no staff SecurityContext exists until final TOTP confirmation. Existing scope/version/generation checks also require an MFA proof equal to the principal auth_version. Enrollment/recovery confirmation and employee reset advance the durable version; their original logout-all generation remains authoritative. Short account transactions persist replay counters and credential replacements; Redis grant handling and session creation run outside those locks. Recovery code consumption commits with authorization for the original challenge, allowing recovery/setup retries without spending another code. Successful proof allowance release is best-effort after commit and cannot change the committed operation result.
 
 Concurrent rotation/expiry can leave partial Redis session hashes. A Spring Session repository customizer deletes hashes that cannot be mapped and returns an empty expired tombstone, following the [Spring Session safe-mapping guidance](https://docs.spring.io/spring-session/reference/configuration/redis.html#configuring-redis-session-mapper). It does not catch connection/serialization failures, authenticate partial data, or introduce another session store.

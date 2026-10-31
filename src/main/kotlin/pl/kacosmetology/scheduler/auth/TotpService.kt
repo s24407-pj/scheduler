@@ -38,13 +38,15 @@ class TotpService(
     }
 
     fun setup(token: String, browser: String?, ip: String): TotpSetupResponse {
-        val grant = read(token, browser, ip, TotpGrantKind.SETUP, TotpGrantKind.RECOVER)
+        val grant = read(token, browser, ip, TotpGrantKind.SETUP, TotpGrantKind.RECOVER, TotpGrantKind.VERIFY)
+        if (grant.kind == TotpGrantKind.VERIFY) transactions.requireRecovery(grant, token)
         transactions.configured(
             grant.account,
         ) // Revalidate the exact password-verified account before disclosing a secret.
         val secret = codes.newSecret()
         val recovery = if (grant.account.role == "OWNER") codes.recoveryCodes() else emptyList()
-        grants.consume(token)
+        // Retain recovery authorization so a failed write or lost setup response can be retried until expiry.
+        if (grant.kind != TotpGrantKind.VERIFY) grants.consume(token)
         val setup = grants.issue(grant.copy(kind = TotpGrantKind.CONFIRM, secret = secret, recoveryCodes = recovery))
         val companyName = companies.findById(grant.account.companyId).orElseThrow().name
         val label =
@@ -75,8 +77,15 @@ class TotpService(
     fun recover(token: String, code: String, browser: String?, ip: String): StaffLoginResponse {
         val grant = read(token, browser, ip, TotpGrantKind.VERIFY)
         grants.verificationAttempt(token, grant.account.accountId)
-        prove(token, grant) { transactions.recover(grant, code) }
-        return response(grant.copy(kind = TotpGrantKind.RECOVER))
+        transactions.recover(grant, token, code)
+        grants.verificationSucceeded(token, grant.account.accountId)
+        return StaffLoginResponse(
+            StaffLoginStatus.TOTP_SETUP_REQUIRED,
+            challengeToken = token,
+            expiresAt = grant.expiresAt,
+            recoveryAvailable = false,
+            companyId = grant.account.companyId,
+        )
     }
 
     fun reset(owner: CustomUserDetails, employee: UUID, request: TotpResetRequest, ip: String) {

@@ -25,10 +25,10 @@ Times and dates: see [time handling](../time-handling.md). Errors: see [errors](
 | POST | `/api/auth/login-staff` | Public | `companyId`, normalized `email`, `password`; failed authentication is generic 401; success returns a TOTP challenge; high-membership fallback |
 | POST | `/api/auth/login-staff-email` | Public, anonymous only | `{email,password}`; return a TOTP challenge for one verified account or verified company choices plus a 120s opaque grant; generic 401, IP/email 429 |
 | POST | `/api/auth/complete-staff-login` | Public, anonymous only | `{selectionToken,companyId}`; anonymous SESSION cookie binding, atomic single use, locked version/generation revalidation; generic 401 on invalid/expired/wrong-browser grant, returns a TOTP challenge; independent IP 429 |
-| POST | `/api/auth/totp/setup` | Public, anonymous only | challengeToken; returns manual secret, otpauth URI, setupToken and owner-only recovery codes; ten-minute original deadline |
+| POST | `/api/auth/totp/setup` | Public, anonymous only | challengeToken; returns manual secret, otpauth URI, setupToken and owner-only recovery codes; ten-minute original deadline; authorized recovery challenge can retry after a failed/lost setup response |
 | POST | `/api/auth/totp/setup/confirm` | Public, anonymous only | setupToken + six-digit code; activates/replaces TOTP, advances auth_version and creates session after commit |
 | POST | `/api/auth/totp/verify` | Public, anonymous only | challengeToken + six-digit code; replay-protected TOTP proof creates session |
-| POST | `/api/auth/totp/recover` | Public, anonymous only | challengeToken + owner recoveryCode; consumes backup and grants replacement enrollment only |
+| POST | `/api/auth/totp/recover` | Public, anonymous only | challengeToken + owner recoveryCode; atomically consumes backup and authorizes replacement enrollment on the original challenge; same-browser retries or setup resume until the original deadline, without spending another code |
 | POST | `/api/auth/staff-password` | Public, CSRF required | One-use 24h setup/recovery token, sets password without login; 204 |
 | POST | `/api/auth/logout` | Public, CSRF required | Revokes the session of the current browser; 204 |
 | GET | `/api/auth/csrf` | Public | Sets XSRF-TOKEN; returns CSRF token/header name |

@@ -2,6 +2,8 @@
 
 **Status:** Accepted (2026-10-31). Supersedes the staff password-only authentication/session-establishment portions of ADR-0011 and ADR-0012; other identity and session rules remain in force.
 
+Recovery resumption, post-commit allowance cleanup and the exact Redis encryption scope are refined by [ADR-0023](./0023-resumable-totp-recovery.md).
+
 ## Decision
 
 Every OWNER and EMPLOYEE must enroll and prove a company-owned TOTP credential before receiving an authenticated staff session. Customers retain company-local SMS OTP. A successful password check, including company-scoped fallback or email-first company selection, returns only a browser-bound challenge. No partially authenticated staff principal exists.

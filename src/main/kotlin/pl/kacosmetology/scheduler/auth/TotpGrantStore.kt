@@ -5,6 +5,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
+import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.stereotype.Component
@@ -37,6 +38,7 @@ class TotpGrantStore(
     private val clock: Clock,
 ) {
     private val random = SecureRandom()
+    private val log = LoggerFactory.getLogger(javaClass)
 
     fun issue(grant: TotpGrant): String {
         val ttl = Duration.between(clock.instant(), grant.expiresAt)
@@ -75,15 +77,20 @@ class TotpGrantStore(
         limit("ip:" + StaffLoginSelectionStore.hash(ip), 30, 300)
     }
 
-    /** Successful proofs release their reserved failure allowance; expiry is never extended. */
+    /** Best-effort cleanup after SQL commit: failure retains the allowance until its original expiry. */
     fun verificationSucceeded(token: String, account: java.util.UUID) {
-        redis.execute(
-            RELEASE,
-            listOf(
-                "scheduler:totp-limit:account:$account",
-                "scheduler:totp-limit:grant:" + StaffLoginSelectionStore.hash(token),
-            ),
-        ) ?: error("Redis TOTP limiter unavailable")
+        try {
+            redis.execute(
+                RELEASE,
+                listOf(
+                    "scheduler:totp-limit:account:$account",
+                    "scheduler:totp-limit:grant:" + StaffLoginSelectionStore.hash(token),
+                ),
+            ) ?: error("Redis TOTP limiter unavailable")
+        } catch (_: Exception) {
+            // Do not log exception metadata, tokens or account details.
+            log.warn("TOTP allowance cleanup failed after successful verification")
+        }
     }
 
     fun consume(token: String) {
