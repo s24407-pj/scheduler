@@ -24,6 +24,8 @@ class CompanyEmployee(
     @Column(name = "eligibility_mode", nullable = false)
     var eligibilityMode: EmployeeEligibilityMode = EmployeeEligibilityMode.ALL_SERVICES,
     @Column(name = "auth_version", nullable = false) var authVersion: Long = 0,
+    @Column(name = "totp_secret") var totpSecret: String? = null,
+    @Column(name = "totp_last_step") var totpLastStep: Long? = null,
     @Column(name = "created_at", nullable = false, updatable = false, insertable = false)
     val createdAt: LocalDateTime? = null,
 ) {

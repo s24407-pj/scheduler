@@ -31,3 +31,4 @@ To add one, copy the structure of an existing ADR, use the next number, and add 
 | [0019](./0019-remove-obsolete-compatibility-code.md) | Remove obsolete compatibility code | Accepted |
 | [0020](./0020-bounded-booking-admission.md) | Bounded booking admission and fingerprint storage | Accepted |
 | [0021](./0021-bounded-customer-reads.md) | Bounded customer reads | Accepted |
+| [0022](./0022-mandatory-staff-totp.md) | Mandatory company-scoped staff TOTP | Accepted |

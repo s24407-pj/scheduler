@@ -17,6 +17,33 @@ import org.springframework.scheduling.annotation.EnableScheduling
 @EnableScheduling
 class RedisConfig {
 
+    /** Concurrent rotation/expiry may leave a delta-only hash. Fail closed instead of mapping it as a session. */
+    @Bean
+    fun safeSessionMapper(
+        @org.springframework.beans.factory.annotation.Value("\${spring.session.data.redis.namespace:spring:session}")
+        namespace: String,
+    ): org.springframework.session.config.SessionRepositoryCustomizer<
+        org.springframework.session.data.redis.RedisIndexedSessionRepository,
+    > =
+        org.springframework.session.config.SessionRepositoryCustomizer { repository ->
+            val delegate = org.springframework.session.data.redis.RedisSessionMapper()
+            repository.setRedisSessionMapper { id, values ->
+                try {
+                    delegate.apply(id, values)
+                } catch (_: IllegalStateException) {
+                    // Never use deleteById here: the indexed repository invokes this mapper during deletion.
+                    repository.sessionRedisOperations.delete("$namespace:sessions:$id")
+                    // Spring Session 4.1's mapper signature is non-null even though getSession accepts null.
+                    // An already-expired, empty tombstone has the same fail-closed behavior without an unsafe cast.
+                    org.springframework.session.MapSession(id).apply {
+                        creationTime = java.time.Instant.EPOCH
+                        lastAccessedTime = java.time.Instant.EPOCH
+                        maxInactiveInterval = Duration.ZERO
+                    }
+                }
+            }
+        }
+
     @Bean
     fun cacheManager(connectionFactory: RedisConnectionFactory): RedisCacheManager {
         val jsonSerializer = RedisSerializer.json()

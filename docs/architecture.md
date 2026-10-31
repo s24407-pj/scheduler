@@ -179,3 +179,9 @@ loading catalog entities, matching offering writes and booking. Category assignm
 flush an older offering snapshot over a concurrent price, duration or activation change.
 
 Customer directory/history reads use bounded slices without total counts. Page-scoped batches replace per-row penalty, block and profile queries; availability loads personal conflicts once per effective day. V5 adds partial company/customer history and established-profile ordering indexes. The array/continuation and calendar range contract is recorded in [ADR-0021](./adr/0021-bounded-customer-reads.md).
+
+## Staff second-factor boundary
+
+[ADR-0022](./adr/0022-mandatory-staff-totp.md) requires company-owned TOTP for every staff session. Password and selection results are unprivileged encrypted browser-bound grants in Redis; no staff SecurityContext exists until final TOTP confirmation. Existing scope/version/generation checks also require an MFA proof equal to the principal auth_version. Enrollment/recovery/reset advance the durable version; their original logout-all generation remains authoritative. Short account transactions persist replay counters and credential replacements; Redis grant handling and session creation run outside those locks.
+
+Concurrent rotation/expiry can leave partial Redis session hashes. A Spring Session repository customizer deletes hashes that cannot be mapped and returns an empty expired tombstone, following the [Spring Session safe-mapping guidance](https://docs.spring.io/spring-session/reference/configuration/redis.html#configuring-redis-session-mapper). It does not catch connection/serialization failures, authenticate partial data, or introduce another session store.

@@ -30,6 +30,7 @@ Every error is RFC 9457 Problem Details (`application/problem+json`) with stable
 | `CUSTOMER_PROFILE_CHANGED` | 409 |
 | `UNAUTHORIZED` | 401 |
 | `INVALID_CREDENTIALS` | 401 |
+| `TOTP_CHALLENGE_EXPIRED` | 401 |
 | `ACCESS_DENIED` | 403 |
 | `NOT_FOUND` | 404 |
 | `RESERVATION_NOT_FOUND` | 404 |
@@ -66,3 +67,5 @@ Company-local customers: missing OTP companies return `NOT_FOUND` (404); foreign
 Profile PUT uses the same `REVISION_REQUIRED`/`CONCURRENT_MODIFICATION` contract as reservations. A later authentication/context/CSRF/rate error does not resolve an earlier uncertain submission. Preserve the original key/body until its outcome is known. This pre-production replacement rejects removed flat booking/OTP fields as unknown input; there is no historical-payload compatibility adapter.
 
 Read paging rejects negative pages, offsets exceeding the supported integer range and sizes outside 1–200 with 400 INVALID_PARAMETER. Calendar reads reject non-positive or over-93-local-day ranges with the same code. Query binding/annotation validation errors retain the normal validation ProblemDetail.
+
+TOTP: incorrect/replayed codes return 401 INVALID_CREDENTIALS without authenticating or invalidating another valid staff session. Invalid, consumed, expired, wrong-browser, wrong-purpose or revoked challenges return 401 TOTP_CHALLENGE_EXPIRED; restart password verification. Malformed code/token inputs are 400 VALIDATION_FAILED. Five failures per challenge, ten per account per five minutes, or thirty IP requests per five minutes return 429 RATE_LIMITED with Retry-After. A session credential rejection at employee TOTP reset stays in the form, preserving the owner's session. The reset still requires CSRF and X-Expected-Session-Context; foreign/missing targets are opaque 404 and non-owner callers are 403.

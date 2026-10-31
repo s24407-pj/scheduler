@@ -161,7 +161,7 @@ class AuthService(
         if (matches.any { it.third?.get(AccountSessionRegistry.GENERATION_ATTRIBUTE) != it.first.generation })
             throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
         verified.forEach {
-            if (!accountSessions.isAuthorized(it.principal, it.sessionAttributes::get))
+            if (!accountSessions.isCurrent(it.principal, it.sessionAttributes::get))
                 throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)
         }
         if (verified.isEmpty()) throw BadCredentialsException(INVALID_CREDENTIALS_MESSAGE)

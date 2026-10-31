@@ -46,6 +46,8 @@ data class AuthResponse(
 enum class StaffLoginStatus {
     AUTHENTICATED,
     COMPANY_SELECTION_REQUIRED,
+    TOTP_REQUIRED,
+    TOTP_SETUP_REQUIRED,
 }
 
 /** Staff login result; the HttpOnly cookie, never the response body, carries authentication. */
@@ -54,6 +56,10 @@ data class StaffLoginResponse(
     val status: StaffLoginStatus,
     val selectionToken: String? = null,
     val companies: List<StaffLoginCompany>? = null,
+    val challengeToken: String? = null,
+    val expiresAt: java.time.Instant? = null,
+    val recoveryAvailable: Boolean? = null,
+    val companyId: UUID? = null,
 )
 
 /** Email-first credentials remain independent for each company account. */

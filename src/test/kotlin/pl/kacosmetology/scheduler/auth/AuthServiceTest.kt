@@ -224,7 +224,7 @@ class AuthServiceTest {
         every { passwordEncoder.matches("password123", any()) } answers { secondArg<String>() == "hash" }
         every { accountSessions.sessionAttributes(any()) } returns
             mapOf(pl.kacosmetology.scheduler.security.AccountSessionRegistry.GENERATION_ATTRIBUTE to 0L)
-        every { accountSessions.isAuthorized(any(), any()) } returns true
+        every { accountSessions.isCurrent(any(), any()) } returns true
         val result =
             authService.loginStaffEmail(
                 pl.kacosmetology.scheduler.auth.dto.StaffEmailLoginRequest("staff@salon.pl", "password123"),

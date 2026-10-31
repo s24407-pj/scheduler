@@ -53,6 +53,8 @@ class TestSessions(
         session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context)
         session.maxInactiveInterval = AccountSessionRegistry.SESSION_DURATION
         accountSessions.sessionAttributes(principal).forEach { (name, value) -> session.setAttribute(name, value) }
+        if (principal.role in setOf("ROLE_OWNER", "ROLE_EMPLOYEE"))
+            session.setAttribute(AccountSessionRegistry.MFA_ATTRIBUTE, principal.authVersion)
         // The concrete Redis repository owns the same Session subtype returned by createSession.
         repository.save(session)
         return FixtureSessionCookie(Base64.getEncoder().encodeToString(session.id.toByteArray()), principal)

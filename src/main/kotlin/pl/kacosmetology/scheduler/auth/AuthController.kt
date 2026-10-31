@@ -11,14 +11,15 @@ import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.security.SessionAuthenticationService
 
 /**
- * REST API for customer (SMS OTP) and staff (email/password) authentication, and session logout. Client IP for rate
- * limiting is `remoteAddr`; `X-Forwarded-For` is applied by the servlet container only when the direct peer matches
- * `TRUSTED_PROXIES`.
+ * REST API for customer (SMS OTP) and staff password verification before mandatory TOTP, and session logout. Client IP
+ * for rate limiting is `remoteAddr`; `X-Forwarded-For` is applied by the servlet container only when the direct peer
+ * matches `TRUSTED_PROXIES`.
  */
 @RestController
 @RequestMapping("/api/auth")
 class AuthController(
     private val authService: AuthService,
+    private val totp: TotpService,
     private val sessionAuthenticationService: SessionAuthenticationService,
 ) {
 
@@ -45,7 +46,7 @@ class AuthController(
         return ResponseEntity.ok(AuthResponse())
     }
 
-    /** Authenticates one company-owned staff account with company, normalized email and password. */
+    /** Verifies company-owned credentials and returns an anonymous mandatory TOTP challenge. */
     @PostMapping("/login-staff")
     fun loginStaff(
         @Valid @RequestBody request: StaffLoginRequest,
@@ -54,8 +55,7 @@ class AuthController(
     ): ResponseEntity<StaffLoginResponse> {
         sessionAuthenticationService.requireAnonymous()
         val result = authService.loginStaff(request, httpRequest.remoteAddr)
-        sessionAuthenticationService.authenticate(result.principal, httpRequest, httpResponse, result.sessionAttributes)
-        return ResponseEntity.ok(result.response)
+        return ResponseEntity.ok(totp.challenge(result, httpRequest.getSession(true).id))
     }
 
     /** Verifies company-local credentials before revealing any company choices. */
@@ -67,13 +67,10 @@ class AuthController(
     ): StaffLoginResponse {
         sessionAuthenticationService.requireAnonymous()
         val result = authService.loginStaffEmail(request, httpRequest.remoteAddr) { httpRequest.getSession(true).id }
-        result.authentication?.let {
-            sessionAuthenticationService.authenticate(it.principal, httpRequest, httpResponse, it.sessionAttributes)
-        }
-        return result.response
+        return result.authentication?.let { totp.challenge(it, httpRequest.getSession(true).id) } ?: result.response
     }
 
-    /** Establishes only the selected, previously password-verified account's session. */
+    /** Starts TOTP only for the selected, previously password-verified account. */
     @PostMapping("/complete-staff-login")
     fun completeStaffLogin(
         @Valid @RequestBody request: CompleteStaffLoginRequest,
@@ -82,8 +79,7 @@ class AuthController(
     ): StaffLoginResponse {
         sessionAuthenticationService.requireAnonymous()
         val result = authService.completeStaffLogin(request, httpRequest.remoteAddr, httpRequest.getSession(false)?.id)
-        sessionAuthenticationService.authenticate(result.principal, httpRequest, httpResponse, result.sessionAttributes)
-        return result.response
+        return totp.challenge(result, httpRequest.getSession(true).id)
     }
 
     /** Supplies a fresh SPA CSRF token, including to anonymous clients before login. */

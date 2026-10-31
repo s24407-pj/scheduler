@@ -104,6 +104,7 @@ allOpen {
 tasks.withType<Test> {
     useJUnitPlatform()
     systemProperty("user.timezone", "UTC")
+    systemProperty("totp.encryption-key", "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
     systemProperty("scheduler.jobs.enabled", "false")
     systemProperty("spring.profiles.active", "test")
 }

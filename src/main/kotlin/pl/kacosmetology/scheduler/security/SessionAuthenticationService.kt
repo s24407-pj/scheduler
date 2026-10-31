@@ -31,7 +31,10 @@ class SessionAuthenticationService(
         }
     }
 
-    /** Rotates a preexisting session, clears pre-login CSRF, and explicitly saves a fresh authenticated context. */
+    /**
+     * Rotates the session, clears pre-login CSRF and explicitly saves the context after credential commit. Staff
+     * callers must supply a completed, version-bound TOTP proof; generic default attributes authorize only customers.
+     */
     fun authenticate(
         principal: CustomUserDetails,
         request: HttpServletRequest,
