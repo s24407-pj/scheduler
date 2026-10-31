@@ -34,4 +34,4 @@ Owner settings expose `minBookingAdvanceMinutes` (default 0), `maxBookingAdvance
 
 `PUT /api/company/profile` lets the owner update only their company's public name/address. Public company responses include the current address. Public category names are exposed by `/api/offering-categories/public/company/{companyId}`. Catalog and category mutations remain owner-only.
 
-Personal conflicts are loaded once for the day's effective slot interval and checked in memory for each slot. The query retains company/customer scoping and excludes CANCELLED/NO_SHOW, matching allocation semantics; public slots stay unchanged.
+Personal conflicts are loaded as start/end scalar projections once for the day's effective slot interval and checked in memory for each slot. The query retains company/customer scoping and excludes CANCELLED/NO_SHOW, matching allocation semantics; public slots stay unchanged.
