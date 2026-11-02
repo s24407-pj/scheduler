@@ -42,7 +42,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
           version: ${{ env.TRIVY_VERSION }}
       - name: Verify security policy gates
@@ -81,7 +81,7 @@ jobs:
           java-version: '25.0.4+101.0.LTS'
           distribution: temurin
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
         with:
           cache-read-only: true
       - name: Initialize CodeQL
@@ -110,7 +110,7 @@ jobs:
         run: python3 .github/security/security.py codeql security-reports/codeql
       - name: Install Trivy
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
           version: ${{ env.TRIVY_VERSION }}
       - name: Scan production JAR, including nested dependencies
@@ -141,7 +141,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
           version: ${{ env.TRIVY_VERSION }}
       - name: Build production Dockerfile
@@ -202,7 +202,7 @@ jobs:
           java-version: '25.0.4+101.0.LTS'
           distribution: temurin
       - name: Submit resolved Gradle dependency graph
-        uses: gradle/actions/dependency-submission@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
+        uses: gradle/actions/dependency-submission@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
         with:
           cache-read-only: true
           dependency-graph: generate-submit-and-upload
