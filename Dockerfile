@@ -1,5 +1,5 @@
 # Stage 1: Build with the same checksum-verified wrapper used by CI.
-FROM docker.io/library/eclipse-temurin:25-jdk-alpine@sha256:1e20ead9eec7234db293f1913438090d533ed47c0b9e12dc8c7627a802a44ed6 AS build
+FROM docker.io/library/eclipse-temurin:25-jdk-alpine@sha256:425f0b733cb23843bd78dbe5552513976d0cf12b9722752c48a5161cf5cd2f32 AS build
 WORKDIR /app
 
 COPY gradlew build.gradle.kts settings.gradle.kts gradle.properties ./
