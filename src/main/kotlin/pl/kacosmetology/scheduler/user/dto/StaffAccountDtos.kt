@@ -104,7 +104,9 @@ data class EmployeeEnabledResponse(
 /** Current-password proof never authenticates a new session. */
 data class ChangeStaffPasswordRequest(
     @field:NotBlank(message = "Aktualne hasło jest wymagane") val currentPassword: String,
-    @field:Size(min = 8, max = 72, message = "Hasło musi mieć 8–72 znaki") val newPassword: String,
+    @field:NotBlank(message = "Hasło nie może składać się wyłącznie z białych znaków")
+    @field:Size(min = 8, max = 72, message = "Hasło musi mieć 8–72 znaki")
+    val newPassword: String,
 )
 
 /** One-use setup/recovery token and selected password. */
@@ -112,5 +114,7 @@ data class SetStaffPasswordRequest(
     @field:NotBlank(message = "Token jest wymagany")
     @field:Size(max = 128, message = "Nieprawidłowy token")
     val token: String,
-    @field:Size(min = 8, max = 72, message = "Hasło musi mieć 8–72 znaki") val newPassword: String,
+    @field:NotBlank(message = "Hasło nie może składać się wyłącznie z białych znaków")
+    @field:Size(min = 8, max = 72, message = "Hasło musi mieć 8–72 znaki")
+    val newPassword: String,
 )

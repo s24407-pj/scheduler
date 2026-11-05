@@ -29,6 +29,7 @@ import pl.kacosmetology.scheduler.reservation.dto.EditReservationRequest
 import pl.kacosmetology.scheduler.reservation.dto.ReservationActionRequest
 import pl.kacosmetology.scheduler.testId
 import pl.kacosmetology.scheduler.user.*
+import tools.jackson.databind.json.JsonMapper
 
 /** Unit boundaries complement HTTP/DB tests for lock order, agreement snapshots, edits and revision protection. */
 class ReservationServiceTest {
@@ -64,6 +65,7 @@ class ReservationServiceTest {
             audit,
             jdbc,
             blocking,
+            JsonMapper.builder().build(),
         )
     private val now = Instant.parse("2030-01-14T10:00:00Z")
     private val start = LocalDateTime.parse("2030-01-14T12:00:00")
