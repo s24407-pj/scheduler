@@ -10,6 +10,8 @@ Staff responses also contain `customerId`; customer responses omit it. Responses
 
 Every booking POST counts toward rolling request limits: 10/account/minute and 60/IP/minute, including retries. Limits are atomic in Redis and return 429 with `Retry-After` before body buffering or new key binding. Bodies are capped at 64 KiB, including requests without Content-Length; oversize admission returns 413 `PAYLOAD_TOO_LARGE` without new binding. Rate/size rejection never removes an existing key or proves the outcome of an earlier uncertain request. V4 retains only fingerprints and outcome links, not request bodies. The company future customer-created booking cap defaults to 10; staff-created appointments are exempt, and reducing the cap preserves existing bookings.
 
+Admission matches the same decoded path segments as MVC, also when deployed under an application context. Percent-encoded spellings of either booking endpoint retain the same rate/size checks and durable fingerprint binding before JSON/DTO validation.
+
 ## Customer booking
 
 First booking supplies `firstVisitDetails:{firstName,lastName,contactEmail?}`. Pending profiles without it return `CUSTOMER_NAME_REQUIRED`; established profiles with it return `CUSTOMER_PROFILE_CHANGED` before allocation. Readiness from `/api/users/me` is advisory. After a race, require explicit refreshed acknowledgement before omitting details and creating a new attempt. Never overwrite names through booking. Successful exact-key replay is evaluated first and remains recoverable after the original booking established the profile.
@@ -31,6 +33,8 @@ Both staff roles may book future or ongoing appointments whose resulting end rem
 ## Lifecycle
 
 Lifecycle PATCH requests require `If-Match`. A successful cancellation/completion/no-show command can be repeated without further effects while its original outcome remains unchanged. Replaying an old command after reversal/correction conflicts, even if a later command reached the same status again. Stale ordinary writes return 409.
+
+Command fingerprints hash a UTF-8 JSON array of reason, customer explanation, notification choice and block override, preserving field boundaries and the distinction between null and text. Changed fields return `409 INVALID_STATUS_TRANSITION` without another mutation. Commands recorded with the former ambiguous list-text hash cannot be safely revalidated after upgrade; retries of those commands also return that conflict, retain the original outcome and require a refreshed view. No historical command is deleted or rebound, and booking POST replay is unaffected. See [ADR-0024](./adr/0024-unambiguous-lifecycle-command-fingerprints.md).
 
 | Transition | Who | Conditions |
 | --- | --- | --- |

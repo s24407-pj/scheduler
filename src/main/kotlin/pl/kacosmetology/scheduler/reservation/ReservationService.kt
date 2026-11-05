@@ -29,6 +29,7 @@ import pl.kacosmetology.scheduler.security.CustomUserDetails
 import pl.kacosmetology.scheduler.user.CompanyCustomerBlockRepository
 import pl.kacosmetology.scheduler.user.CompanyCustomerRepository
 import pl.kacosmetology.scheduler.user.CustomerBlockingPolicy
+import tools.jackson.databind.ObjectMapper
 
 /** Employee outcome corrections use a 24 elapsed-hour deadline; owners have no late deadline. */
 const val NO_SHOW_CORRECTION_HOURS = 24L
@@ -51,6 +52,7 @@ class ReservationService(
     private val audit: ReservationAuditContext,
     private val jdbc: JdbcTemplate,
     private val blocking: CustomerBlockingPolicy,
+    private val mapper: ObjectMapper,
 ) {
     /**
      * Creates a customer booking under the salon lock; a successful submission is replayed by BookingSubmissionService.
@@ -548,14 +550,14 @@ class ReservationService(
         val fingerprint =
             java.security.MessageDigest.getInstance("SHA-256")
                 .digest(
-                    listOf(
+                    mapper.writeValueAsBytes(
+                        listOf(
                             request.reason,
                             request.customerExplanation,
                             request.notifyCustomer,
                             request.overrideEmployeeBlock,
-                        )
-                        .toString()
-                        .toByteArray(),
+                        ),
+                    ),
                 )
                 .joinToString("") { "%02x".format(it) }
         val previous =
@@ -576,7 +578,7 @@ class ReservationService(
                     target.name,
                 )!! > 0
             if (previous["request_hash"] == fingerprint && reservation.status == target && !reversed) return
-            invalidTransition("Nieaktualne polecenie po zmianie wyniku wizyty")
+            invalidTransition("Nie można potwierdzić ponowienia tego polecenia. Odśwież wizytę i sprawdź jej wynik")
         }
         checkRevision(reservation, expected)
         if (reservation.archived) invalidTransition("Najpierw przywróć wizytę z archiwum")

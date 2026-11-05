@@ -10,6 +10,8 @@ import java.util.*
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
@@ -176,6 +178,72 @@ class StaffIdentityIntegrationTest {
                 .status,
         )
         login(company.id!!, "employee@example.test", "password456")
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["        ", "\t\t\t\t\t\t\t\t", "\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003"])
+    fun `blank new password preserves owner credentials and sessions`(blank: String) {
+        val before = accounts.findByCompanyIdAndLoginEmail(company.id!!, "owner@example.test")!!
+        val hash = before.passwordHash
+        val version = before.authVersion
+        val response =
+            postJson(
+                    "/api/staff/password",
+                    mapOf("currentPassword" to "password123", "newPassword" to blank),
+                    owner,
+                )
+                .response
+        assertEquals(400, response.status, response.contentAsString)
+        assertEquals("VALIDATION_FAILED", mapper.readTree(response.contentAsString)["code"].asString())
+        assertTrue(mapper.readTree(response.contentAsString)["errors"].has("newPassword"))
+        val after = accounts.findById(before.id!!).orElseThrow()
+        assertEquals(hash, after.passwordHash)
+        assertEquals(version, after.authVersion)
+        assertEquals(200, me(owner))
+        assertEquals(
+            200,
+            postJson(
+                    "/api/auth/login-staff",
+                    mapOf("companyId" to company.id, "email" to "owner@example.test", "password" to "password123"),
+                )
+                .response
+                .status,
+        )
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["        ", "\t\t\t\t\t\t\t\t", "\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003"])
+    fun `blank password setup preserves the one use link and accepts meaningful spaces unchanged`(blank: String) {
+        val token = create()["passwordSetup"]["token"].asString()
+        val link = links.findAll().single()
+        val hash = link.tokenHash
+        val version = accounts.findById(link.staffAccountId).orElseThrow().authVersion
+        assertEquals(400, consume(token, blank))
+        assertEquals(hash, links.findById(link.staffAccountId).orElseThrow().tokenHash)
+        val account = accounts.findById(link.staffAccountId).orElseThrow()
+        assertNull(account.passwordHash)
+        assertEquals(version, account.authVersion)
+        val valid = "  password123  "
+        assertEquals(204, consume(token, valid))
+        assertTrue(links.findById(link.staffAccountId).isEmpty)
+        assertEquals(
+            200,
+            postJson(
+                    "/api/auth/login-staff",
+                    mapOf("companyId" to company.id, "email" to "employee@example.test", "password" to valid),
+                )
+                .response
+                .status,
+        )
+        assertEquals(
+            401,
+            postJson(
+                    "/api/auth/login-staff",
+                    mapOf("companyId" to company.id, "email" to "employee@example.test", "password" to valid.trim()),
+                )
+                .response
+                .status,
+        )
     }
 
     @Test

@@ -4,6 +4,8 @@
 
 Customer identity/scope and OTP/profile establishment rules are superseded where applicable by [ADR-0017](./0017-company-local-customers.md). Other decisions remain in force.
 
+Lifecycle command fingerprint encoding and pre-upgrade retry handling are refined by [ADR-0024](./0024-unambiguous-lifecycle-command-fingerprints.md).
+
 ## Decision
 
 The authoritative reservation behavior is documented in [reservations](../reservations.md). BOOKED is the only initial state. IDs/creation time and accepted commercial terms survive edits, outcomes, restoration and archive. Appointment deletion is unavailable.

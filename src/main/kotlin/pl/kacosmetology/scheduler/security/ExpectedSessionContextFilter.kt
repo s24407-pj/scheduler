@@ -4,18 +4,17 @@ import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher.pathPattern
 import org.springframework.web.filter.OncePerRequestFilter
 import org.springframework.web.servlet.HandlerExceptionResolver
 import pl.kacosmetology.scheduler.config.ApiException
 import pl.kacosmetology.scheduler.config.ErrorCode
 
-/** Binds a company-scoped write to the account scope that opened its form, independently of the current cookie. */
+/** Binds a company-scoped write to its form's account scope, matching decoded paths with the same rules as MVC. */
 class ExpectedSessionContextFilter(private val exceptionResolver: HandlerExceptionResolver) : OncePerRequestFilter() {
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, chain: FilterChain) {
         val principal = SecurityContextHolder.getContext().authentication?.principal as? CustomUserDetails
-        if (
-            principal != null && requiresContext(request.method, request.requestURI.removePrefix(request.contextPath))
-        ) {
+        if (principal != null && requiresContext(request)) {
             val supplied = request.getHeader(HEADER)
             if (principal.role in STAFF_ROLES || principal.role == "ROLE_CUSTOMER" || supplied != null) {
                 val error =
@@ -50,12 +49,15 @@ class ExpectedSessionContextFilter(private val exceptionResolver: HandlerExcepti
         private const val UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
         private val FORMAT =
             Regex("v1:$UUID_PATTERN:$UUID_PATTERN:(?:$UUID_PATTERN:ROLE_(OWNER|EMPLOYEE)|null:ROLE_CUSTOMER)")
+        private val API = pathPattern("/api/**")
+        private val PUBLIC_AUTH = pathPattern("/api/auth/**")
+        private val LOGOUT_ALL = pathPattern("/api/auth/logout-all")
 
         /** Public authentication and recovery actions do not originate in an authenticated staff form. */
-        fun requiresContext(method: String, path: String): Boolean =
-            method !in SAFE_METHODS &&
-                path.startsWith("/api/") &&
-                (!path.startsWith("/api/auth/") || path == "/api/auth/logout-all")
+        private fun requiresContext(request: HttpServletRequest): Boolean =
+            request.method !in SAFE_METHODS &&
+                API.matches(request) &&
+                (!PUBLIC_AUTH.matches(request) || LOGOUT_ALL.matches(request))
 
         /** Public identity fields form an equality precondition, never an authentication credential. */
         fun context(principal: CustomUserDetails): String =

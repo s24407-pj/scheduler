@@ -9,7 +9,10 @@ import jakarta.servlet.http.HttpServletResponse
 import java.io.ByteArrayInputStream
 import java.time.Duration
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.http.HttpMethod
 import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher.pathPattern
+import org.springframework.security.web.util.matcher.OrRequestMatcher
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 import org.springframework.web.servlet.HandlerExceptionResolver
@@ -27,7 +30,7 @@ const val BOOKING_PAYLOAD_ATTRIBUTE = "scheduler.bookingPayload"
 /** Bounds both advertised and chunked booking bodies before buffering or durable fingerprinting. */
 const val MAX_BOOKING_BODY_BYTES = 64 * 1024
 
-/** Counts every booking attempt; only admitted, size-bounded requests bind a key before JSON/DTO validation. */
+/** Matches MVC paths, including encoded segments; admitted, size-bounded attempts bind a key before validation. */
 @Component
 class BookingRateLimitFilter(
     private val limits: RedisRollingRateLimiter,
@@ -35,12 +38,14 @@ class BookingRateLimitFilter(
     private val mapper: ObjectMapper,
     @param:Qualifier("handlerExceptionResolver") private val errors: HandlerExceptionResolver,
 ) : OncePerRequestFilter() {
+    private val bookingRequests =
+        OrRequestMatcher(
+            pathPattern(HttpMethod.POST, "/api/reservations"),
+            pathPattern(HttpMethod.POST, "/api/reservations/staff"),
+        )
+
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, chain: FilterChain) {
-        if (
-            request.method != "POST" ||
-                request.requestURI.removePrefix(request.contextPath) !in
-                    setOf("/api/reservations", "/api/reservations/staff")
-        ) {
+        if (!bookingRequests.matches(request)) {
             chain.doFilter(request, response)
             return
         }
